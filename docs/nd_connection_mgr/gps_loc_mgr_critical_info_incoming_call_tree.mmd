@@ -1,0 +1,34 @@
+flowchart TD
+  MAIN["main() - gps/loc_mgr/src/loc_mgr.cpp:1090"]
+
+  subgraph STARTUP["Service startup"]
+    G1["nd_log_init + route_logs"]
+    G2["nd_signal_add_handler(SIGSEGV/SIGTERM/SIGABRT/SIGINT)"]
+    G3["msg queue threads and sdk flow"]
+    G1 --> G2 --> G3
+  end
+
+  subgraph SIGNALPATH["Signal handler path"]
+    S1["handler() in service_utils.cpp"]
+    S2["signum != SIG_STOP"]
+    S1 --> S2
+  end
+
+  subgraph MSGQPATH["Message queue receive path"]
+    M1["nd_msgq_t::receive()"]
+    M2["queue invalid (valid==false)"]
+    M3["msgrcv returns -1"]
+    M1 --> M2
+    M1 --> M3
+  end
+
+  MAIN --> G1
+  MAIN --> S1
+  MAIN --> M1
+
+  S2 -->|"linux signal received with thread id"| N1["SM_E_SIGNAL - gps/loc_mgr/src/service_utils.cpp:81"]
+  M2 -->|"msg queue not initialized properly"| N2["SM_E_MSGQ_RECV_ERROR - gps/loc_mgr/src/nd_msgq.cpp:232"]
+  M3 -->|"msgrcv failed on queue"| N3["SM_E_MSGQ_RECV_ERROR - gps/loc_mgr/src/nd_msgq.cpp:245"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3 errNode

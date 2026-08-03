@@ -1,0 +1,100 @@
+flowchart TD
+  MAIN["main() - nd_central device/main.cpp or common/main.cpp"]
+
+  subgraph INIT["Service Initialization - nd_central.cpp:4060+"]
+    I1["ISP init check"]
+    I2["set_property_DB() on init"]
+    I3["photodiode callback register"]
+    I4["photodiode start"]
+    I5["config reading"]
+    I6["IMU init - imu_init()"]
+    I7["GPS init - gps_init()"]
+    I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7
+  end
+
+  subgraph ERRORCB["record_component_errorcb() - nd_central.cpp:2886"]
+    EC1["REQ_NDC_MAKE_ERROR_CALLBACK message received"]
+    EC2["camera SHM fail on error"]
+    EC3["camera LPM crash - cam in LPM"]
+    EC4["camera crash - not in LPM"]
+    EC5["camera crash - state unknown"]
+    EC6["set_property_DB fail on crash count"]
+    EC7["system reboot on crash - reboot fails"]
+    EC8["gpio_por_assert fail"]
+    EC1 --> EC2
+    EC1 --> EC3
+    EC1 --> EC4
+    EC1 --> EC5
+    EC4 --> EC6
+    EC5 --> EC6
+    EC7 --> EC8
+  end
+
+  subgraph DEVCONFIG["Device Config - nd_central.cpp:4390+"]
+    DC1["configure GPS refresh rate"]
+    DC2["configure IMU refresh rate"]
+    DC3["enable GPS"]
+    DC4["enable Accel"]
+    DC5["enable Gyro"]
+  end
+
+  subgraph RUNTIME["Runtime Monitoring"]
+    RT1["LED set timeout - nd_central.cpp:1642"]
+    RT2["Mic crash detection - nd_central.cpp:2305"]
+    RT3["RTC jump DB update - nd_central.cpp:5784"]
+    RT4["SD card copy fail - nd_central.cpp:6098"]
+    RT5["video flip/mirror status read - nd_central.cpp:6900+"]
+    RT6["partial zip delete - nd_central.cpp:7066"]
+    RT7["audio record fail - nd_central.cpp:7201"]
+    RT8["audio encode fail - nd_central.cpp:7225"]
+    RT9["IMU data outage - nd_central.cpp:7856"]
+    RT10["GPS data outage - nd_central.cpp:7859"]
+  end
+
+  MAIN --> I1
+  MAIN --> EC1
+  MAIN --> DC1
+  MAIN --> RT1
+
+  I1 -->|"ISP init returns fail"| N1["SM_E_NDC_INIT_CAM_FAIL - nd_central.cpp:3440"]
+  I2 -->|"set_property_DB fails on init"| N2["SM_E_NDC_SET_PROP_DB_FAIL - nd_central.cpp:3448"]
+  I3 -->|"register photodiode callback fails"| N3["SM_E_NDC_PHOTOSENSOR_FAIL - nd_central.cpp:4020"]
+  I4 -->|"start photodiode fails"| N4["SM_E_NDC_PHOTOSENSOR_FAIL - nd_central.cpp:4025"]
+  I5 -->|"config file read fails - variant 1"| N5["SM_E_NDC_CONFIG_READING_FAIL - nd_central.cpp:4076"]
+  I5 -->|"config file read fails - variant 2"| N6["SM_E_NDC_CONFIG_READING_FAIL - nd_central.cpp:4088"]
+  I5 -->|"config file read fails - variant 3"| N7["SM_E_NDC_CONFIG_READING_FAIL - nd_central.cpp:4094"]
+  I6 -->|"imu_init returns error"| N8["SM_E_NDC_IMU_FAIL - nd_central.cpp:4111"]
+  I7 -->|"gps_init returns error"| N9["SM_E_NDC_GPS_FAIL - nd_central.cpp:4135"]
+  EC2 -->|"camera SHM init fails on error callback"| N10["SM_E_NDC_CAM_SHM_FAIL - nd_central.cpp:2935 - aux=cam_num"]
+  EC3 -->|"camera crash while in LPM state"| N11["SM_E_NDC_CAM_LPM_CRASH - nd_central.cpp:2952 - aux=cam_i"]
+  EC4 -->|"camera crash not in LPM"| N12["SM_E_NDC_CAM_CRASH - nd_central.cpp:2955 - aux=cam_i"]
+  EC3 -->|"second LPM crash path"| N13["SM_E_NDC_CAM_LPM_CRASH - nd_central.cpp:2962 - aux=cam_i"]
+  EC5 -->|"camera crash unknown state"| N14["SM_E_NDC_CAM_CRASH - nd_central.cpp:2969 - aux=cam_i"]
+  EC6 -->|"DB update for crash count fails - variant 1"| N15["SM_E_NDC_SET_PROP_DB_FAIL - nd_central.cpp:2987 - aux=cam_i"]
+  EC1 -->|"camera crash alternative path"| N16["SM_E_NDC_CAM_CRASH - nd_central.cpp:2998 - aux=cam_i"]
+  EC6 -->|"DB update for crash count fails - variant 2"| N17["SM_E_NDC_SET_PROP_DB_FAIL - nd_central.cpp:3007 - aux=cam_i"]
+  EC7 -->|"system_reboot fails"| N18["SM_E_PM_SYS_RBT_FAIL - nd_central.cpp:3054"]
+  EC8 -->|"gpio_por_assert fails"| N19["SM_E_PM_POR_GPIO_FAIL - nd_central.cpp:3066"]
+  EC7 -->|"second reboot fail path"| N20["SM_E_PM_SYS_RBT_FAIL - nd_central.cpp:3113"]
+  EC8 -->|"second POR fail path"| N21["SM_E_PM_POR_GPIO_FAIL - nd_central.cpp:3124"]
+  DC1 -->|"configure GPS refresh rate fails"| N22["SM_E_NDC_GPS_FAIL - nd_central.cpp:4409"]
+  DC2 -->|"configure IMU refresh rate fails"| N23["SM_E_NDC_IMU_FAIL - nd_central.cpp:4417"]
+  DC3 -->|"enable GPS fails"| N24["SM_E_NDC_GPS_FAIL - nd_central.cpp:5491"]
+  DC4 -->|"enable Accel fails"| N25["SM_E_NDC_IMU_FAIL - nd_central.cpp:5467"]
+  DC5 -->|"enable Gyro fails"| N26["SM_E_NDC_IMU_FAIL - nd_central.cpp:5475"]
+  RT1 -->|"set_privacy_mode_led timed out"| N27["SM_E_NDC_SET_LED_FAIL - nd_central.cpp:1642"]
+  RT2 -->|"mic process crash detected"| N28["SM_E_NDC_AUDIO_CRASH - nd_central.cpp:2305"]
+  RT3 -->|"RTC jump DB update fails"| N29["SM_E_NDC_SET_PROP_DB_FAIL - nd_central.cpp:5784"]
+  RT4 -->|"SD card copy fails"| N30["SM_E_NDC_SD_CARD_CPY_FAIL - nd_central.cpp:6098"]
+  RT5 -->|"flip/mirror register read error"| N31["SM_E_NDC_VIDEO_FLIP_MIRROR_STATUS_READ_FAILED - nd_central.cpp:6905"]
+  RT5 -->|"flip/mirror detected in file"| N32["SM_E_NDC_VIDEO_FLIP_MIRROR - nd_central.cpp:6914"]
+  RT6 -->|"partial zip file deleted"| N33["SM_E_NDC_PARTIAL_ZIP_DELETE - nd_central.cpp:7066"]
+  RT7 -->|"audio record thread fails"| N34["SM_E_NDC_AUDIO_RECORD_FAILED - nd_central.cpp:7201"]
+  RT8 -->|"audio encode thread fails"| N35["SM_E_NDC_AUDIO_ENCODE_FAILED - nd_central.cpp:7225"]
+  RT9 -->|"IMU data missing over outage window"| N36["SM_E_NDC_IMU_DATA_OUTAGE - nd_central.cpp:7856"]
+  RT10 -->|"GPS data missing over outage window"| N37["SM_E_NDC_GPS_DATA_OUTAGE - nd_central.cpp:7859"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,N11,N12,N13,N14,N15,N16,N17,N18,N19,N20,N21,N22,N23,N24,N25,N26,N27,N28,N29,N30,N31,N34,N35,N36,N37 errNode
+  class N32,N33 infoNode

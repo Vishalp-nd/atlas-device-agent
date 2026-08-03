@@ -1,0 +1,99 @@
+flowchart TD
+  MAIN["main() - uploader.cpp"]
+
+  subgraph STARTUP["Startup Initialization - uploader.cpp"]
+    SI1["nd_log_init()"]
+    SI2["msgq init - nd_msgq_t::get_msgq()"]
+    SI3["cfg parse - read_uploader_config()"]
+    SI4["mutex init - pthread_mutex_init()"]
+    SI5["DB create - create_db_tables()"]
+    SI6["curl global init - curl_global_init()"]
+    SI7["house_keeping thread create"]
+    SI8["CM msgq init - central manager queue"]
+    SI1 --> SI2 --> SI3 --> SI4 --> SI5 --> SI6 --> SI7 --> SI8
+  end
+
+  subgraph VOD["VOD Upload Thread - uploader.cpp:5293"]
+    V1["create_ext_vod_thread()"]
+    V2["MKV to MP4 conversion"]
+    V3["VOD upload timeout"]
+    V4["VOD CB deprioritization"]
+    V5["VOD DRP file timeout no CB"]
+    V1 --> V2
+    V1 --> V3
+    V1 --> V4
+    V1 --> V5
+  end
+
+  subgraph CURLOPS["CURL Operations - uploader.cpp"]
+    CU1["curl easy init"]
+    CU2["curl payload build"]
+  end
+
+  subgraph SDCARD["SD Card Operations - uploader.cpp"]
+    SD1["sd card mount check"]
+    SD2["sd card mount fail second check"]
+  end
+
+  subgraph FILEOPS["File Operations - uploader.cpp"]
+    FO1["file read operation"]
+    FO2["zip file read"]
+    FO3["video trim operation"]
+    FO4["video upload error"]
+    FO5["no file to upload"]
+  end
+
+  subgraph EAIMGS["EA Images DB - uploader.cpp"]
+    EA1["EA images DB get"]
+    EA2["EA images DB insert"]
+    EA3["EA images DB delete"]
+    EA4["EA images DB sync"]
+    EA5["EA unop path create"]
+    EA6["EA large image file size"]
+    EA1 --> EA2 --> EA3 --> EA4
+  end
+
+  subgraph DROPCB["Drop Broadcast - uploader.cpp"]
+    DC1["CB drop broadcast message"]
+  end
+
+  MAIN --> SI1
+  SI8 --> V1
+  SI8 --> CU1
+  SI8 --> SD1
+  SI8 --> FO1
+  SI8 --> EA1
+  SI8 --> DC1
+
+  SI1 -->|"log init fails"| N1["SM_E_UPLD_LOG_INIT_FAIL - uploader.cpp:1037"]
+  SI2 -->|"msgq returns NULL"| N2["SM_E_UPLD_MSGQ_FAIL - uploader.cpp:1053"]
+  SI3 -->|"config parse fails"| N3["SM_E_UPLD_CFG_PARSE_FAIL - uploader.cpp:1121"]
+  SI4 -->|"mutex init fails"| N4["SM_E_UPLD_MUTEX_INIT_FAIL - uploader.cpp:1319"]
+  SI5 -->|"DB creation fails"| N5["SM_E_UPLD_DB_CREAT_FAIL - uploader.cpp:1351"]
+  SI6 -->|"curl_global_init fails"| N6["SM_E_UPLD_CURL_INIT_FAIL - uploader.cpp:1357"]
+  SI7 -->|"thread create fails"| N7["SM_E_UPLD_HS_TH_CREATION_FAIL - uploader.cpp:1507"]
+  SI8 -->|"CM msgq init fails"| N8["SM_E_UPLD_CM_MSGQ_FAIL - uploader.cpp:1541"]
+  V2 -->|"MKV to MP4 conversion issue"| N9["SM_E_UPLD_VOD_MKV_TO_MP - uploader.cpp:2524"]
+  V3 -->|"upload timeout exceeded"| N10["SM_E_UPLD_VOD_TIMEOUT - uploader.cpp:2568"]
+  V4 -->|"VOD deprioritized by CB logic"| N11["SM_E_UPLD_VOD_CB_DEPRIORITIZATION - uploader.cpp:2733"]
+  V5 -->|"DRP file timeout no CB response"| N12["SM_E_UPLD_VOD_DRP_FILE_TIME_NO_CB_RESP - uploader.cpp:3063"]
+  SI7 -->|"thread create fail second"| N13["SM_E_UPLD_THREAD_CREATE_FAIL - uploader.cpp:1562"]
+  CU1 -->|"curl_easy_init returns NULL"| N14["SM_E_UPLD_CURL_INIT_FAIL - uploader.cpp:3600"]
+  CU2 -->|"payload build fails"| N15["SM_E_UPLD_CURL_PAYLOAD_FAIL - uploader.cpp:3744"]
+  SD1 -->|"SD card mount check fails"| N16["SM_E_UPLD_SD_CARD_MOUNT_FAIL - uploader.cpp:4168"]
+  SD2 -->|"SD card mount fail variant"| N17["SM_E_UPLD_SDCRD_MNT_FAIL - uploader.cpp:4219"]
+  FO1 -->|"file read returns error"| N18["SM_E_UPLD_FILE_READ_FAIL - uploader.cpp:4229"]
+  FO2 -->|"zip file read fails"| N19["SM_E_UPLD_ZIP_READ_FAIL - uploader.cpp:4426"]
+  FO3 -->|"video trim operation fails"| N20["SM_E_UPLD_VIDEO_TRIM_FAIL - uploader.cpp:4769"]
+  FO4 -->|"video upload error"| N21["SM_E_UPLD_VIDEO_ERR - uploader.cpp:4804"]
+  FO5 -->|"no file available for upload"| N22["SM_E_UPLD_NO_FILE - uploader.cpp:4814"]
+  EA1 -->|"DB get query fails"| N23["SM_E_UPLD_EA_IMGS_DB_GET_FAIL - uploader.cpp:4826"]
+  EA2 -->|"DB insert fails"| N24["SM_E_UPLD_EA_IMGS_DB_INSERT_FAIL - uploader.cpp:4859"]
+  EA3 -->|"DB delete fails"| N25["SM_E_UPLD_EA_IMGS_DB_DELETE_FAIL - uploader.cpp:4915"]
+  EA4 -->|"DB sync fails"| N26["SM_E_UPLD_EA_IMGS_DB_SYNC_FAIL - uploader.cpp:4968"]
+  EA5 -->|"unop path dir create fails"| N27["SM_E_UPLD_EA_UNOPERATED_PATH_CREATION_FAIL - uploader.cpp:1598"]
+  EA6 -->|"image file exceeds size limit"| N28["SM_E_UPLD_EA_IMG_LARGE_FILE_SIZE - uploader.cpp:1639"]
+  DC1 -->|"CB drop broadcast fails"| N29["SM_E_UPLD_CB_DRP_BROADCAST_FAIL - uploader.cpp:1646"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,N11,N12,N13,N14,N15,N16,N17,N18,N19,N20,N21,N22,N23,N24,N25,N26,N27,N28,N29 errNode

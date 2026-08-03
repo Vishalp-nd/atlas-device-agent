@@ -1,0 +1,77 @@
+flowchart TD
+  MAIN["main() - nd_bt daemon/main.cpp"]
+
+  subgraph INIT["BTManager::Init() - nd_bt_man.cpp:2172"]
+    I1["MQ Server init - nd_msgq_t::get_msgq()"]
+    I2["Config init - BTConfig::Init()"]
+    I3["State inits - all state machines"]
+    I4["BT module load and firmware check"]
+    I5["Initial BT scan"]
+    I6["Persistency init - BTDataStore::Init()"]
+    I1 --> I2 --> I3 --> I4 --> I5 --> I6
+  end
+
+  subgraph QRLOGIN["QR Login State - nd_bt_man.cpp:3130+"]
+    QR1["StartBtScan() for QR login flow"]
+    QR2["scan start timeout check"]
+    QR1 --> QR2
+  end
+
+  subgraph BTSTACKMGR["BT Stack Manager - nd_bt_man.cpp:3580+"]
+    BS1["enable_bt_stack() - btif enable"]
+    BS2["disable_bt_stack() - btif disable"]
+    BS3["re-enable after disable"]
+  end
+
+  subgraph BLEPKT["BLE Alert Packet Monitor - nd_bt_man.cpp:4160+"]
+    BP1["alert packet age check vs threshold"]
+  end
+
+  subgraph BEKACON["BLE Beacon Monitor - nd_bt_man.cpp:4930+"]
+    BK1["beacon keep-alive missing check"]
+    BK2["beacon battery level check"]
+  end
+
+  subgraph DLASSOC["Download Association - nd_bt_man.cpp:7980+"]
+    DA1["association params validation - data section"]
+    DA2["association params validation - active_session key"]
+    DA3["invalid params during download"]
+  end
+
+  subgraph DRIVERUPD["Driver Update Event - nd_bt_man.cpp:7060+"]
+    DU1["driver update notification"]
+  end
+
+  MAIN --> I1
+  I6 --> QR1
+  I6 --> BS1
+  I6 --> BP1
+  I6 --> BK1
+  I6 --> DA1
+  I6 --> DU1
+
+  I1 -->|"MQ server init returns false - aux=kMQServerFail"| N1["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2212"]
+  I2 -->|"BTConfig::Init() fails - aux=kConfigFail"| N2["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2221"]
+  I3 -->|"state machine init fails - aux=kStateInitsFail"| N3["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2230"]
+  I4 -->|"BT module load fails - aux=kBtModuleFail"| N4["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2408"]
+  I5 -->|"initial BT scan fails - aux=kBtScanFail"| N5["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2418"]
+  I6 -->|"persistency init fails - aux=kPersistencyFail"| N6["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2431"]
+  I3 -->|"generic init fail before state inits - aux=kGenericFail"| N7["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2285"]
+  I4 -->|"generic init fail after firmware load - aux=kGenericFail"| N8["SM_E_BTFV_INIT_FAIL - nd_bt_man.cpp:2303"]
+  QR2 -->|"scan start timed out - aux=kScanStartTimeout"| N9["SM_E_BTFV_QR_LOGIN - nd_bt_man.cpp:3144"]
+  BS1 -->|"btif enable fails - aux=kEnableFailed"| N10["SM_E_BTFV_BT_STACK_FAIL - nd_bt_man.cpp:3594"]
+  BS2 -->|"btif disable fails - aux=kDisableFailed"| N11["SM_E_BTFV_BT_STACK_FAIL - nd_bt_man.cpp:4800"]
+  BS3 -->|"re-enable fails after disable - aux=kEnableFailed"| N12["SM_E_BTFV_BT_STACK_FAIL - nd_bt_man.cpp:4820"]
+  BP1 -->|"alert packet age exceeds threshold"| N13["SM_E_BTFV_BLE_ALERT_PKT_AGE_EXCEEDED - nd_bt_man.cpp:4168"]
+  BK1 -->|"keep-alive missing from beacon"| N14["SM_E_BTFV_BLE_BUTTON_KA_MISSING - nd_bt_man.cpp:4941"]
+  BK2 -->|"beacon battery low"| N15["SM_E_BTFV_BLE_BUTTON_LOW_BATTERY - nd_bt_man.cpp:5011"]
+  DA1 -->|"no data section in assoc params"| N16["SM_E_BTFV_DL_INVALID_ASSOCIATION_PARAMS - nd_bt_man.cpp:7986 - aux=1"]
+  DA2 -->|"no active_session key in params"| N17["SM_E_BTFV_DL_INVALID_ASSOCIATION_PARAMS - nd_bt_man.cpp:7998 - aux=2"]
+  DA3 -->|"invalid params during download flow"| N18["SM_E_BTFV_DL_INVALID_ASSOCIATION_PARAMS - nd_bt_man.cpp:8093 - aux=2"]
+  DU1 -->|"driver update event received"| N19["SM_E_BTFV_DRIVER_UPDATE - nd_bt_man.cpp:7071"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef stateNode fill:#fff3cc,stroke:#cc9900,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,N11,N12,N13,N14,N15,N16,N17,N18 errNode
+  class N19 infoNode

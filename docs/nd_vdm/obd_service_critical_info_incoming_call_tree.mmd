@@ -1,0 +1,73 @@
+flowchart TD
+  MAIN["main() - obd/service/src/obd_main.cpp:4449"]
+
+  subgraph PROTO["Protocol Detection and Configuration"]
+    P1["protocol_detection()"]
+    P2["configuration_for_j1939()"]
+    P3["obd_configuration()"]
+    P4["check_cur_stack_and_request_pgns()"]
+    P1 --> P4
+    P4 --> P2
+    P4 --> P3
+  end
+
+  subgraph UART["Native UART Error Path"]
+    U1["handle_uart_log_data()"]
+    U2["error_code mapped to obd_error_code table"]
+    U1 --> U2
+  end
+
+  subgraph HEALTH["Value Jump / Health Monitoring"]
+    H1["check_jump(ODO)"]
+    H2["check_jump(EHRS)"]
+    H3["VIN mismatch checks"]
+    H4["invalid data path in obd_api"]
+  end
+
+  subgraph IOSIXPATH["IOSIX connectivity from obd_main"]
+    I1["wait_for_iosix_connection()"]
+    I2["check_and_set_connection_failure_time_elapsed()"]
+    I3["IOSIX connected in client mode"]
+  end
+
+  subgraph ADAPTER["Adapter / startup checks"]
+    A1["partition id check"]
+    A2["firmware disable path"]
+    A3["stack init/detect checks"]
+  end
+
+  MAIN --> P1
+  MAIN --> U1
+  MAIN --> H1
+  MAIN --> I1
+  MAIN --> A1
+
+  A1 -->|"partition id invalid in obd_config"| N1["SM_E_OBD_PARTITION_ERR - obd_main.cpp:532"]
+  A2 -->|"FW disable or adapter disabled path"| N2["SM_E_OBD_ERROR_CODE - obd_main.cpp:1188"]
+  A3 -->|"MCS_INIT_PROTOCOL"| N3["SM_E_OBD_STACK_INIT_ERR - obd_main.cpp:1595"]
+  A3 -->|"MCS_NO_CAN_BUS_ACTIVITY"| N4["SM_E_OBD_CAN_DETECT_ERR - obd_main.cpp:1609"]
+  A3 -->|"MCS_NO_STACK_FOUND"| N5["SM_E_OBD_STACK_DETECT_ERR - obd_main.cpp:1624"]
+  P2 -->|"j1939_param_configuration failed after retry"| N6["SM_E_OBD_J1939_CONFIG_ERR - obd_main.cpp:1712"]
+  P3 -->|"OBD fast config failed"| N7["SM_E_OBD_OBDII_CONFIG_ERR - obd_main.cpp:1750 aux=FAST"]
+  P3 -->|"OBD medium config failed"| N8["SM_E_OBD_OBDII_CONFIG_ERR - obd_main.cpp:1758 aux=MED"]
+  P3 -->|"OBD slow config failed"| N9["SM_E_OBD_OBDII_CONFIG_ERR - obd_main.cpp:1769 aux=SLOW"]
+  P3 -->|"OBD prop config failed"| N10["SM_E_OBD_OBDII_CONFIG_ERR - obd_main.cpp:1783 aux=PROP"]
+  U2 -->|"error under J1939 stack"| N11["SM_E_OBD_J1939_ERROR_CODE - obd_main.cpp:1936 / obd_reader.cpp:584 / obd_api.cpp:2352"]
+  U2 -->|"error under OBDII stack"| N12["SM_E_OBD_OBDII_ERROR_CODE - obd_main.cpp:1939 / obd_reader.cpp:587 / obd_api.cpp:2355"]
+  H4 -->|"invalid payload / parse invalid"| N13["SM_E_OBD_INVALID_DATA - obd_api.cpp:2377"]
+  MAIN -->|"ADC read path error"| N14["SM_E_OBD_ADC_ERROR_CODE - obd_main.cpp:2396"]
+  MAIN -->|"cable swap detected"| N15["SM_E_OBD_CABLE_SWAPPED - obd_main.cpp:2463"]
+  MAIN -->|"FW mismatch during restart/backoff"| N16["SM_E_OBD_FW_MISMATCH - obd_main.cpp:2483,3901"]
+  I1 -->|"IOSIX not found over WiFi"| N17["SM_E_OBD_IOSIX_CONNECTION_ERROR - obd_main.cpp:3790 aux=NOT_FOUND"]
+  I2 -->|"IOSIX unreachable after retries"| N18["SM_E_OBD_IOSIX_CONNECTION_ERROR - obd_main.cpp:3813 aux=UNABLE"]
+  I3 -->|"IOSIX connected in client mode"| N19["SM_E_OBD_IOSIX_CONNECTED_CLIENT_MODE - obd_main.cpp:3824,4256"]
+  P4 -->|"OBD bus bw config fail"| N20["SM_E_OBD_OBDII_CONFIG_ERR - obd_main.cpp:4039"]
+  H1 -->|"odometer jump accepted after stable spikes"| N21["SM_E_OBD_ODO_JUMP - obd_reader.cpp:847"]
+  H2 -->|"engine hours jump accepted"| N22["SM_E_OBD_EHRS_JUMP - obd_reader.cpp:878"]
+  H3 -->|"VIN mismatch with stored value"| N23["SM_E_OBD_VIN_MISMATCH - obd_reader.cpp:1682"]
+  MAIN -->|"ELD DB create failure"| N24["SM_E_OBD_ELD_DB_CREATE_FAIL - obd_eld_vh.cpp:366"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,N11,N12,N13,N14,N15,N16,N17,N18,N20,N21,N22,N23,N24 errNode
+  class N19 infoNode

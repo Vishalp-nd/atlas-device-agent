@@ -1,0 +1,51 @@
+flowchart TD
+  MAIN["main() - circular_buffer.cpp:2898"]
+
+  subgraph STARTUPINIT["Startup Init - circular_buffer.cpp"]
+    SI1["nd_log_init()"]
+    SI2["nd_msgq_t::get_msgq()"]
+    SI3["pthread_mutex_init()"]
+    SI4["open_db() - SQLite DB open"]
+    SI5["create_cirbuf() - circular buffer creation"]
+    SI1 --> SI2 --> SI3 --> SI4 --> SI5
+  end
+
+  subgraph WRAPPER["send_critical_info() wrapper - cirbuf_sqlrequests.cpp:2135"]
+    WR1["rate limit check - MAX_NO_OF_CRITICAL_INFO"]
+    WR2["call nd_service_obj.send_err_msg()"]
+    WR1 --> WR2
+  end
+
+  subgraph FILEVALIDATE["validateFileInfo() - cirbuf_sqlrequests.cpp:2200+"]
+    FV1["cam_no range check"]
+    FV2["file_size vs expected check - too small"]
+    FV3["file_size vs expected check - too large"]
+    FV4["cam_type validity check"]
+    FV1 --> WRAPPER
+    FV2 --> WRAPPER
+    FV3 --> WRAPPER
+    FV4 --> WRAPPER
+  end
+
+  subgraph QUERYEXEC["SQL query execution - cirbuf_sqlrequests.cpp:2380+"]
+    QE1["nd_exec_cmd_db() returns false"]
+    QE1 --> WRAPPER
+  end
+
+  MAIN --> SI1
+  SI5 --> FV1
+  SI5 --> QE1
+
+  SI1 -->|"nd_log_init returns false"| N1["SM_E_CB_LOG_INIT_FAIL - circular_buffer.cpp:2906"]
+  SI2 -->|"msgq returns NULL"| N2["SM_E_CB_MSG_QUEUE_FAIL - circular_buffer.cpp:2923"]
+  SI3 -->|"pthread_mutex_init fails"| N3["SM_E_CB_MUTEX_INIT_FAIL - circular_buffer.cpp:2963"]
+  SI4 -->|"SQLite open fails"| N4["SM_E_CB_OPEN_FAIL - circular_buffer.cpp:2975"]
+  SI5 -->|"circular buffer creation fails"| N5["SM_E_CB_CREATION_FAIL - circular_buffer.cpp:2985"]
+  FV1 -->|"cam_no out of valid range"| N6["SM_E_CB_FILENAME_WITH_INVALID_CAM_NO - cirbuf_sqlrequests.cpp:2208"]
+  FV2 -->|"file_size lt min expected"| N7["SM_E_CB_FILESIZE_LESS_THAN_EXPECTED - cirbuf_sqlrequests.cpp:2230"]
+  FV3 -->|"file_size gt max expected"| N8["SM_E_CB_FILESIZE_MORE_THAN_EXPECTED - cirbuf_sqlrequests.cpp:2234"]
+  FV4 -->|"cam_type invalid value"| N9["SM_E_CB_INVALID_CAM_TYPE_PRESENT_IN_FILEINFO - cirbuf_sqlrequests.cpp:2245"]
+  QE1 -->|"SQL query execution fails"| N10["SM_E_CB_QUERY_EXECUTION_FAILED - cirbuf_sqlrequests.cpp:2386"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N9,N10 errNode

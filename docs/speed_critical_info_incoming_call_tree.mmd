@@ -1,0 +1,41 @@
+flowchart TD
+  MAIN["main() - speed.cpp:443"]
+
+  subgraph INIT["Startup Init - speed.cpp"]
+    I1["nd_log_init()"]
+    I2["init_msgq()"]
+    I3["msg_loop()"]
+  end
+
+  subgraph REGREG["handle_speed_reg() - speed.cpp:530+"]
+    R1["validate client, speed, contig_secs fields"]
+  end
+
+  subgraph UNREG["handle_speed_unreg() - speed.cpp:580+"]
+    U1["search speed_regs map for client and handle"]
+  end
+
+  subgraph IDLEREG["handle_idle_reg() - speed.cpp:610+"]
+    IR1["validate client, idle_secs fields"]
+  end
+
+  subgraph IDLEUNREG["handle_idle_unreg() - speed.cpp:660+"]
+    IU1["search idle_regs map for client and handle"]
+  end
+
+  MAIN --> I1
+  I1 --> I2
+  I2 --> I3
+  I3 --> R1
+  I3 --> U1
+  I3 --> IR1
+  I3 --> IU1
+
+  I1 -->|"nd_log_init returns false"| N1["SM_E_SPD_LOG_INIT_FAIL - speed.cpp:449"]
+  R1 -->|"client empty or speed/contig_secs lt 0"| N2["SM_E_SPD_REG_FAIL - speed.cpp:542"]
+  U1 -->|"no matching client+handle in speed_regs"| N3["SM_E_SPD_UNREG_FAIL - speed.cpp:591"]
+  IR1 -->|"client empty or idle_secs lt 0"| N4["SM_E_SPD_IDLE_REG_FAIL - speed.cpp:622"]
+  IU1 -->|"no matching client+handle in idle_regs"| N5["SM_E_SPD_UNREG_FAIL - speed.cpp:681"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3,N4,N5 errNode

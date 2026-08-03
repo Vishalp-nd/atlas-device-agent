@@ -1,0 +1,83 @@
+flowchart TD
+  MAIN["IOSIX HAL runtime - obd/hal/iosix/src/nd_vd_iosix.cpp"]
+
+  subgraph JUMP["Data jump and buffer checks"]
+    J1["check_and_set_odoidle_count()"]
+    J2["check_and_set_ehrsidle_count()"]
+    J3["critical_info_buffer_length()"]
+    J1 --> J2
+    J2 --> J3
+  end
+
+  subgraph SETCMD["setcmd path"]
+    S1["send_setcmd_to_vbus()"]
+    S2["SETODO command"]
+    S1 --> S2
+  end
+
+  subgraph SRCCHANGE["Source change parser"]
+    C1["actionOnValueChange() in SourceCmdParser"]
+    C2["ehrs source changed"]
+    C3["odo source changed"]
+    C4["vin source changed"]
+    C5["can1 error source changed"]
+    C6["can1 baud source changed"]
+  end
+
+  subgraph IOSIXCFG["IOSIX config checks"]
+    I1["BT reset trigger in nd_vd_iosix_config"]
+    I2["SSID parse / validation"]
+    I3["CM disconnection path"]
+  end
+
+  subgraph VBUS["Protocol and telemetry reports"]
+    V1["integrated protocol detected"]
+    V2["time mismatch"]
+    V3["date/time empty"]
+    V4["engine state anomaly"]
+    V5["buffer record errors"]
+    V6["encryption checks"]
+    V7["ROP duration"]
+    V8["OBD prop pass/fail"]
+    V9["new VIN event"]
+  end
+
+  MAIN --> J1
+  MAIN --> S1
+  MAIN --> C1
+  MAIN --> I1
+  MAIN --> V1
+
+  J1 -->|"ODO jumped beyond threshold"| N1["SM_E_OBD_VBUS_DATA_JUMP - nd_vd_iosix.cpp:534 aux=ODO"]
+  J2 -->|"EHRS jumped beyond threshold"| N2["SM_E_OBD_VBUS_DATA_JUMP - nd_vd_iosix.cpp:566 aux=ENGINE"]
+  J3 -->|"critical buffer length exceeded"| N3["SM_E_VBUS_CRITICAL_INFO_BUFFER_LENGTH - nd_vd_iosix.cpp:652"]
+  S2 -->|"issuing set odometer command"| N4["SM_E_OBD_VBUS_SETODO - nd_vd_iosix.cpp:683"]
+  MAIN -->|"set odo from config path"| N5["SM_E_OBD_VBUS_SETODO - nd_vd_iosix.cpp:2486 aux=ODO_FROM_CONFIG"]
+  C2 -->|"ehrs source changed"| N6["SM_E_VBUS_DATA_SOURCE_CHANGE - SourceCmdParser.cpp:331 aux=EHRS"]
+  C3 -->|"odo source changed"| N7["SM_E_VBUS_DATA_SOURCE_CHANGE - SourceCmdParser.cpp:334 aux=ODO"]
+  C4 -->|"vin source changed"| N8["SM_E_VBUS_DATA_SOURCE_CHANGE - SourceCmdParser.cpp:337 aux=VIN"]
+  C5 -->|"can1 error source changed"| N9["SM_E_VBUS_DATA_SOURCE_CHANGE - SourceCmdParser.cpp:340 aux=CAN1_ERR"]
+  C6 -->|"can1 baud source changed"| N10["SM_E_VBUS_DATA_SOURCE_CHANGE - SourceCmdParser.cpp:343 aux=CAN1_BAUD"]
+  I1 -->|"issuing BT reset after failures"| N11["SM_E_OBD_VBUS_BT_RESET - nd_vd_iosix_config.cpp:842"]
+  I2 -->|"SSID missing / invalid"| N12["SM_E_OBD_IOSIX_SSID_ERROR - nd_vd_iosix_config.cpp:936"]
+  I3 -->|"CM disconnection observed"| N13["SM_E_OBD_IOSIX_CONNECTION_ERROR - nd_vd_iosix_config.cpp:1307"]
+  V9 -->|"new VIN discovered"| N14["SM_E_VBUS_EVENT_NEWVIN - nd_vd_iosix.cpp:1554"]
+  V1 -->|"J1939 integrated protocol"| N15["SM_E_VBUS_INTEGRATED_PROTOCOL - nd_vd_iosix.cpp:1654 aux=J1939"]
+  V1 -->|"J1708 integrated protocol"| N16["SM_E_VBUS_INTEGRATED_PROTOCOL - nd_vd_iosix.cpp:1659 aux=J1708"]
+  V1 -->|"OBDII integrated protocol"| N17["SM_E_VBUS_INTEGRATED_PROTOCOL - nd_vd_iosix.cpp:1664 aux=OBDII"]
+  V2 -->|"vbus date/time differs from system"| N18["SM_E_OBD_VBUS_TIME_MISMATCH - nd_vd_iosix.cpp:1964"]
+  V3 -->|"vbus datetime payload empty"| N19["SM_E_VBUS_VBUS_DATE_TIME_EMPTY - nd_vd_iosix.cpp:2248"]
+  V4 -->|"unexpected engine state"| N20["SM_E_OBD_VBUS_ENGINE_STATE - nd_vd_iosix.cpp:2340"]
+  V5 -->|"record not found"| N21["SM_E_VBUS_BUFFER_RECORD_ERROR - nd_vd_iosix.cpp:3294 aux=NOTFOUND"]
+  V5 -->|"record empty"| N22["SM_E_VBUS_BUFFER_RECORD_ERROR - nd_vd_iosix.cpp:3759 aux=EMPTY"]
+  V5 -->|"record negative"| N23["SM_E_VBUS_BUFFER_RECORD_ERROR - nd_vd_iosix.cpp:3774 aux=NEGATIVE"]
+  V6 -->|"encryption anomaly path 1"| N24["SM_E_VBUS_ENCRYPTION - nd_vd_iosix.cpp:3361"]
+  V6 -->|"encryption anomaly path 2"| N25["SM_E_VBUS_ENCRYPTION - nd_vd_iosix.cpp:3404"]
+  V7 -->|"ROP duration computed"| N26["SM_E_VBUS_ROP_DURATION - nd_vd_iosix.cpp:3574"]
+  V8 -->|"obd prop pass message"| N27["SM_E_VBUS_OBD_PROP_PASS - nd_vd_iosix.cpp:4004"]
+  V8 -->|"obd prop fail message"| N28["SM_E_VBUS_OBD_PROP_FAIL - nd_vd_iosix.cpp:4013"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,N11,N12,N13,N18,N19,N20,N21,N22,N23,N24,N25,N28 errNode
+  class N14,N15,N16,N17,N26,N27 infoNode

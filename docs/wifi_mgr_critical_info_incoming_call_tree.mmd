@@ -1,0 +1,59 @@
+flowchart TD
+  MAIN["main() - wifi_mgr.cpp:3708"]
+
+  subgraph INIT["Startup - wifi_mgr.cpp"]
+    I1["read wifi chip name"]
+    I2["init_msgq()"]
+    I3["wlan0 interface check"]
+  end
+
+  subgraph HOTSPOT["create_hotspot() - wifi_mgr.cpp:2180+"]
+    HS1["hostapd creation attempt"]
+    HS2["hotspot created successfully"]
+    HS3["hotspot creation fails"]
+    HS1 --> HS2
+    HS1 --> HS3
+  end
+
+  subgraph STAMODE["switch_to_sta_mode() and sta_mode_connect() - wifi_mgr.cpp:2460+"]
+    ST1["STA mode enable with SSID config"]
+    ST2["connect done, emit state"]
+  end
+
+  subgraph AUTOSCAN["automation_scan_wifi() - wifi_mgr.cpp:2680+"]
+    AS1["scan result check"]
+  end
+
+  subgraph DHUB["dhub_ap_config_check() - wifi_mgr.cpp:3420+"]
+    DH1["parse DHUB AP config JSON"]
+  end
+
+  subgraph AUTOCONFIG["auto_configure_mdvr() - wifi_mgr.cpp:3340+"]
+    AC1["auto configure complete"]
+  end
+
+  MAIN --> I1
+  MAIN --> I2
+  MAIN --> I3
+  MAIN --> HS1
+  MAIN --> ST1
+  MAIN --> AS1
+  MAIN --> DH1
+  MAIN --> AC1
+
+  I1 -->|"chip name retrieved"| N1["SM_E_WMGR_WIFI_CHIP_NAME - wifi_mgr.cpp:3705"]
+  I2 -->|"msgq get_msgq returns NULL"| N2["SM_E_WMGR_MSGQ_INIT_FAIL - wifi_mgr.cpp:3742"]
+  I3 -->|"wlan0 interface not found in scan"| N3["SM_E_WMGR_WLAN_ERR - wifi_mgr.cpp:406"]
+  HS3 -->|"hostapd start fails"| N4["SM_E_WMGR_FAILED_HOTSPOT_ENABLED - wifi_mgr.cpp:2194"]
+  HS2 -->|"hotspot created with SSID info"| N5["SM_E_WMGR_HOTSPOT_ENABLED - wifi_mgr.cpp:2323"]
+  ST2 -->|"STA connect done - emit ssid info"| N6["SM_E_WMGR_STA_MODE_ENABLED - wifi_mgr.cpp:2473"]
+  ST2 -->|"STA mode from scan result"| N7["SM_E_WMGR_STA_MODE_ENABLED - wifi_mgr.cpp:2713"]
+  AS1 -->|"automation scan returns empty list"| N8["SM_E_WMGR_SCAN_RESULT_EMPTY_AUTOMATION - wifi_mgr.cpp:2697"]
+  DH1 -->|"DHUB AP config JSON corrupted"| N9["SM_E_WMGR_DHUB_CONF_CORRUPT - wifi_mgr.cpp:3432"]
+  AC1 -->|"auto MDVR configuration complete"| N10["SM_E_WMGR_AUTO_CONFIG_MDVR_DONE - wifi_mgr.cpp:3352 - aux=speed"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef stateNode fill:#fff3cc,stroke:#cc9900,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N2,N3,N4,N8,N9 errNode
+  class N1,N5,N6,N7,N10 infoNode

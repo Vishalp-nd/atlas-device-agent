@@ -9,6 +9,11 @@
 
 FROM python:3.11-slim
 
+ARG VCS_BRANCH=unknown
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.ref.name="$VCS_BRANCH" \
+	org.opencontainers.image.revision="$VCS_REF"
+
 WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

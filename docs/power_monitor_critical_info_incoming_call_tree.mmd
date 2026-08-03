@@ -1,0 +1,121 @@
+flowchart TD
+  MAIN["main() - power_monitor.cpp"]
+
+  subgraph STARTUPINIT["Startup Init - power_monitor.cpp:600+"]
+    SI1["nd_log_init()"]
+    SI2["db_mutex_init()"]
+    SI3["DB open - open_db()"]
+    SI4["DB create table"]
+    SI5["mtx_init()"]
+    SI6["GPIO init"]
+    SI7["GPIO interrupt init"]
+    SI1 --> SI2 --> SI3 --> SI4 --> SI5 --> SI6 --> SI7
+  end
+
+  subgraph PREVSHUTDOWN["Previous Shutdown Record - power_monitor.cpp:800+"]
+    PS1["read prev shutdown reason from DB"]
+    PS2["read RTC wakeup time"]
+    PS3["check negative RTC"]
+  end
+
+  subgraph VOLTAGE["Voltage Monitor - power_monitor.cpp:940+"]
+    VM1["read_voltage() periodic call"]
+    VM2["voltage read failure check"]
+    VM3["voltage below threshold check"]
+    VM4["bad voltage shutdown trigger"]
+    VM5["crank level check"]
+    VM1 --> VM2
+    VM1 --> VM3 --> VM4
+    VM1 --> VM5
+  end
+
+  subgraph SHUTDOWNREASON["shutdownReasonContent() - power_monitor.cpp:2668"]
+    SR1["ignition off shutdown"]
+    SR2["SVC watchdog shutdown"]
+    SR3["analytics shutdown"]
+    SR4["awsiot shutdown"]
+    SR5["LPW shutdown"]
+    SR6["misc LPW shutdown"]
+    SR7["MSP fail shutdown"]
+    SR8["installer app shutdown"]
+    SR9["installer app crash shutdown"]
+    SR10["outward cam crash shutdown"]
+    SR11["cyclic reboot shutdown"]
+    SR12["SDCARD RO recovery shutdown"]
+    SR13["DHUB status check shutdown"]
+    SR14["unknown shutdown postponed"]
+    SR15["unknown init shutdown"]
+    SR16["unknown shutdown"]
+  end
+
+  subgraph DHUBSTAT["DHUB Status Monitor - power_monitor.cpp:2090+"]
+    DH1["dhub_status_check()"]
+    DH2["uploader data pending check"]
+    DH3["uploader data done"]
+  end
+
+  subgraph LPWCOUNT["LPW Count Monitor - power_monitor.cpp:2230+"]
+    LW1["frequent LPW cycle check"]
+    LW2["LPW count and duration"]
+    LW3["LPW active status"]
+  end
+
+  subgraph REBOOTFAIL["Reboot Failure Handler"]
+    RF1["system_reboot() fails"]
+    RF2["gpio_por_assert() fails"]
+    RF1 --> RF2
+  end
+
+  MAIN --> SI1
+  MAIN --> PS1
+  MAIN --> VM1
+  MAIN --> SR1
+  MAIN --> DH1
+  MAIN --> LW1
+
+  SI1 -->|"log init fails"| N1["SM_E_PM_LOG_INIT_FAIL - power_monitor.cpp:615"]
+  SI2 -->|"db mutex init fails"| N2["SM_E_PM_DB_MUTEX_INIT_FAIL - power_monitor.cpp:645"]
+  SI3 -->|"DB open returns false"| N3["SM_E_PM_DB_OPEN_FAIL - power_monitor.cpp:713"]
+  SI4 -->|"create table fails"| N4["SM_E_PM_DB_CREATION_FAIL - power_monitor.cpp:810"]
+  SI5 -->|"mtx init fails"| N5["SM_E_PM_MTX_INIT_FAIL - power_monitor.cpp:854"]
+  SI6 -->|"GPIO setup fails"| N6["SM_E_PM_GPIO - power_monitor.cpp:948"]
+  SI7 -->|"GPIO interrupt setup fails"| N7["SM_E_PM_GPIO_INT_FAIL - power_monitor.cpp:958"]
+  PS1 -->|"prev shutdown reason retrieved"| N8["SM_E_PM_DB_PREV_SHUTDOWN - power_monitor.cpp:973 - aux=reason"]
+  PS2 -->|"RTC wakeup time recorded"| N9["SM_E_PM_RTC_WAKEUP_TIME - power_monitor.cpp:991"]
+  PS3 -->|"negative RTC value detected"| N10["SM_E_PM_NEGATIVE_RTC - power_monitor.cpp:995"]
+  VM2 -->|"voltage read failure"| N11["SM_E_PM_VOLTAGE_READ_FAIL - power_monitor.cpp:1012"]
+  VM3 -->|"voltage below min threshold"| N12["SM_E_PM_VOLTAGE_FAIL - power_monitor.cpp:1309"]
+  VM4 -->|"bad voltage triggers shutdown"| N13["SM_E_PM_BAD_VOLTAGE_SHDN - power_monitor.cpp:2093"]
+  VM5 -->|"crank level check fails"| N14["SM_E_PM_CRANK_LEVEL_FAIL - power_monitor.cpp:2239"]
+  SR1 -->|"ignition off event"| N15["SM_E_PM_IGNITION_OFF_SHUTDOWN - power_monitor.cpp:2685"]
+  SR2 -->|"SVC keep-alive timeout"| N16["SM_E_PM_SVC_SHUTDOWN - power_monitor.cpp:2692"]
+  SR3 -->|"analytics service shutdown"| N17["SM_E_PM_ANALYTICS_SHUTDOWN - power_monitor.cpp:2705"]
+  SR4 -->|"AWS IoT shutdown"| N18["SM_E_PM_AWSIOT_SHUTDOWN - power_monitor.cpp:2713"]
+  SR5 -->|"low power wake shutdown"| N19["SM_E_PM_LPW_SHUTDOWN - power_monitor.cpp:2722"]
+  SR6 -->|"misc LPW trigger shutdown"| N20["SM_E_PM_MISC_LPW_SHUTDOWN - power_monitor.cpp:2735"]
+  SR7 -->|"MSP communication failure"| N21["SM_E_PM_MSP_FAIL_SHUTDOWN - power_monitor.cpp:2749"]
+  SR8 -->|"installer app shutdown"| N22["SM_E_PM_INST_APP_SHUTDOWN - power_monitor.cpp:2757"]
+  SR9 -->|"installer app crash"| N23["SM_E_PM_INST_APP_CRASH_SHUTDOWN - power_monitor.cpp:2765"]
+  SR10 -->|"outward camera crash"| N24["SM_E_PM_OUTWARD_CAM_CRASH_SHUTDOWN - power_monitor.cpp:2773"]
+  SR11 -->|"cyclic reboot triggered"| N25["SM_E_PM_CYCLIC_REBOOT_SHUTDOWN - power_monitor.cpp:2781"]
+  SR12 -->|"SD card readonly recovery"| N26["SM_E_PM_SDCARD_RO_RECOVERY_SHUTDOWN - power_monitor.cpp:2789"]
+  SR13 -->|"DHUB check complete shutdown"| N27["SM_E_PM_DHUB_STATUS_CHECK_DONE_SHUTDOWN - power_monitor.cpp:2798"]
+  SR14 -->|"unknown postponed shutdown"| N28["SM_E_PM_UNKNOWN_SHDN_PSTPNE - power_monitor.cpp:2806"]
+  SR15 -->|"unknown init shutdown"| N29["SM_E_PM_UNKNOWN_INIT_SHDN - power_monitor.cpp:2814"]
+  SR16 -->|"unknown shutdown reason"| N30["SM_E_PM_UNKNOWN_BOOT_SHDN - power_monitor.cpp:2268"]
+  DH1 -->|"DHUB status info"| N31["SM_E_PM_DHUB_STATUS - power_monitor.cpp:2318"]
+  DH2 -->|"uploader data still pending"| N32["SM_E_PM_UPLOADER_DATA_UPLOAD_PENDING - power_monitor.cpp:2339"]
+  DH3 -->|"uploader data upload complete"| N33["SM_E_PM_UPLOADER_DATA_UPLOAD_DONE - power_monitor.cpp:2382"]
+  LW1 -->|"frequent LPW cycles detected"| N34["SM_E_PM_FREQUENT_LPW_CYCLE_DURATION - power_monitor.cpp:2408"]
+  LW2 -->|"LPW count and duration info"| N35["SM_I_PM_LPW_COUNT_LPW_DURATION - power_monitor.cpp:2616"]
+  LW3 -->|"LPW active status change"| N36["SM_I_PM_LPW_IS_ACTIVE - power_monitor.cpp:2685"]
+  RF1 -->|"system_reboot no effect"| N37["SM_E_PM_SYS_RBT_FAIL - power_monitor.cpp:2408"]
+  RF2 -->|"gpio_por_assert fail"| N38["SM_E_PM_POR_GPIO_FAIL - power_monitor.cpp:2408"]
+  SI4 -->|"DB add event fails"| N39["SM_E_PM_DB_ADD_EVENT_FAIL - power_monitor.cpp:991"]
+  SI7 -->|"set RTC fails"| N40["SM_E_PM_SET_RTC_FAIL - power_monitor.cpp:973"]
+  SR16 -->|"system shutdown fails"| N41["SM_E_PM_SYS_SHDN_FAIL - power_monitor.cpp:2268"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N10,N11,N12,N13,N14,N15,N16,N17,N18,N19,N20,N21,N22,N23,N24,N25,N26,N27,N28,N29,N30,N34,N37,N38,N39,N40,N41 errNode
+  class N8,N9,N31,N32,N33,N35,N36 infoNode

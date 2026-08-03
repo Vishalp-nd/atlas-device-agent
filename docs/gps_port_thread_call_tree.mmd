@@ -1,0 +1,39 @@
+flowchart TD
+  PTH["Gps::read_port_thread()\ngps_dev.cpp"]
+
+  PTH --> ENUM["port connected\nat startup"]
+  ENUM -->|uptime within threshold| N4["SM_E_GPS_PORT_ENUMERATE\ngps_dev.cpp:1901  code_aux=0"]
+
+  PTH --> RCP["port disconnected\nreconnect loop"]
+  RCP -->|has retained GPS data| N5["SM_E_GPS_LAST_VALID_GPS_INFO\ngps_dev.cpp:1882  code_aux=1"]
+  RCP -->|no retained GPS data| N6["SM_E_GPS_LAST_VALID_GPS_INFO\ngps_dev.cpp:1889  code_aux=0"]
+  RCP -->|port reconnected after crash| N7["SM_E_GPS_PORT_ENUMERATE\ngps_dev.cpp:1946  code_aux=0"]
+
+  PTH --> NMEA["NMEA parse loop\ngprmc + gpgga + pqxfi + gpvtg valid"]
+  NMEA -->|first_fix + uptime within threshold| N8["SM_E_GPS_FIRST_FIX\ngps_dev.cpp:1313  code_aux=0"]
+  NMEA -->|first_fix + fork + AT QGPSLOC| N9["SM_E_GPS_FIRST_FIX\ngps_dev.cpp:552  code_aux=0"]
+  NMEA -->|fix_quality_flag=false, fix_quality=1or2| N10["SM_E_GPS_FIX_CHANGE_VALID\ngps_dev.cpp:1330"]
+  NMEA -->|fix_quality_flag=false, fix_quality!=1or2| N11["SM_E_GPS_FIX_CHANGE_INVALID\ngps_dev.cpp:1340"]
+
+  PTH --> ACCR["update_accuracy_list()\nevery MAX_ACCURACY_DATA_LEN readings"]
+  ACCR -->|avg exceeds MAX_ACCURACY_THRESHOLD| N12["SM_E_NDC_GPS_FAIL\ngps_dev.cpp:612  code_aux=avg"]
+
+  PTH --> DTS["DTS AUTOMATION BUILD\nreceiveData_GPS()"]
+  DTS -->|START_DTS_MSG received| N16["SM_E_DTS_START\nloc_mgr.cpp:540"]
+  DTS -->|createTcpSocket fails| N17["SM_E_DTS_CONN_ERROR\nloc_mgr.cpp:650"]
+  DTS -->|bindAndListenTcpSocket fails| N18["SM_E_DTS_CONN_ERROR\nloc_mgr.cpp:656"]
+  DTS -->|acceptTcpConnection fails| N19["SM_E_DTS_CONN_ERROR\nloc_mgr.cpp:687"]
+
+  style N4  fill:#4dabf7,color:#fff
+  style N5  fill:#4dabf7,color:#fff
+  style N6  fill:#ff922b,color:#fff
+  style N7  fill:#4dabf7,color:#fff
+  style N8  fill:#51cf66,color:#fff
+  style N9  fill:#51cf66,color:#fff
+  style N10 fill:#51cf66,color:#fff
+  style N11 fill:#ff922b,color:#fff
+  style N12 fill:#ff6b6b,color:#fff
+  style N16 fill:#be4bdb,color:#fff
+  style N17 fill:#ff6b6b,color:#fff
+  style N18 fill:#ff6b6b,color:#fff
+  style N19 fill:#ff6b6b,color:#fff

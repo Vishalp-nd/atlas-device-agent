@@ -1,0 +1,76 @@
+flowchart TD
+  MAIN["main() - lte/Connection_Manager/src/conn_mgr.cpp:1208"]
+
+  subgraph SDKSTART["SDK Start and Enumeration"]
+    S1["SetSDKImagePath()"]
+    S2["SLQSStart() first attempt"]
+    S3["SLQSKillSDKProcess() then SLQSStart() retry"]
+    S4["QCWWAN2kEnumerateDevices() loop"]
+    S5["lsusb and /dev/qcqmi0 checks"]
+    S1 --> S2
+    S2 --> S3
+    S3 --> S4 --> S5
+  end
+
+  subgraph INTERNET["Internet Health Thread"]
+    I1["check_internet_exist()"]
+    I2["ip_exist_on_interface() true"]
+    I3["is_modem_restart_enabled() true"]
+    I4["is_modem_restart_enabled() false"]
+    I1 --> I2
+    I2 --> I3
+    I2 --> I4
+  end
+
+  subgraph SIMPATH["SIM / UIM Read"]
+    M1["get_imsi() -> SLQSUIMReadTransparent()"]
+    M2["QMI internal/sim not initialized"]
+    M3["other SDK api error"]
+    M1 --> M2
+    M1 --> M3
+  end
+
+  subgraph RESETWWAN["reset_wwan(sdk_error)"]
+    R1["sdk_error in hard reset list"]
+    R2["kill slqssdk + modem_power_reset()"]
+    R3["sdk_error exit path"]
+    R4["non-exit path -> SM_E_CONN_MGR_SDK_ERROR"]
+    R1 --> R2
+    R1 --> R3
+    R1 --> R4
+  end
+
+  subgraph CALLBACKS["QMI callbacks"]
+    C1["LURejectCallback()"]
+  end
+
+  subgraph VERSION["Version / startup info"]
+    V1["AMSS version read and emit"]
+  end
+
+  MAIN --> S1
+  MAIN --> I1
+  MAIN --> M1
+  MAIN --> R1
+  MAIN --> C1
+  MAIN --> V1
+
+  S4 -->|"enumerate fail + modem present + /dev/qcqmi0 present"| N1["SM_E_CONN_MGR_MODEM_RESET - conn_mgr.cpp:671"]
+  S4 -->|"enumerate fail + modem present but dev node missing"| N2["SM_E_CONN_MGR_EXIT - conn_mgr.cpp:678"]
+  S4 -->|"enumerate fail + module disconnected"| N3["SM_E_CONN_MGR_EXIT - conn_mgr.cpp:685"]
+  V1 -->|"AMSS version fetched"| N4["SM_E_CONN_MGR_AMSS_VERSION - conn_mgr.cpp:1459"]
+  I3 -->|"internet down with IP, modem reset enabled"| N5["SM_E_CONN_MGR_MODEM_RESET - conn_mgr.cpp:1922"]
+  I4 -->|"internet down with IP, restart app"| N6["SM_E_CONN_MGR_EXIT - conn_mgr.cpp:1927"]
+  M2 -->|"SIM detect failure (QMI internal/sim init)"| N7["SM_E_CONN_MGR_SIM_DETECT - conn_mgr.cpp:1995"]
+  M3 -->|"SIM SDK api failure other reasons"| N8["SM_E_CONN_MGR_SDK_ERROR - conn_mgr.cpp:2001"]
+  R2 -->|"sdk hard-reset list path"| N9["SM_E_CONN_MGR_MODEM_RESET - conn_mgr.cpp:2576"]
+  R3 -->|"sdk error triggers service exit"| N10["SM_E_CONN_MGR_EXIT - conn_mgr.cpp:2585"]
+  R4 -->|"sdk error but service not restarted"| N11["SM_E_CONN_MGR_SDK_ERROR - conn_mgr.cpp:2593"]
+  C1 -->|"LU reject callback invoked"| N12["SM_E_CONN_MGR_REJECT_CAUSE - conn_mgr_cbk.cpp:173"]
+  MAIN -->|"signal handler catches linux signal"| N13["SM_E_SIGNAL - service_utils.cpp:107"]
+  MAIN -->|"msgq invalid or receive failure"| N14["SM_E_MSGQ_RECV_ERROR - nd_msgq.cpp:235,249"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N5,N6,N7,N8,N9,N10,N11,N12,N13,N14 errNode
+  class N4 infoNode

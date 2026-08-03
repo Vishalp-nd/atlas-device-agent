@@ -1,0 +1,105 @@
+flowchart TD
+  MAIN["main() - loc_mgr.cpp:693"]
+
+  subgraph STARTUP["Startup - loc_mgr.cpp"]
+    S1["gps.configure(config_refresh)"]
+    S2["gps.register_gps_callback()"]
+    S3["apptimer.register_for_timer(monitor_gps_cb)"]
+  end
+
+  subgraph DTS["Drive Test Simulation - loc_mgr.cpp  AUTOMATION ifdef"]
+    D1["IsDTSEnabled() true - start DTS threads"]
+    D2["DriveSimulation::start_dts_gps_msg_loop()"]
+    D3["DriveSimulation::receiveData_GPS()"]
+    D4["dts_connect_gps() socket()"]
+    D5["dts_connect_gps() bind/listen()"]
+    D6["dts_connect_gps() accept() loop"]
+    D1 --> D2
+    D1 --> D3
+    D2 --> D4 --> D5 --> D6
+  end
+
+  subgraph HEALTH["Health Monitor - gps.cpp:111"]
+    H1["Gps::monitor_gps_cb() - apptimer callback"]
+    H2["fd check on gps device"]
+    H3["gps_index change check over 2min window"]
+    H1 --> H2
+    H1 --> H3
+  end
+
+  subgraph GPSDATA["GPS Data Callback - gps_dev.cpp"]
+    F1["do_gps_cb() - fires on each NMEA batch"]
+    F2["first_fix==false AND all NMEA sentences valid"]
+    F3["fix_quality_flag check"]
+    F4["avg_accuracy_list full - avg exceeds threshold"]
+    F5["update_last_known_valid_gps() on gps_lost=true"]
+    F1 --> F2
+    F1 --> F3
+    F1 --> F4
+    F1 --> F5
+  end
+
+  subgraph FIRSTFIX["First Fix Child Process - gps_dev.cpp:530+"]
+    P1["fork() child - log TTFF with AT module query"]
+  end
+
+  subgraph FIXSTATE["Fix State Callback - loc_mgr.cpp"]
+    C1["gps_callback(data_ext)"]
+    C2["fix_quality gt 0 branch"]
+    C3["fix_quality le 0 branch"]
+    C1 --> C2
+    C1 --> C3
+  end
+
+  subgraph PORTENUM["Port Enumeration - gps_dev.cpp"]
+    E1["enumerate_gps_port()"]
+    E2["open() on first scan"]
+    E3["rescan after failure"]
+    E1 --> E2
+    E1 --> E3
+  end
+
+  subgraph AGNSS["AGNSS EPO - agnss.cpp"]
+    A1["epo_try_rewrite() - quectel modem only"]
+    A2["retry count reaches 6"]
+    A1 --> A2
+  end
+
+  MAIN --> S1
+  MAIN --> S2
+  MAIN --> S3
+  MAIN --> D1
+  MAIN --> E1
+  MAIN --> A1
+
+  S3 --> H1
+  S2 --> C1
+  S2 --> F1
+  F2 --> P1
+
+  S1 -->|"returns false"| N1["SM_E_NDC_GPS_FAIL - loc_mgr.cpp:743 - aux=0"]
+  D1 -->|"DTS thread started"| N2["SM_E_DTS_START - loc_mgr.cpp:540"]
+  D4 -->|"socket() returns lt 0"| N3["SM_E_DTS_CONN_ERROR - loc_mgr.cpp:650"]
+  D5 -->|"bind or listen fails"| N4["SM_E_DTS_CONN_ERROR - loc_mgr.cpp:656"]
+  D6 -->|"accept() error"| N5["SM_E_DTS_CONN_ERROR - loc_mgr.cpp:687"]
+  H2 -->|"fd lt 0"| N6["SM_E_NDC_GPS_FAIL - gps.cpp:138 - aux=1"]
+  H3 -->|"gps_index unchanged 2min"| N7["SM_E_NDC_GPS_FAIL - gps.cpp:138 - aux=2"]
+  P1 -->|"TTFF logged with module info"| N8["SM_E_GPS_FIRST_FIX - gps_dev.cpp:552"]
+  F3 -->|"fix_quality becomes 1 or 2"| N9["SM_E_GPS_FIX_CHANGE_VALID - gps_dev.cpp:1330"]
+  F3 -->|"fix_quality invalid, first time"| N10["SM_E_GPS_FIX_CHANGE_INVALID - gps_dev.cpp:1340"]
+  F2 -->|"first_fix set true inline"| N11["SM_E_GPS_FIRST_FIX - gps_dev.cpp:1313"]
+  F4 -->|"avg accuracy exceeds threshold"| N12["SM_E_NDC_GPS_FAIL - gps_dev.cpp:612 - aux=avg"]
+  F5 -->|"last valid GPS data available"| N13["SM_E_GPS_LAST_VALID_GPS_INFO - gps_dev.cpp:1882 - aux=1"]
+  F5 -->|"no last known valid GPS data"| N14["SM_E_GPS_LAST_VALID_GPS_INFO - gps_dev.cpp:1889 - aux=0"]
+  C2 -->|"gps_lost was true"| N15["SM_E_GPS_FIX_CHANGE_STATE - loc_mgr.cpp:354"]
+  C3 -->|"is_gps_fix_acquired was true"| N16["SM_E_GPS_FIX_CHANGE_STATE - loc_mgr.cpp:364"]
+  E2 -->|"no port found on initial scan"| N17["SM_E_GPS_PORT_ENUMERATE - gps_dev.cpp:1901"]
+  E3 -->|"rescan result also empty"| N18["SM_E_GPS_PORT_ENUMERATE - gps_dev.cpp:1946"]
+  A2 -->|"raise_ack_fail_ce() called"| N19["SM_E_GPS_EPO_MODULE_LOADING_FAIL - agnss.cpp:359"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef stateNode fill:#fff3cc,stroke:#cc9900,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N3,N4,N5,N6,N7,N12,N17,N18,N19 errNode
+  class N10,N15,N16 stateNode
+  class N2,N8,N9,N11,N13,N14 infoNode

@@ -1,0 +1,105 @@
+flowchart TD
+  MAIN["main() - ext_cam_recorder.cpp:3413"]
+
+  subgraph CONFIGCHECK["Config Check at Startup - ext_cam_recorder.cpp:3450+"]
+    CF1["feature_enabled vs channels_enabled mismatch check"]
+    CF2["ext_cam feature disabled but channels enabled"]
+    CF3["ext_cam feature enabled but channels disabled"]
+    CF1 --> CF2
+    CF1 --> CF3
+  end
+
+  subgraph DBINIT["Database Init - ext_cam_recorder.cpp:3540+"]
+    DB1["SQLite DB open attempt"]
+    DB2["pragma integrity_check - corruption check"]
+    DB3["create_table if not exists"]
+    DB4["v1 schema alter migration"]
+    DB5["VOD cleanup at boot"]
+    DB6["DB size limit check"]
+    DB1 --> DB2 --> DB3
+    DB3 --> DB4
+    DB3 --> DB5
+    DB5 --> DB6
+  end
+
+  subgraph TIMESYNC["Camera Time Sync - ext_cam_recorder.cpp:910+"]
+    TS1["set_camera_time() called on time sync message"]
+    TS2["time set success"]
+    TS3["time set fails"]
+    TS1 --> TS2
+    TS1 --> TS3
+  end
+
+  subgraph AUTOSCAN["Auto Configure Scan - ext_cam_recorder.cpp:1010+"]
+    AS1["scan for ext cam devices"]
+  end
+
+  subgraph OFFLINE["Offline Detection - ext_cam_recorder.cpp:1080+"]
+    OF1["camera offline check per cycle"]
+  end
+
+  subgraph VIDEOMON["Video Black Monitor - ext_cam_recorder.cpp:2520+"]
+    VM1["per-frame black detection per cam"]
+    VM2["cam 0 - front cam black"]
+    VM3["cam 1 - right cam black"]
+    VM4["cam 2 - left cam black"]
+    VM5["cam 3 - additional cam black"]
+    VM1 --> VM2
+    VM1 --> VM3
+    VM1 --> VM4
+    VM1 --> VM5
+  end
+
+  subgraph VIDFILE["Video File Check - ext_cam_recorder.cpp:2610+"]
+    VF1["video file presence check"]
+  end
+
+  subgraph CFGDB["Config DB Check - ext_cam_recorder.cpp:2720+"]
+    CDB1["ext cam config DB integrity check"]
+  end
+
+  subgraph DHUB["DHUB Integration - ext_cam_recorder.cpp:3840+"]
+    DH1["VBUS enabled - DHUB capability check"]
+    DH2["DHUB disk error check"]
+    DH3["DHUB format check"]
+    DH4["DHUB pulling videos status"]
+  end
+
+  MAIN --> CF1
+  MAIN --> DB1
+  MAIN --> TS1
+  MAIN --> AS1
+  MAIN --> OF1
+  MAIN --> VM1
+  MAIN --> VF1
+  MAIN --> CDB1
+  MAIN --> DH1
+
+  CF2 -->|"feature disabled but channels configured"| N1["SM_E_EXT_CAM_FEATURE_DISABLED_CH_ENABLED - ext_cam_recorder.cpp:3461"]
+  CF3 -->|"feature enabled but no channels"| N2["SM_E_EXT_CAM_FEATURE_ENABLED_CH_DISABLED - ext_cam_recorder.cpp:3468"]
+  DB2 -->|"SQLite integrity check fails"| N3["SM_E_EXTCAM_DB_CORRUPTED - ext_cam_recorder.cpp:3554"]
+  DB3 -->|"create_table fails"| N4["SM_E_EXTCAM_DB_CREATE_FAIL - ext_cam_recorder.cpp:3566"]
+  DB1 -->|"db open returns error"| N5["SM_E_EXTCAM_DB_OPEN_FAIL - ext_cam_recorder.cpp:3587"]
+  DB5 -->|"VOD cleanup fails at boot"| N6["SM_E_EXTCAM_CLEANUP_FAIL - ext_cam_recorder.cpp:3606"]
+  DB6 -->|"DB rows exceed limit"| N7["SM_E_EXT_CAM_DB_LIMIT - ext_cam_recorder.cpp:3655"]
+  DB4 -->|"v1 schema ALTER TABLE fails"| N8["SM_E_EXTCAM_DB_V1_ALTER_FAIL - ext_cam_recorder.cpp:3001"]
+  TS2 -->|"camera time set successful"| N9["SM_E_EXT_CAM_TIME_SET - ext_cam_recorder.cpp:923 - aux=curr_speed"]
+  TS3 -->|"set_camera_time returns fail"| N10["SM_E_EXT_CAM_TIME_SET_FAIL - ext_cam_recorder.cpp:927 - fail"]
+  TS3 -->|"set_camera_time returns ok but labelled fail"| N11["SM_E_EXT_CAM_TIME_SET_FAIL - ext_cam_recorder.cpp:931 - ok variant"]
+  AS1 -->|"auto scan completed"| N12["SM_E_EXTCAM_AUTO_CONFIGURE_SCAN - ext_cam_recorder.cpp:1018 - aux=curr_speed"]
+  OF1 -->|"camera offline detected in scan cycle"| N13["SM_E_EXTCAM_OFFLINE_DETECTED - ext_cam_recorder.cpp:1095 - aux=curr_speed"]
+  VM2 -->|"cam 0 black frames detected"| N14["SM_E_EXT_CAM_VIDEO_BLACK - ext_cam_recorder.cpp:2530 - aux=cam_num"]
+  VM3 -->|"cam 1 black frames detected"| N15["SM_E_EXT_CAM_VIDEO_BLACK - ext_cam_recorder.cpp:2533 - aux=cam_num"]
+  VM4 -->|"cam 2 black frames detected"| N16["SM_E_EXT_CAM_VIDEO_BLACK - ext_cam_recorder.cpp:2536 - aux=cam_num"]
+  VM5 -->|"cam 3 black frames detected"| N17["SM_E_EXT_CAM_VIDEO_BLACK - ext_cam_recorder.cpp:2539 - aux=cam_num"]
+  VF1 -->|"expected video file not present"| N18["SM_E_EXTCAM_VIDEO_FILE_NOT_PRESENT - ext_cam_recorder.cpp:2616"]
+  CDB1 -->|"ext cam config DB corrupted"| N19["SM_E_EXTCAM_CONFIG_DB_CORRUPTED - ext_cam_recorder.cpp:2732"]
+  DH1 -->|"VBUS enabled but DHUB Gen2 not supported"| N20["SM_E_EXT_CAM_IOSIX_DHUB_GEN2 - ext_cam_recorder.cpp:3850"]
+  DH2 -->|"DHUB disk error detected"| N21["SM_E_EXT_CAM_DHUB_DISK_ERR - ext_cam_recorder.cpp:4000"]
+  DH3 -->|"DHUB disk format required"| N22["SM_E_EXT_CAM_DHUB_FORMAT - ext_cam_recorder.cpp:4011"]
+  DH4 -->|"DHUB-X is actively pulling videos"| N23["SM_E_EXT_CAM_DHUBX_PULLING_VIDEOS - ext_cam_recorder.cpp:3693"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6,N7,N8,N10,N11,N13,N14,N15,N16,N17,N18,N19,N20,N21,N22 errNode
+  class N9,N12,N23 infoNode

@@ -1,0 +1,40 @@
+flowchart TD
+  MAIN["main() - scripts/*/obd.vbus.fw.py"]
+
+  subgraph INIT["Python servicemon init"]
+    I1["register_pyservicemon()"]
+    I2["post_critical_event('object created', aux=20)"]
+    I1 --> I2
+  end
+
+  subgraph FLASH["flash_post_data()"]
+    F1["HTTP POST for FW binary"]
+    F2["post finished"]
+    F3["status_code == 200"]
+    F4["status_code != 200"]
+    F1 --> F2
+    F1 --> F3
+    F1 --> F4
+  end
+
+  subgraph CONNECT["VBUS detection and retry loop"]
+    C1["check_VBUS_connection() false repeatedly"]
+    C2["IWCONFIG_COUNT_SUCC > 36"]
+    C3["VBUS found and latest FW already present"]
+  end
+
+  MAIN --> I1
+  MAIN --> F1
+  MAIN --> C1
+
+  I2 -->|"startup object creation"| N1["send_err_msg code=95999 aux=20 msg='VBUS_FW_FLASH object created'"]
+  F2 -->|"post completed"| N2["send_err_msg code=95999 aux=13 msg='post finished'"]
+  F3 -->|"flash upload succeeded"| N3["send_err_msg code=95999 aux=10 msg='status_code == 200'"]
+  F4 -->|"flash upload failed status"| N4["send_err_msg code=95999 aux=11 msg='status_code != 200'"]
+  C2 -->|"VBUS never found after retries"| N5["send_err_msg code=95999 aux=17 msg='VBUS not found, exiting'"]
+  C3 -->|"latest FW already present"| N6["send_err_msg code=95999 aux=11 msg='latest FW already present'"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N4,N5 errNode
+  class N1,N2,N3,N6 infoNode

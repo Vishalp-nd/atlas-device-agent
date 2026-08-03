@@ -1,0 +1,65 @@
+flowchart TD
+  MAIN["main() - apm_main.cpp:1259"]
+
+  subgraph AONREAD["AON Read on Startup - apm_main.cpp:1370+"]
+    AO1["aon_read_power_on_off_wakeup_reason()"]
+    AO2["configure IGN_WAKE_UP enable"]
+    AO3["configure IGN_WAKE_UP disable"]
+    AO4["configure WOM on AON"]
+    AO1 --> AO2
+    AO1 --> AO3
+    AO1 --> AO4
+  end
+
+  subgraph SYSFS["sysfs GPIO Init - apm_main.cpp:1320+"]
+    SY1["check gpio ignition module loaded"]
+    SY2["open sysfs gpio file"]
+    SY1 --> SY2
+  end
+
+  subgraph AONINFO["AON Version Info - apm_main.cpp:190+"]
+    VI1["read_wom_version() from AON hardware"]
+  end
+
+  subgraph SHUTDOWN["Previous Shutdown DB - apm_main.cpp:225+"]
+    SD1["read power on_off reason from DB"]
+  end
+
+  subgraph CONFIGOVERRIDE["Config Override check - apm_main.cpp:770+"]
+    CO1["ign_interrupt_wake_up disabled and WOM enabled"]
+    CO2["easy_install enabled and WOM enabled"]
+  end
+
+  subgraph WORKERS["Worker Threads - apm_worker.cpp / apm_ignition.cpp"]
+    WK1["apm_worker apptimer callback"]
+    WK2["apm_ignition state machine"]
+    WK3["apm_imu interrupt handler"]
+    WK4["apm_supercap charge monitor"]
+  end
+
+  MAIN --> SY1
+  MAIN --> AO1
+  MAIN --> VI1
+  MAIN --> SD1
+  MAIN --> CO1
+  MAIN --> WK1
+
+  SY1 -->|"gpio module not loaded in kernel"| N1["SM_E_APM_FILE_OPEN_FAIL - apm_main.cpp:1329 - msg: gpio ignition module not loaded"]
+  SY2 -->|"sysfs open() returns lt 0"| N2["SM_E_APM_FILE_OPEN_FAIL - apm_main.cpp:1337 - msg: sysfs file open failed"]
+  AO1 -->|"aon_read returns error"| N3["SM_E_APM_MSP_FAIL - apm_main.cpp:1382 - msg: aon read power on/off failed"]
+  AO2 -->|"enable IGN_WAKE_UP fails"| N4["SM_E_APM_MSP_FAIL - apm_main.cpp:1393 - msg: Failed to Enable IGN_WAKE_UP"]
+  AO3 -->|"disable IGN_WAKE_UP fails"| N5["SM_E_APM_MSP_FAIL - apm_main.cpp:1402 - msg: Failed to Disable IGN_WAKE_UP"]
+  AO4 -->|"WOM configure on AON fails"| N6["SM_E_APM_MSP_FAIL - apm_main.cpp:1412 - msg: Failed to Configure WOM on AON"]
+  VI1 -->|"WOM version read complete"| N7["SM_E_APM_AON_VERSION_INFO - apm_main.cpp:200 - aux=aux_code"]
+  SD1 -->|"previous shutdown reason retrieved"| N8["SM_E_PM_DB_PREV_SHUTDOWN - apm_main.cpp:231 - aux=pow_on_off_reason"]
+  CO1 -->|"ign wake disabled but WOM on"| N9["SM_E_APM_CONFIG_OVERRIDE - apm_main.cpp:773 - msg: wom enabled on ign interrupt disable"]
+  CO2 -->|"easy install enabled with WOM"| N10["SM_E_APM_CONFIG_OVERRIDE - apm_main.cpp:778 - msg: WOM enabled as easy install enabled"]
+  WK1 -->|"worker periodic event status"| N11["SM_E_APM_EVENT_STATUS - apm_worker.cpp - aux=event_type"]
+  WK2 -->|"ignition state transition"| N12["SM_E_APM_EVENT_STATUS - apm_ignition.cpp - aux=ign_state"]
+  WK3 -->|"IMU motion interrupt"| N13["SM_E_APM_EVENT_STATUS - apm_imu.cpp - aux=imu_event"]
+  WK4 -->|"supercap charge exceeds max"| N14["SM_E_APM_SUPERPCAP_STATUS - apm_supercap.cpp - aux=charge_val"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6 errNode
+  class N7,N8,N9,N10,N11,N12,N13,N14 infoNode

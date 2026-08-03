@@ -1,0 +1,94 @@
+flowchart TD
+  MAIN["main() - cam_recorder.cpp"]
+
+  subgraph CAMSTATUS["Camera Boot Status Threads - cam_recorder.cpp:4230+"]
+    CS1["get_inward_boot_status_tt()"]
+    CS2["get_left_cam_boot_status_tt()"]
+    CS3["get_right_cams_boot_status_tt()"]
+    CS4["get_mipi_retimer_status_tt() right"]
+    CS5["get_mipi_retimer_status_tt() left"]
+  end
+
+  subgraph CAMCONN["Camera Connection Events - cam_recorder.cpp:4600+"]
+    CC1["DMS camera connected - first time after boot"]
+    CC2["DMS camera connected - reconnect case"]
+    CC3["DMS camera disconnected"]
+  end
+
+  subgraph DMSINIT["DMS Init Failure - cam_recorder.cpp:4620+"]
+    DI1["dmsInit() call on reconnect"]
+    DI2["dmsInit() call on first time connection"]
+  end
+
+  subgraph IRLED["DMS IRLED Operations - cam_recorder.cpp:4760+"]
+    IL1["dmsIrledDriverSetup() disable driver"]
+    IL2["dmsIrledDriverSetup() enable driver"]
+    IL3["dmsIRLEDStatusClear() first call"]
+    IL4["dmsIRLEDStatus() read"]
+    IL5["IRLED status fault detected"]
+    IL6["IRLED clear failed - recoverable"]
+    IL7["IRLED clear failed - non-recoverable"]
+    IL8["dmsSetLedColor()"]
+  end
+
+  subgraph SHMFAIL["Shared Memory - cam_recorder.cpp:1560+"]
+    SH1["camera SHM fail - back cam"]
+    SH2["camera SHM recreated - back cam"]
+  end
+
+  subgraph CPUAFF["CPU Affinity - cam_recorder.cpp:3690+"]
+    CA1["set_affinity for camera thread - first try"]
+    CA2["set_affinity for camera thread - second try"]
+    CA3["get_affinity error"]
+  end
+
+  subgraph CAMDIS["Camera Disabled - cam_recorder.cpp:660+"]
+    CD1["camera i config says disabled"]
+  end
+
+  subgraph CRITINFO["DMS Critical Info Threads - cam_recorder.cpp:5358"]
+    CI1["send_critical_info_for_DMS_enabled_but_disconnected()"]
+    CI2["send_critical_info_for_dmsInit_failure()"]
+  end
+
+  MAIN --> CS1
+  MAIN --> CC1
+  MAIN --> SH1
+  MAIN --> CA1
+  MAIN --> CD1
+  MAIN --> CI1
+  CC1 --> DI1
+  CC2 --> DI2
+  CC1 --> IL1
+
+  CD1 -->|"camera disabled in config"| N1["SM_E_NDC_CAM_DISABLED - cam_recorder.cpp:664 - aux=cam_index"]
+  SH1 -->|"SHM creation for back cam fails"| N2["SM_E_NDC_CAM_SHM_FAIL - cam_recorder.cpp:1571 - aux=BACK"]
+  SH2 -->|"SHM recreated after failure"| N3["SM_E_NDC_CAM_SHM_RECREATED - cam_recorder.cpp:2798 - aux=BACK"]
+  CA1 -->|"sched_setaffinity fails - first attempt"| N4["SM_E_CPU_CORE_ERROR - cam_recorder.cpp:3693 - aux=cam_pos"]
+  CA2 -->|"sched_setaffinity fails - second attempt"| N5["SM_E_CPU_CORE_ERROR - cam_recorder.cpp:3716 - aux=cam_pos"]
+  CA3 -->|"sched_getaffinity error"| N6["SM_E_CPU_CORE_ERROR - cam_recorder.cpp:3721 - aux=cam_pos"]
+  CS1 -->|"inward cam boot status timeout"| N7["SM_E_NDC_CAM_STATUS_FAIL - cam_recorder.cpp:4236 - aux=1"]
+  CS2 -->|"left cam boot status timeout"| N8["SM_E_NDC_CAM_STATUS_FAIL - cam_recorder.cpp:4286 - aux=2"]
+  CS3 -->|"right cam boot status timeout"| N9["SM_E_NDC_CAM_STATUS_FAIL - cam_recorder.cpp:4396 - aux=3"]
+  CS4 -->|"MIPI retimer right status timeout"| N10["SM_E_NDC_CAM_STATUS_FAIL - cam_recorder.cpp:4429 - aux=3"]
+  CS5 -->|"MIPI retimer left status timeout"| N11["SM_E_NDC_CAM_STATUS_FAIL - cam_recorder.cpp:4462 - aux=2"]
+  CC1 -->|"DMS connected first time"| N12["SM_E_NDC_CAM_CONNECTED - cam_recorder.cpp:4648 - aux=DMS"]
+  CC2 -->|"DMS reconnected after disconnect"| N13["SM_E_NDC_CAM_CONNECTED - cam_recorder.cpp:4611 - aux=DMS"]
+  DI1 -->|"dmsInit fails on reconnect"| N14["SM_E_NDC_DMS_INIT_FAIL - cam_recorder.cpp:4624 - aux=DMS"]
+  DI2 -->|"dmsInit fails on first connection"| N15["SM_E_NDC_DMS_INIT_FAIL - cam_recorder.cpp:4660 - aux=DMS"]
+  CC3 -->|"DMS camera disconnected"| N16["SM_E_NDC_CAM_DISCONNECTED - cam_recorder.cpp:5185 - aux=DMS"]
+  CS1 -->|"dmsUnInit timeout"| N17["SM_E_NDC_CAM_STATUS_FAIL - cam_recorder.cpp:5246 - aux=8"]
+  IL1 -->|"disable driver returns error"| N18["SM_E_NDC_DMS_IRLED_API_FAILURE - cam_recorder.cpp:4774"]
+  IL2 -->|"enable driver returns error"| N19["SM_E_NDC_DMS_IRLED_API_FAILURE - cam_recorder.cpp:4788"]
+  IL3 -->|"IRLEDStatusClear returns error"| N20["SM_E_NDC_DMS_IRLED_API_FAILURE - cam_recorder.cpp:4802"]
+  IL4 -->|"IRLEDStatus read returns error"| N21["SM_E_NDC_DMS_IRLED_API_FAILURE - cam_recorder.cpp:4818"]
+  IL6 -->|"IRLED clear failed but recoverable"| N22["SM_E_NDC_DMS_IRLED_STATUS_CLEAR_FAILED_RECOVERED - cam_recorder.cpp:4852"]
+  IL7 -->|"IRLED clear failed non-recoverable"| N23["SM_E_NDC_DMS_IRLED_STATUS_CLEAR_FAILED_NON_RECOVERABLE - cam_recorder.cpp:4864"]
+  IL5 -->|"IRLED fault detected"| N24["SM_E_NDC_DMS_IRLED_STATUS_FAULT_DETECTED - cam_recorder.cpp:4879"]
+  CI1 -->|"DMS enabled in config but device disconnected"| N25["SM_E_NDC_DMS_ENABLED_BUT_DISCONNECTED - cam_recorder.cpp:5358"]
+  CI2 -->|"dmsInit failed during startup thread"| N26["SM_E_NDC_DMS_INIT_FAIL - cam_recorder.cpp:5379"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N4,N5,N6,N7,N8,N9,N10,N11,N14,N15,N16,N17,N18,N19,N20,N21,N22,N23,N24,N25,N26 errNode
+  class N3,N12,N13 infoNode

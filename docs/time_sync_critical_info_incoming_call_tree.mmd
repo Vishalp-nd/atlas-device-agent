@@ -1,0 +1,41 @@
+flowchart TD
+  MAIN["main() - time_sync.cpp:712"]
+
+  subgraph INIT["Startup Init - time_sync.cpp"]
+    I1["nd_log_init()"]
+    I2["init_msgq()"]
+    I3["pthread_create udid_th"]
+  end
+
+  subgraph UDID["udid_thread() - udid.cpp"]
+    U1["nd_open_db() first attempt"]
+    U2["nd_open_db() second attempt after corruption check"]
+    U3["nd_create_table_db()"]
+    U1 --> U2
+    U2 --> U3
+  end
+
+  subgraph TIMESET["set_system_time_from_source() - time_sync.cpp:220"]
+    T1["time_source == eGPS branch"]
+    T2["time_source == eNETWORK branch"]
+  end
+
+  MAIN --> I1
+  MAIN --> I2
+  MAIN --> I3
+  I3 --> U1
+  MAIN --> T1
+
+  I1 -->|"nd_log_init returns false"| N1["SM_E_TIMESYNC_INIT_FAIL - time_sync.cpp:722"]
+  I2 -->|"msgq creation returns NULL"| N2["SM_E_TIMESYNC_MSGQ_INIT_FAIL - time_sync.cpp:744"]
+  I3 -->|"pthread_create returns non-zero"| N3["SM_E_TIMESYNC_UUID_THREAD_INIT_FAIL - time_sync.cpp:753"]
+  U1 -->|"nd_open_db returns false - first scan"| N4["SM_E_TIMESYNC_OPEN_DB_FAIL - udid.cpp:133 - aux=0"]
+  U2 -->|"nd_open_db returns false - reopen after corruption"| N5["SM_E_TIMESYNC_OPEN_DB_FAIL - udid.cpp:152 - aux=0"]
+  U3 -->|"nd_create_table_db returns false"| N6["SM_E_TIMESYNC_CREATE_DB_FAIL - udid.cpp:168 - aux=0"]
+  T1 -->|"GPS sets system time successfully"| N7["SM_I_TIMESYNC_DONE_BY_GPS - time_sync.cpp:241 - aux=monotonic_time"]
+  T2 -->|"LTE/network sets system time"| N8["SM_I_TIMESYNC_DONE_BY_LTE - time_sync.cpp:241 - aux=monotonic_time"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  classDef infoNode fill:#d4edda,stroke:#28a745,color:#000
+  class N1,N2,N3,N4,N5,N6 errNode
+  class N7,N8 infoNode

@@ -1,0 +1,30 @@
+flowchart TD
+  MAIN["main() - AwsIotWrapper.py entry"]
+
+  subgraph CERTCHECK["Certificate Validation - AwsIotWrapper.py:180+"]
+    CC1["check root cert exists and is valid"]
+    CC2["restore attempt from backup on fail"]
+    CC3["check JWT auth key integrity"]
+    CC4["check AWS cert and key download"]
+  end
+
+  subgraph WRAPPER["send_critical_info() wrapper - AwsIotWrapper.py:37"]
+    WR1["format error_code and error_msg"]
+    WR2["call py_send_err_msg_to_cpp() via ctypes"]
+    WR1 --> WR2
+  end
+
+  MAIN --> CC1
+  CC1 --> CC2
+  CC1 --> CC3
+  CC1 --> CC4
+  CC2 --> WRAPPER
+  CC3 --> WRAPPER
+  CC4 --> WRAPPER
+
+  CC2 -->|"root cert not found and restore failed"| N1["SM_E_AWS_ROOT_CERT_NOT_FOUND - AwsIotWrapper.py:185"]
+  CC3 -->|"JWT auth key file corrupted"| N2["SM_E_AWS_CORRUPT_JWT_AUTH_KEY - AwsIotWrapper.py:201"]
+  CC4 -->|"cert or key download fails"| N3["SM_E_AWS_INVALID_OR_CORROUPT_CERT - AwsIotWrapper.py:217"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3 errNode

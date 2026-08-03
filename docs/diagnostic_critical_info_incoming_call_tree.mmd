@@ -1,0 +1,37 @@
+flowchart TD
+  MAIN["main() - diagnostic/src/diagnostic.cpp"]
+
+  subgraph RECOVER["SdCard::recover() - sdcard.cpp"]
+    R1["check component state REDUCED_ACCESSIBILITY or REDUCED_PERFORMANCE"]
+    R2["call send_sdcard_hs_to_critical_info()"]
+    R1 --> R2
+  end
+
+  subgraph WRAPPER["SdCard::send_sdcard_hs_to_critical_info() - sdcard.cpp:154"]
+    W1["manufacturer == micron branch"]
+    W2["manufacturer == sandisk branch"]
+  end
+
+  subgraph SLOWCHECK["SdCard::diagnosis() slow check - sdcard.cpp:400"]
+    SC1["avgCopyTime + avgDeleteTime exceeds threshold"]
+    SC2["manufacturer == sandisk"]
+    SC3["manufacturer == micron"]
+    SC4["manufacturer unknown"]
+    SC1 --> SC2
+    SC1 --> SC3
+    SC1 --> SC4
+  end
+
+  MAIN --> RECOVER
+  R2 --> W1
+  R2 --> W2
+  MAIN --> SC1
+
+  W1 -->|"mlc_percentage gt threshold - micron card"| N1["SM_E_DIAG_REPLACE_SD_CARD_HEALTH - sdcard.cpp:159 - aux=max(SLC,TLC)%"]
+  W2 -->|"mlc_percentage gt threshold - sandisk card"| N2["SM_E_DIAG_REPLACE_SD_CARD_HEALTH - sdcard.cpp:163 - aux=max(SLC,MLC)%"]
+  SC2 -->|"slow sdcard - sandisk - oem health string"| N3["SM_E_DIAG_SD_CARD_SLOW - sdcard.cpp:410 - aux=avgCopy+avgDelete"]
+  SC3 -->|"slow sdcard - micron - TLC/SLC health"| N4["SM_E_DIAG_SD_CARD_SLOW - sdcard.cpp:416 - aux=avgCopy+avgDelete"]
+  SC4 -->|"slow sdcard - unknown manufacturer"| N5["SM_E_DIAG_SD_CARD_SLOW - sdcard.cpp:420 - aux=avgCopy+avgDelete"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3,N4,N5 errNode

@@ -15,11 +15,16 @@ IMAGE_NAME := atlas-agent-api
 PORT       ?= 8000
 REPO_ROOT  := $(CURDIR)
 ENV_FILE   := .env
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+GIT_COMMIT := $(shell git rev-parse --verify HEAD 2>/dev/null || echo unknown)
 
 .PHONY: docker-build docker-run docker-run-detached docker-build-run docker-build-run-detached docker-logs docker-stop
 
 docker-build:
-	docker build -t $(IMAGE_NAME) .
+	docker build \
+		--build-arg VCS_BRANCH="$(GIT_BRANCH)" \
+		--build-arg VCS_REF="$(GIT_COMMIT)" \
+		-t $(IMAGE_NAME) .
 
 # Foreground — attached to your terminal, Ctrl+C stops it. Good for local dev:
 # you see startup errors immediately. Dies if your SSH session disconnects.

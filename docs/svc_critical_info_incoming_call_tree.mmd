@@ -1,0 +1,37 @@
+flowchart TD
+  MAIN["main() - svc.cpp"]
+
+  subgraph MSGLOOP["msg_loop() - svc.cpp"]
+    ML1["receive REQ_KEEP_ALIVE messages"]
+    ML2["update services[i].last_keep_alive"]
+  end
+
+  subgraph HOUSEKEEP["do_house_keeping() - svc.cpp:368"]
+    HK1["loop all registered services"]
+    HK2["diff = curr_time - last_keep_alive"]
+    HK3["diff gt keep_alive*1000 AND record_data_data true"]
+    HK4["service type == CRITICAL"]
+    HK5["service type == NON_CRITICAL"]
+    HK1 --> HK2 --> HK3
+    HK3 --> HK4
+    HK3 --> HK5
+  end
+
+  subgraph PWRREBOOT["do_power_mon_or_system_reboot() - svc.cpp:351"]
+    PR1["send_powermon_to_reboot() fails"]
+    PR2["system_reboot() called but no reboot occurs"]
+    PR3["gpio_por_assert() called"]
+    PR1 --> PR2 --> PR3
+  end
+
+  MAIN --> ML1
+  ML1 --> ML2
+  ML2 --> HK1
+  HK4 --> PR1
+
+  HK4 -->|"CRITICAL service timeout - system reboot triggered"| N1["SM_E_SVC_KEEP_ALIVE_TIMEOUT - svc.cpp:392 - aux=CRITICAL"]
+  HK5 -->|"NON_CRITICAL service timeout - logged only"| N2["SM_E_SVC_KEEP_ALIVE_TIMEOUT - svc.cpp:399 - aux=NON_CRITICAL"]
+  PR3 -->|"gpio_por_assert fails after reboot failed"| N3["SM_E_PM_POR_GPIO_FAIL - svc.cpp:360"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1,N2,N3 errNode

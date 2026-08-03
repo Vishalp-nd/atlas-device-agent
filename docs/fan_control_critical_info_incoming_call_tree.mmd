@@ -1,0 +1,19 @@
+flowchart TD
+  MAIN["main() - fan_control.cpp:197"]
+
+  subgraph INIT["Startup Initialization - fan_control.cpp"]
+    I1["read_fan_config()"]
+    I2["fan_enable_str check"]
+    I3["open(FAN, O_WRONLY) - sysfs fd"]
+  end
+
+  MAIN --> I1
+  I1 --> I2
+  I2 -->|"fan_enable_str == false"| FEXIT["exit - feature disabled"]
+  I2 -->|"fan enabled"| I3
+
+  I3 -->|"fan_fd lt 0 - sysfs file missing"| N1["SM_E_FAN_SYSFS_ENTRY_FAILED - fan_control.cpp:229 - aux=0"]
+  I3 -->|"fan_fd valid"| LOOP["monitor loop - read_cpu_temp() and adjust PWM"]
+
+  classDef errNode fill:#ffcccc,stroke:#cc3333,color:#000
+  class N1 errNode

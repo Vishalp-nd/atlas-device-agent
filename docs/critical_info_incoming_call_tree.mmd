@@ -1,0 +1,37 @@
+flowchart TD
+  A[main - circular_buffer.cpp] --> B[circular_buffer_msg_loop]
+
+  B --> C1[REQ_CIRCULAR_BUFFER_ADD_FILE_DB_FOR_SAVE_EXT_CAMERA_FILES_IN_DHUB]
+  B --> C2[REQ_CIRCULAR_BUFFER_ADD_FILE_DB]
+  B --> C3[REQ_CIRCULAR_BUFFER_UPDATE_FILE_DB]
+
+  C1 --> D[add_file_DB]
+  C2 --> D
+  C3 --> E[update_file_DB]
+  E --> D
+
+  A --> F[send_storage_info_main thread]
+  F --> G[process_file_size_check_queue]
+  G --> H[update_file_size_db]
+  H --> D
+
+  B --> I[circular_buffer_cleanup]
+  I --> J[clean_memorycard]
+  J --> K[adding_miscs_file_to_DB]
+  K --> D
+  J --> H
+
+  D --> L[validate_fileinfo]
+  L --> M1[invalid camera id]
+  L --> M2[filesize less than expected]
+  L --> M3[filesize more than expected]
+  L --> M4[invalid camtype in fileinfo]
+  L --> M5[invalid file type in fileinfo]
+  L --> M6[invalid tc_status in fileinfo]
+
+  M1 --> N[send_critical_info]
+  M2 --> N
+  M3 --> N
+  M4 --> N
+  M5 --> N
+  M6 --> N
