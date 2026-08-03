@@ -1,0 +1,69 @@
+{
+  "data_path": "offline-validations/description_type.csv",
+  "rows_total": 248005,
+  "rows_valid": 248004,
+  "rows_dropped_invalid_type": 1,
+  "train_rows": 198403,
+  "test_rows": 49601,
+  "test_size": 0.2,
+  "labels": [
+    "ERROR",
+    "INFO"
+  ],
+  "label_distribution": {
+    "train": {
+      "INFO": 197365,
+      "ERROR": 1038
+    },
+    "test": {
+      "INFO": 49342,
+      "ERROR": 259
+    }
+  },
+  "classification_report": {
+    "ERROR": {
+      "precision": 0.9520295202952029,
+      "recall": 0.9961389961389961,
+      "f1-score": 0.9735849056603774,
+      "support": 259.0
+    },
+    "INFO": {
+      "precision": 0.9999797283600244,
+      "recall": 0.99973653277127,
+      "f1-score": 0.9998581157775256,
+      "support": 49342.0
+    },
+    "accuracy": 0.9997177476260559,
+    "macro avg": {
+      "precision": 0.9760046243276137,
+      "recall": 0.997937764455133,
+      "f1-score": 0.9867215107189515,
+      "support": 49601.0
+    },
+    "weighted avg": {
+      "precision": 0.9997293482489622,
+      "recall": 0.9997177476260559,
+      "f1-score": 0.9997209257728816,
+      "support": 49601.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      258,
+      1
+    ],
+    [
+      13,
+      49329
+    ]
+  ],
+  "feature_config": {
+    "max_features": 250000,
+    "ngram_range": [
+      1,
+      2
+    ],
+    "max_iter": 20000,
+    "description_feature": "tfidf"
+  }
+}

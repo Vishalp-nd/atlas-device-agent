@@ -1,0 +1,13 @@
+# Secrets — never commit these
+.env
+db_credentials.ini
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Runtime output
+logs/
+*.log
