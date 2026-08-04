@@ -52,11 +52,20 @@ echo "Polling date range: ${START_TS} to ${END_TS}" | tee -a "${LOG_FILE}"
 echo "Log file: ${LOG_FILE}" | tee -a "${LOG_FILE}"
 echo "" | tee -a "${LOG_FILE}"
 
+# Optional: pass a profile only when explicitly configured.
+AWS_PROFILE_ARG=()
+if [ -n "${AWS_PROFILE:-}" ]; then
+  AWS_PROFILE_ARG=(--aws-profile "${AWS_PROFILE}")
+  echo "Using AWS profile from env: ${AWS_PROFILE}" | tee -a "${LOG_FILE}"
+else
+  echo "Using default AWS credential chain (env/instance role)" | tee -a "${LOG_FILE}"
+fi
+
 # Run pipeline with poll_user (no idle timeouts)
 cd "${SCRIPT_DIR}"
 python3 critical_events_pipeline.py \
   --snowflake-section SNOWFLAKE_DB \
-  --aws-profile iravath \
+  "${AWS_PROFILE_ARG[@]}" \
   --start-ts "${START_TS}" \
   --end-ts "${END_TS}" \
   --postgres-section POLL_USER_DB \

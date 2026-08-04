@@ -81,6 +81,7 @@ SOURCE_COLUMNS = [
     "UPSERT_TIME",
     "LOADED_TO_SNOWFLAKE_ON",
 ]
+INT_LIKE_COLUMNS = ["CODE_AUX", "COUNT", "TENANT_ID"]
 
 
 def _init_postgres(conn, table_name: str) -> None:
@@ -260,9 +261,22 @@ def _predict_batch(
             "description-only pipeline. Retrain the model and rerun."
         )
 
+    # Snowflake numeric columns may arrive as floats when NULLs are present.
+    # Coerce bigint-like columns back to true integers for PostgreSQL COPY.
+    for column in INT_LIKE_COLUMNS:
+        numeric_series = pd.to_numeric(df[column], errors="coerce")
+        fractional_mask = numeric_series.notna() & (numeric_series % 1 != 0)
+        if fractional_mask.any():
+            sample = numeric_series[fractional_mask].iloc[0]
+            raise RuntimeError(
+                f"Column {column} contains non-integer value {sample!r}; cannot load into bigint"
+            )
+        df[column] = numeric_series.astype("Int64")
+
     # Vectorised output — avoids itertuples loop over potentially millions of rows
     df["type"] = predicted.astype(str)
-    out_rows = [tuple(row) for row in df.values.tolist()]
+    safe_df = df.astype(object).where(pd.notnull(df), None)
+    out_rows = [tuple(row) for row in safe_df.values.tolist()]
 
     return out_rows, len(rows)
 
