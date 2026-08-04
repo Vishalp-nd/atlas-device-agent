@@ -32,17 +32,24 @@ from datetime import datetime, timedelta, timezone
 import psycopg2
 import psycopg2.extras
 
-DEFAULT_AWS_PROFILE = "iravath"
-
-
 def _load_snowflake_private_key_from_ssm(ssm_parameter_name, aws_profile=None):
     """Fetch Snowflake RSA private key from AWS SSM Parameter Store and return DER bytes."""
     import boto3
+    from botocore.exceptions import ProfileNotFound
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import serialization
 
-    profile_name = aws_profile or DEFAULT_AWS_PROFILE
-    session = boto3.Session(profile_name=profile_name)
+    if aws_profile:
+        try:
+            session = boto3.Session(profile_name=aws_profile)
+        except ProfileNotFound:
+            print(
+                f"  AWS profile '{aws_profile}' not found; falling back to default AWS credential chain"
+            )
+            session = boto3.Session()
+    else:
+        session = boto3.Session()
+
     ssm = session.client("ssm", region_name="us-west-1")
     resp = ssm.get_parameter(Name=ssm_parameter_name, WithDecryption=True)
     pem_data = resp["Parameter"]["Value"].encode("utf-8")
@@ -99,11 +106,13 @@ def connect_to_snowflake(config_file, section, aws_profile=None):
         raise ValueError(f"Section '{section}' not found in {config_file}")
 
     ssm_param = parser.get(section, "pk_ssm_parameter")
-    profile_name = aws_profile or DEFAULT_AWS_PROFILE
     print(f"  Fetching private key from SSM: {ssm_param}")
-    print(f"  Using AWS profile: {profile_name}")
+    if aws_profile:
+        print(f"  Using AWS profile: {aws_profile}")
+    else:
+        print("  Using default AWS credential chain (env/instance role)")
     try:
-        pk_bytes = _load_snowflake_private_key_from_ssm(ssm_param, aws_profile=profile_name)
+        pk_bytes = _load_snowflake_private_key_from_ssm(ssm_param, aws_profile=aws_profile)
     except Exception as e:
         print(f"  Failed to fetch private key from SSM: {e}")
         return None

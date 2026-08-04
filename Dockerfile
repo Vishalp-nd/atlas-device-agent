@@ -7,7 +7,7 @@
 #   - secrets never end up baked into an image layer
 #   - editing a skill or prompt doesn't require a rebuild
 
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 ARG VCS_BRANCH=unknown
 ARG VCS_REF=unknown
