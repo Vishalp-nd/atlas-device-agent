@@ -7,7 +7,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.python-version
 
 # Runtime output
 logs/
 *.log
+*.csv
+*.lock

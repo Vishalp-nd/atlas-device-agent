@@ -36,7 +36,9 @@ atlas-device-agent/
 │   ├── coverage_chatbot_core.py    #   Loads .agent.md system prompts
 │   └── coverage_chatbot_app.py     #   Streamlit UI — thin HTTP client for the API
 ├── prompts/                        # System prompts (<name>.agent.md) for the three sub-agents
-├── skills/                         # Critical-errors skill docs read by the sub-agents
+├── skills/                         # Skill namespaces read by the sub-agents
+│   ├── cinfo-skills/               #   Used only by critical_events agent
+│   └── device-skills/              #   Used only by coverage agent
 ├── pipeline/                       # Nightly Snowflake → Postgres critical-events pipeline
 │   ├── critical_events_pipeline.py #   Pull rolling 24h window, classify (SVM), upsert to Postgres
 │   ├── nightly_priority_pipeline.py#   Cluster + prioritize error descriptions
@@ -57,7 +59,8 @@ atlas-device-agent/
 ```
 
 Not in this repo: the framework's full skill library and `test_cases/` stay in
-`device-automation`. Only the critical-errors skills are vendored under `skills/`.
+`device-automation`. Only the critical-errors skills are currently vendored under
+`skills/cinfo-skills/`.
 Set `DEVICE_AUTOMATION_ROOT` in `.env` to a device-automation checkout if you want the
 testcase-count stat in the UI header.
 

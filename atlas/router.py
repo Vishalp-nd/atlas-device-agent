@@ -139,7 +139,7 @@ def critical_events_agent(req: CriticalEventsQueryRequest) -> AgentQueryResponse
 
 @router.get("/index-stats", response_model=IndexStatsResponse)
 def index_stats() -> IndexStatsResponse:
-    skills = sum(1 for _ in SKILLS_ROOT.glob("*/SKILL.md"))
+    skills = sum(1 for _ in SKILLS_ROOT.rglob("SKILL.md"))
     # test_cases/ stays in the device-automation repo; count them only when a
     # checkout is available via DEVICE_AUTOMATION_ROOT.
     testcases = 0

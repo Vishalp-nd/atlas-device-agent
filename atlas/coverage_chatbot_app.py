@@ -390,20 +390,19 @@ def _append_message(role: str, content: str) -> None:
 def _render_header(stats: dict[str, int]) -> None:
     # testcases live in the device-automation repo; the chip only appears when
     # the API found a checkout via DEVICE_AUTOMATION_ROOT.
-    testcases_chip = (
-        f"<span class=\"chip\">testcases: {stats['testcases']}</span>"
-        if stats.get("testcases")
-        else ""
-    )
+    chips = [f"<span class=\"chip\">skills: {stats['skills']}</span>"]
+    if stats.get("testcases"):
+        chips.append(f"<span class=\"chip\">testcases: {stats['testcases']}</span>")
+    chips.append("<span class=\"chip\">source: skills + local critical-events DB + Observation data </span>")
+    chip_html = "\n".join(chips)
+
     st.markdown(
         f"""
         <section class="hero">
           <h1>Atlas: Device Agent</h1>
                     <p>Ask coverage, Jenkins, or critical-events data questions — powered by Claude.</p>
           <div class="chip-row">
-            <span class="chip">skills: {stats['skills']}</span>
-            {testcases_chip}
-            <span class="chip">source: skills + local critical-events DB</span>
+                        {chip_html}
           </div>
         </section>
         """,

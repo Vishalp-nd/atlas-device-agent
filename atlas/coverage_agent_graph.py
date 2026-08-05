@@ -29,6 +29,17 @@ from langgraph.prebuilt import ToolNode
 MAX_ITERATIONS = 10
 
 
+def _discover_skill_files(skills_root: Path) -> dict[str, Path]:
+    """Return map of skill key -> SKILL.md path for nested skills layouts."""
+    skills: dict[str, Path] = {}
+    if not skills_root.exists():
+        return skills
+    for skill_md in sorted(skills_root.rglob("SKILL.md")):
+        key = skill_md.parent.relative_to(skills_root).as_posix()
+        skills[key] = skill_md
+    return skills
+
+
 def _get_llm() -> ChatAnthropic:
     env_path = Path(__file__).resolve().parents[1] / ".env"
     if env_path.exists():
@@ -41,7 +52,7 @@ def _get_llm() -> ChatAnthropic:
 
 
 def _make_tools(repo_root: Path) -> list:
-    skills_root = repo_root / "skills"
+    skills_root = repo_root / "skills" / "device-skills"
 
     @tool
     def list_skills() -> str:
@@ -51,10 +62,7 @@ def _make_tools(repo_root: Path) -> list:
         the user's query before calling read_skill.
         """
         lines: list[str] = []
-        for skill_dir in sorted(skills_root.iterdir()):
-            skill_md = skill_dir / "SKILL.md"
-            if not skill_md.exists():
-                continue
+        for skill_name, skill_md in _discover_skill_files(skills_root).items():
             text = skill_md.read_text(encoding="utf-8", errors="replace")
             desc = ""
             if text.startswith("---"):
@@ -67,7 +75,7 @@ def _make_tools(repo_root: Path) -> list:
                     )
                     if m:
                         desc = m.group(1).strip()[:150]
-            lines.append(f"- {skill_dir.name}: {desc}" if desc else f"- {skill_dir.name}")
+            lines.append(f"- {skill_name}: {desc}" if desc else f"- {skill_name}")
         return "\n".join(lines) if lines else "No skills found."
 
     @tool
@@ -79,15 +87,35 @@ def _make_tools(repo_root: Path) -> list:
         skills whose description suggests they own the specific
         feature+condition combination the user asked about.
         """
-        skill_path = skills_root / skill_name / "SKILL.md"
-        if not skill_path.exists():
-            candidates = [
-                d.name
-                for d in skills_root.iterdir()
-                if d.is_dir() and skill_name.lower() in d.name.lower()
+        skill_files = _discover_skill_files(skills_root)
+        skill_path = skill_files.get(skill_name)
+        if skill_path is None:
+            query = skill_name.lower()
+            basename_matches = [
+                key for key in skill_files if Path(key).name.lower() == query
             ]
-            if candidates:
-                skill_path = skills_root / candidates[0] / "SKILL.md"
+            if len(basename_matches) == 1:
+                skill_path = skill_files[basename_matches[0]]
+            elif len(basename_matches) > 1:
+                return (
+                    f"Skill name '{skill_name}' is ambiguous. "
+                    f"Matches: {', '.join(sorted(basename_matches))}. "
+                    "Use the full name from list_skills."
+                )
+
+        if skill_path is None:
+            candidates = [
+                key for key in skill_files
+                if query in key.lower() or query in Path(key).name.lower()
+            ]
+            if len(candidates) == 1:
+                skill_path = skill_files[candidates[0]]
+            elif len(candidates) > 1:
+                return (
+                    f"Skill '{skill_name}' matched multiple entries: "
+                    f"{', '.join(sorted(candidates))}. "
+                    "Use the full name from list_skills."
+                )
             else:
                 return (
                     f"Skill '{skill_name}' not found. "

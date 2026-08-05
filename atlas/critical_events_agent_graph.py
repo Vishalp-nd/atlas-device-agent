@@ -68,6 +68,17 @@ SNOWFLAKE_STAGING_SECTION = "SNOWFLAKE_STAG_DB"
 SNOWFLAKE_STAGING_TABLE = "STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT"
 
 
+def _discover_skill_files(skills_root: Path) -> dict[str, Path]:
+    """Return map of skill key -> SKILL.md path for nested skills layouts."""
+    skills: dict[str, Path] = {}
+    if not skills_root.exists():
+        return skills
+    for skill_md in sorted(skills_root.rglob("SKILL.md")):
+        key = skill_md.parent.relative_to(skills_root).as_posix()
+        skills[key] = skill_md
+    return skills
+
+
 def _get_llm() -> ChatAnthropic:
     env_path = Path(__file__).resolve().parents[1] / ".env"
     if env_path.exists():
@@ -88,7 +99,7 @@ def _safe_query(sql: str) -> bool:
 
 
 def _make_tools(repo_root: Path, table_name: str, postgres_section: str) -> list:
-    skills_root = repo_root / "skills"
+    skills_root = repo_root / "skills" / "cinfo-skills"
     db_config_path = repo_root / "db_credentials.ini"
 
     def _connect_ro():
@@ -256,10 +267,7 @@ def _make_tools(repo_root: Path, table_name: str, postgres_section: str) -> list
         """List available SKILL.md names and one-line descriptions for insight mapping."""
         logger.info("[tool:list_skills] called — skills_root=%s", skills_root)
         lines: list[str] = []
-        for skill_dir in sorted(skills_root.iterdir()):
-            skill_md = skill_dir / "SKILL.md"
-            if not skill_md.exists():
-                continue
+        for skill_name, skill_md in _discover_skill_files(skills_root).items():
             text = skill_md.read_text(encoding="utf-8", errors="replace")
             desc = ""
             if text.startswith("---"):
@@ -272,7 +280,7 @@ def _make_tools(repo_root: Path, table_name: str, postgres_section: str) -> list
                     )
                     if m:
                         desc = m.group(1).strip()[:150]
-            lines.append(f"- {skill_dir.name}: {desc}" if desc else f"- {skill_dir.name}")
+            lines.append(f"- {skill_name}: {desc}" if desc else f"- {skill_name}")
         logger.debug("[tool:list_skills] found %d skills", len(lines))
         return "\n".join(lines) if lines else "No skills found."
 
@@ -280,16 +288,42 @@ def _make_tools(repo_root: Path, table_name: str, postgres_section: str) -> list
     def read_skill(skill_name: str) -> str:
         """Read SKILL.md text for one skill to ground explanations with framework context."""
         logger.info("[tool:read_skill] called — skill_name=%s", skill_name)
-        skill_path = skills_root / skill_name / "SKILL.md"
-        if not skill_path.exists():
-            candidates = [
-                d.name
-                for d in skills_root.iterdir()
-                if d.is_dir() and skill_name.lower() in d.name.lower()
+        skill_files = _discover_skill_files(skills_root)
+        skill_path = skill_files.get(skill_name)
+        query = skill_name.lower()
+
+        if skill_path is None:
+            basename_matches = [
+                key for key in skill_files if Path(key).name.lower() == query
             ]
-            if candidates:
-                logger.debug("[tool:read_skill] fuzzy-matched '%s' -> '%s'", skill_name, candidates[0])
-                skill_path = skills_root / candidates[0] / "SKILL.md"
+            if len(basename_matches) == 1:
+                selected = basename_matches[0]
+                logger.debug("[tool:read_skill] basename-matched '%s' -> '%s'", skill_name, selected)
+                skill_path = skill_files[selected]
+            elif len(basename_matches) > 1:
+                logger.warning("[tool:read_skill] ambiguous basename for %s: %s", skill_name, basename_matches)
+                return (
+                    f"Skill name '{skill_name}' is ambiguous. "
+                    f"Matches: {', '.join(sorted(basename_matches))}. "
+                    "Use the full name from list_skills."
+                )
+
+        if skill_path is None:
+            candidates = [
+                key for key in skill_files
+                if query in key.lower() or query in Path(key).name.lower()
+            ]
+            if len(candidates) == 1:
+                selected = candidates[0]
+                logger.debug("[tool:read_skill] fuzzy-matched '%s' -> '%s'", skill_name, selected)
+                skill_path = skill_files[selected]
+            elif len(candidates) > 1:
+                logger.warning("[tool:read_skill] ambiguous fuzzy match for %s: %s", skill_name, candidates)
+                return (
+                    f"Skill '{skill_name}' matched multiple entries: "
+                    f"{', '.join(sorted(candidates))}. "
+                    "Use the full name from list_skills."
+                )
             else:
                 logger.warning("[tool:read_skill] skill not found: %s", skill_name)
                 return f"Skill '{skill_name}' not found."
