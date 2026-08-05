@@ -7,6 +7,7 @@ import subprocess
 import sys
 import pandas as pd
 import datetime
+from dotenv import load_dotenv
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, os.path.pardir))
@@ -31,6 +32,8 @@ logging.log_info(f"Current directory: {current_dir}")
 
 LOCK_FILE = os.path.join(current_dir, "OUTPUT/.data_polling.lock")
 _lock_fd = None
+
+DEFAULT_ENV_PATH = os.path.join(REPO_ROOT, ".env")
 
 
 def acquire_lock():
@@ -60,19 +63,79 @@ def release_lock():
             logging.log_warning(f"Error releasing lock: {e}")
 
 
+def _parse_csv_env(value: str):
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _load_runtime_filters():
+    load_dotenv(DEFAULT_ENV_PATH, override=False)
+
+    product_lines = [item.lower() for item in _parse_csv_env(os.getenv("PRODUCT_LINES", ""))]
+    allowed_ota_versions = _parse_csv_env(os.getenv("ALLOWED_OTA_VERSIONS", ""))
+
+    family_config = getattr(regionUS, "FAMILY_CONFIG", {})
+    valid_product_lines = set(family_config.keys())
+    invalid_product_lines = [name for name in product_lines if name not in valid_product_lines]
+    if invalid_product_lines:
+        valid_values = ", ".join(sorted(valid_product_lines))
+        raise ValueError(
+            "Invalid PRODUCT_LINES value(s): "
+            f"{', '.join(invalid_product_lines)}. "
+            f"Allowed values: {valid_values}."
+        )
+
+    logging.log_info(
+        "Runtime filters loaded - "
+        f"PRODUCT_LINES={product_lines if product_lines else 'ALL'}, "
+        f"ALLOWED_OTA_VERSIONS={allowed_ota_versions if allowed_ota_versions else 'ALL'}"
+    )
+
+    return product_lines, allowed_ota_versions
+
+
+def _resolve_versions_to_process(discovered_versions_by_family, product_lines, allowed_ota_versions):
+    family_config = getattr(regionUS, "FAMILY_CONFIG", {})
+    selected_families = product_lines if product_lines else list(family_config.keys())
+
+    # Priority 1: constrain the candidate set by product line first.
+    selected_discovered_versions = []
+    for family in selected_families:
+        version = discovered_versions_by_family.get(family)
+        if version:
+            selected_discovered_versions.append(version)
+
+    if not allowed_ota_versions:
+        return selected_discovered_versions
+
+    # Priority 2: apply exact OTA filtering within the selected product-line scope.
+    if not product_lines:
+        return allowed_ota_versions
+
+    allowed_prefixes = {
+        family_config[family][1]
+        for family in selected_families
+        if family in family_config
+    }
+    filtered_ota_versions = [
+        ota for ota in allowed_ota_versions
+        if any(ota.startswith(prefix) for prefix in allowed_prefixes)
+    ]
+    return filtered_ota_versions
+
+
 def get_latest_device():
     try:
         logging.log_info("Starting get_latest_device function")
         us = regionUS()
         logging.log_info("regionUS instance created successfully")
 
-        versions = []
+        versions = {}
         for region in [us]:
             for attr_name, version in region.__dict__.items():
                 if attr_name == "s3":
                     continue
                 if version:
-                    versions.append(version)
+                    versions[attr_name] = version
                     logging.log_info(f"Found device version: {attr_name} = {version}")
                 else:
                     logging.log_warning(f"No version found for device: {attr_name}")
@@ -93,12 +156,17 @@ def daily_device_extraction(ys=False):
         os.makedirs(trigger_folder_path, exist_ok=True)
         logging.log_info(f"Trigger folder created successfully at: {trigger_folder_path}")
 
-        versions = get_latest_device()
+        product_lines, allowed_ota_versions = _load_runtime_filters()
+        discovered_versions = get_latest_device()
+        versions = _resolve_versions_to_process(discovered_versions, product_lines, allowed_ota_versions)
         today = datetime.date.today()
-        logging.log_info(f"Device versions to process: {versions}")
+        logging.log_info(f"Discovered versions by product line: {discovered_versions}")
+        logging.log_info(f"Device versions to process after filters: {versions}")
 
         if not versions:
-            logging.log_warning("No device versions found, skipping extraction")
+            logging.log_warning(
+                "No device versions found after applying PRODUCT_LINES and ALLOWED_OTA_VERSIONS filters, skipping extraction"
+            )
             return
 
         use_fallback_fetcher = not os.path.exists(device_setup_script)
