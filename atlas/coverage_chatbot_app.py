@@ -15,6 +15,7 @@ Configure the API location with the ATLAS_API_URL env var (default shown below).
 from __future__ import annotations
 
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -23,6 +24,21 @@ import streamlit as st
 
 API_BASE_URL = os.environ.get("ATLAS_API_URL", "http://localhost:8501").rstrip("/")
 REQUEST_TIMEOUT = 900
+
+
+def _normalize_download_links(text: str) -> str:
+    """Rewrite observation download links to use the configured API base."""
+    if not text:
+        return text
+    api_base = API_BASE_URL.rstrip("/")
+    # Convert relative links and stale localhost:8000 links to the active API base.
+    text = text.replace("(/atlas/agents/observations/download/", f"({api_base}/atlas/agents/observations/download/")
+    text = re.sub(
+        r"\(https?://localhost:8000/atlas/agents/observations/download/",
+        f"({api_base}/atlas/agents/observations/download/",
+        text,
+    )
+    return text
 
 
 def _inject_css() -> None:
@@ -358,7 +374,7 @@ def _post_chat(session_id: str, query: str) -> tuple[str, str]:
         )
     resp.raise_for_status()
     data = resp.json()
-    return data["response"], data["intent"]
+    return _normalize_download_links(data["response"]), data["intent"]
 
 
 def _index_stats() -> dict[str, int]:
