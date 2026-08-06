@@ -281,8 +281,9 @@ def _observations_node(state: SupervisorState) -> dict:
         history=_relevant_history(state),
     )
     if downloads:
+        api_base = os.getenv("ATLAS_API_URL", "http://localhost:8000").rstrip("/")
         links = "\n".join(
-            f"- [⬇ {d['filename']}](/atlas/agents/observations/download/{d['id']})"
+            f"- [⬇ {d['filename']}]({api_base}/atlas/agents/observations/download/{d['id']})"
             for d in downloads
         )
         response_text = response_text + f"\n\n**Downloads:**\n{links}"

@@ -41,11 +41,18 @@ fi
 # Activate virtual environment
 source "${VENV_PATH}/bin/activate"
 
+# Capture current time early so both pipelines share the same end boundary
+NOW_DT=$(date +"%Y-%m-%d %H:%M:%S")
+
 # Fixed 01:00 -> 01:00 window: yesterday 01:00 to today 01:00 (not the actual run time)
 YESTERDAY=$(date -d "yesterday" +"%Y-%m-%d")
 TODAY=$(date +"%Y-%m-%d")
 START_TS="${YESTERDAY}T01:00:00"
 END_TS="${TODAY}T01:00:00"
+
+# Data-polling window: yesterday 01:00 to now
+DATA_POLL_START="${YESTERDAY} 01:00:00"
+DATA_POLL_END="${NOW_DT}"
 
 echo "=== Nightly Critical Events Poll ===" | tee -a "${LOG_FILE}"
 echo "Timestamp: $(date)" | tee -a "${LOG_FILE}"
@@ -97,6 +104,35 @@ if [ $EXIT_CODE -eq 0 ]; then
   else
     echo "✗ Priority pipeline failed with exit code $PRIORITY_EXIT_CODE" | tee -a "${LOG_FILE}"
     EXIT_CODE=$PRIORITY_EXIT_CODE
+  fi
+fi
+
+# Step: daily device extraction + obs population (yesterday 01:00 -> now)
+echo "" | tee -a "${LOG_FILE}"
+echo "=== Data polling: device extraction ===" | tee -a "${LOG_FILE}"
+python3 data_polling.py extract \
+  2>&1 | tee -a "${LOG_FILE}"
+EXTRACT_EXIT=${PIPESTATUS[0]}
+if [ $EXTRACT_EXIT -eq 0 ]; then
+  echo "✓ Device extraction completed" | tee -a "${LOG_FILE}"
+else
+  echo "✗ Device extraction failed with exit code $EXTRACT_EXIT" | tee -a "${LOG_FILE}"
+  EXIT_CODE=$EXTRACT_EXIT
+fi
+
+if [ $EXTRACT_EXIT -eq 0 ]; then
+  echo "" | tee -a "${LOG_FILE}"
+  echo "=== Data polling: obs population (${DATA_POLL_START} -> ${DATA_POLL_END}) ===" | tee -a "${LOG_FILE}"
+  python3 data_polling.py obs \
+    --start-dt "${DATA_POLL_START}" \
+    --end-dt "${DATA_POLL_END}" \
+    2>&1 | tee -a "${LOG_FILE}"
+  OBS_EXIT=${PIPESTATUS[0]}
+  if [ $OBS_EXIT -eq 0 ]; then
+    echo "✓ Obs population completed successfully" | tee -a "${LOG_FILE}"
+  else
+    echo "✗ Obs population failed with exit code $OBS_EXIT" | tee -a "${LOG_FILE}"
+    EXIT_CODE=$OBS_EXIT
   fi
 fi
 

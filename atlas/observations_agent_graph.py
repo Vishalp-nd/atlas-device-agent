@@ -856,7 +856,31 @@ def run_observations_agent(
     final_state = graph.invoke(initial_state)
     last = final_state["messages"][-1]
     result = getattr(last, "content", str(last)).strip() or "No response."
-    downloads = list(getattr(_run_ctx, "downloads", []))
+
+    # Tool execution may occur on worker threads, so don't rely only on thread-local
+    # download collection. Also extract IDs from tool JSON outputs in final messages.
+    collected: dict[str, dict] = {
+        d.get("id", ""): d for d in getattr(_run_ctx, "downloads", []) if d.get("id")
+    }
+    for msg in final_state.get("messages", []):
+        content = getattr(msg, "content", None)
+        if not isinstance(content, str):
+            continue
+        text = content.strip()
+        if not text.startswith("{"):
+            continue
+        try:
+            payload = json.loads(text)
+        except Exception:
+            continue
+        rid = payload.get("_download_id")
+        if not rid or rid in collected:
+            continue
+        entry = result_store.get(rid)
+        filename = entry[1] if entry else "result.csv"
+        collected[rid] = {"id": rid, "filename": filename}
+
+    downloads = list(collected.values())
     logger.info(
         "[run] observations agent finished — iterations=%d result_length=%d downloads=%d",
         final_state["iterations"],
