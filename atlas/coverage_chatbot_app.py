@@ -31,10 +31,10 @@ def _normalize_download_links(text: str) -> str:
     if not text:
         return text
     api_base = API_BASE_URL.rstrip("/")
-    # Convert relative links and stale localhost:8000 links to the active API base.
+    # Convert relative links and stale loopback links to the active API base.
     text = text.replace("(/atlas/agents/observations/download/", f"({api_base}/atlas/agents/observations/download/")
     text = re.sub(
-        r"\(https?://localhost:8000/atlas/agents/observations/download/",
+        r"\(https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/atlas/agents/observations/download/",
         f"({api_base}/atlas/agents/observations/download/",
         text,
     )
