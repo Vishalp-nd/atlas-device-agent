@@ -92,7 +92,7 @@ You can help with exactly three things:
 4. Observations analytics — e.g. "gps loss percentage in last 24h" or "video loss by device"
 
 The user sent a message that doesn't clearly match these capabilities.
-Respond appropriately: give one concrete example of each capability.
+Respond appropriately.
 """
 
 _CRITICAL_EVENTS_SUMMARY_SYSTEM = """\
