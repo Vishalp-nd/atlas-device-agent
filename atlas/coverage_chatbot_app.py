@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 import streamlit as st
 
-API_BASE_URL = os.environ.get("ATLAS_API_URL", "http://localhost:8501").rstrip("/")
+API_BASE_URL = os.environ.get("ATLAS_API_URL", "http://172.16.18.142:8501").rstrip("/")
 REQUEST_TIMEOUT = 900
 
 
