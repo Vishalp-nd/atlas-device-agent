@@ -1,9 +1,47 @@
 import configparser
+import logging
 import os
+import socket
 from typing import Dict
 
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
+
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_host(section: str, host: str) -> str:
+    """Resolve DB host with env overrides and Linux-safe fallback."""
+    section_override = os.getenv(f"{section}_HOST", "").strip()
+    global_override = os.getenv("DB_HOST_OVERRIDE", "").strip()
+    resolved_host = section_override or global_override or host
+
+    if section_override or global_override:
+        source = f"{section}_HOST" if section_override else "DB_HOST_OVERRIDE"
+        logger.warning(
+            "Using DB host override from %s for section %s: %s",
+            source,
+            section,
+            resolved_host,
+        )
+
+    if resolved_host != "host.docker.internal":
+        return resolved_host
+
+    try:
+        socket.gethostbyname(resolved_host)
+        return resolved_host
+    except OSError:
+        fallback_host = os.getenv("DB_DOCKER_HOST_FALLBACK", "127.0.0.1").strip() or "127.0.0.1"
+        logger.warning(
+            "host.docker.internal is not resolvable on this host; using fallback %s for section %s. "
+            "Set %s_HOST or DB_HOST_OVERRIDE to control this explicitly.",
+            fallback_host,
+            section,
+            section,
+        )
+        return fallback_host
 
 
 def _default_config_paths() -> list[str]:
@@ -30,9 +68,12 @@ def read_db_config(section: str, config_file: str | None = None) -> Dict[str, st
     if not parser.has_section(section):
         raise ValueError(f"Section '{section}' not found in {read_ok}")
 
+    host = parser.get(section, "host")
+    resolved_host = _resolve_host(section, host)
+
     return {
         "database": parser.get(section, "database"),
-        "host": parser.get(section, "host"),
+        "host": resolved_host,
         "user": parser.get(section, "user"),
         "password": parser.get(section, "password"),
         "port": parser.get(section, "port"),

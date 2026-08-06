@@ -186,6 +186,7 @@ class ProcessingMetrics:
     """Metrics for monitoring processing performance"""
     total_devices: int = 0
     successful_devices: int = 0
+    skipped_devices: int = 0
     failed_devices: int = 0
     total_files: int = 0
     successful_files: int = 0
@@ -197,6 +198,7 @@ class ProcessingMetrics:
         return {
             'total_devices': self.total_devices,
             'successful_devices': self.successful_devices,
+            'skipped_devices': self.skipped_devices,
             'failed_devices': self.failed_devices,
             'total_files': self.total_files,
             'successful_files': self.successful_files,
@@ -888,13 +890,18 @@ class DataProcessor:
                             s3_dict.update(result)
                             self.metrics.successful_devices += len(result)
                         else:
-                            self.metrics.failed_devices += 1
+                            self.metrics.skipped_devices += 1
                             
                     except Exception as e:
                         self.metrics.failed_devices += 1
                         logger.log_error(f"S3 path fetch task failed: {e}")
                         
-            logger.log_info(f"S3 path fetching completed. Successful: {self.metrics.successful_devices}, Failed: {self.metrics.failed_devices}")
+            logger.log_info(
+                "S3 path fetching completed. "
+                f"Successful: {self.metrics.successful_devices}, "
+                f"Skipped(no pending/no URLs): {self.metrics.skipped_devices}, "
+                f"Failed(errors): {self.metrics.failed_devices}"
+            )
             return s3_dict
             
         except Exception as e:

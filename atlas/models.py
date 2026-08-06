@@ -38,6 +38,24 @@ class CriticalEventsQueryRequest(BaseModel):
     postgres_section: str = "IRAVATH_DB"
 
 
+class ObservationsQueryRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+    table_name: str = "public.extracteddata"
+    postgres_section: str = "IRAVATH_DB"
+
+
+class DownloadRef(BaseModel):
+    id: str
+    filename: str
+    url: str
+
+
+class ObservationsAgentQueryResponse(BaseModel):
+    response: str
+    downloads: list[DownloadRef] = []
+
+
 class IndexStatsResponse(BaseModel):
     skills: int
     testcases: int

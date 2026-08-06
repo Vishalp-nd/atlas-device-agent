@@ -70,9 +70,9 @@ On an EC2 instance the `default` profile resolves via the instance metadata serv
 
 All credentials are read from `db_login/db_credentials.ini` via `db_login.db_login.read_db_config(section)`.
 
-### IRAVATH_TEST — local destination DB (extracteddata, registry)
+### POLL_USER_DB — local destination DB (extracteddata, registry)
 ```ini
-[IRAVATH_TEST]
+[POLL_USER_DB]
 database = iravath_stag
 host     = localhost
 user     = bot_user
@@ -105,8 +105,8 @@ port     = 5432
 | DB | Table | Privileges needed |
 |---|---|---|
 | PROD_OBS_DB / STAG_OBS_DB | `nddeduplication` | `SELECT` |
-| IRAVATH_TEST | `extracteddata` | `SELECT`, `INSERT`, `CREATE INDEX` (schema guard adds indexes) |
-| IRAVATH_TEST | `extracteddata_registry` | `SELECT`, `INSERT`, `UPDATE`, `ALTER` (schema guard adds `ota` column if missing) |
+| POLL_USER_DB | `extracteddata` | `SELECT`, `INSERT`, `CREATE INDEX` (schema guard adds indexes) |
+| POLL_USER_DB | `extracteddata_registry` | `SELECT`, `INSERT`, `UPDATE`, `ALTER` (schema guard adds `ota` column if missing) |
 
 The `bot_user` local user has `GRANT ALL ON SCHEMA public` per `psql/data_db_scripts.sql`.
 

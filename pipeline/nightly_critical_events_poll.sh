@@ -4,6 +4,7 @@
 # Runs daily at 01:00 IST via cron
 
 set -e
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PATH="${SCRIPT_DIR}/../.venv"
@@ -73,7 +74,7 @@ python3 critical_events_pipeline.py \
   --commit-every 5 \
   2>&1 | tee -a "${LOG_FILE}"
 
-EXIT_CODE=$?
+EXIT_CODE=${PIPESTATUS[0]}
 echo "" | tee -a "${LOG_FILE}"
 if [ $EXIT_CODE -eq 0 ]; then
   echo "✓ Poll completed successfully" | tee -a "${LOG_FILE}"

@@ -3,7 +3,7 @@
 ## Overview
 
 Atlas is a chat-based assistant for the device-automation test framework. It runs as a
-FastAPI service (with a Streamlit chat UI on top) and answers three kinds of questions
+FastAPI service (with a Streamlit chat UI on top) and answers four kinds of questions
 by routing them to a dedicated sub-agent, each implemented as its own
 [LangGraph](https://langchain-ai.github.io/langgraph/) ReAct loop backed by Claude:
 
@@ -12,9 +12,10 @@ by routing them to a dedicated sub-agent, each implemented as its own
 | `coverage`        | `coverage_agent_graph.py`        | Which skills/testcases cover a feature or flow |
 | `jenkins`         | `jenkins_agent_graph.py`         | Triggering/checking Jenkins jobs |
 | `critical_events` | `critical_events_agent_graph.py` | Local critical-event DB analytics and trends |
+| `observations`    | `observations_agent_graph.py`    | Observations analytics (GPS quality, video loss, metadata coverage) |
 | `unknown`         | handled inline in the supervisor | Anything that doesn't match the above |
 
-A `supervisor_graph.py` sits in front of all three: it classifies the incoming message,
+A `supervisor_graph.py` sits in front of all sub-agents: it classifies the incoming message,
 routes it to the right sub-agent, and keeps enough conversation history to support
 natural follow-up questions.
 
@@ -33,9 +34,10 @@ atlas-device-agent/
 │   ├── coverage_agent_graph.py     #   Coverage sub-agent (list_skills / read_skill tools)
 │   ├── jenkins_agent_graph.py      #   Jenkins sub-agent (list_jobs / get_parameters / build_job tools)
 │   ├── critical_events_agent_graph.py  # Critical-events sub-agent (db_overview / query tools)
+│   ├── observations_agent_graph.py  #   Observations sub-agent (GPS/video-loss/query tools)
 │   ├── coverage_chatbot_core.py    #   Loads .agent.md system prompts
 │   └── coverage_chatbot_app.py     #   Streamlit UI — thin HTTP client for the API
-├── prompts/                        # System prompts (<name>.agent.md) for the three sub-agents
+├── prompts/                        # System prompts (<name>.agent.md) for the sub-agents
 ├── skills/                         # Skill namespaces read by the sub-agents
 │   ├── cinfo-skills/               #   Used only by critical_events agent
 │   └── device-skills/              #   Used only by coverage agent
@@ -71,7 +73,7 @@ testcase-count stat in the UI header.
 **Key mechanics:**
 
 - **Intent stickiness** — if the classifier returns `unknown` but the previous turn was
-  `coverage`/`jenkins`/`critical_events`, the supervisor treats the message as a
+  `coverage`/`jenkins`/`critical_events`/`observations`, the supervisor treats the message as a
   follow-up and keeps the prior intent (`supervisor_graph.py`).
 - **History scoping** — conversation history is only forwarded into a sub-agent when the
   intent hasn't changed turn-to-turn; switching topics clears history so a new sub-agent
@@ -88,6 +90,9 @@ testcase-count stat in the UI header.
   Snowflake (`critical_events_pipeline.py`), classifies each row (INFO/ERROR via SVM),
   and upserts it into Postgres. This pipeline is fully decoupled from the chat
   request/response cycle above it.
+- **Observations analytics is Postgres-backed** — `observations_agent_graph.py` reads from
+  `public.extracteddata` (default DB section `IRAVATH_DB`) with read-only SQL guardrails,
+  and exposes focused tools for GPS KPIs and video-loss KPIs.
 
 ## Setup
 
@@ -119,7 +124,8 @@ sudo systemctl restart postgresql
 
 `ANTHROPIC_API_KEY` is required for all agents. Jenkins questions additionally need
 `JENKINS_URL`, `JENKINS_USER`, `JENKINS_API_TOKEN`; critical-events questions need
-`db_credentials.ini` at the repo root.
+`db_credentials.ini` at the repo root. Observations questions also use
+`db_credentials.ini` and default to `public.extracteddata`.
 
 ### Run the API
 
@@ -170,8 +176,14 @@ The nightly poll expects the venv at `.venv/` in the repo root:
 - "What are the top error codes in the last day?"
 - "Show the error/info split for the connectionmanager service"
 
+**Observations**
+- "What is GPS loss percentage in the last 24 hours?"
+- "Show cumulative GPS accuracy buckets for OTA 7.6.11.rc.8"
+- "Which devices have highest video loss in last day?"
+- "How many rows are missing videometadata in extracteddata?"
+
 **Follow-ups** (same intent, context is kept automatically):
 - "Which test cases cover reboot validation?" → "Which of those run in nightly?"
 
-Anything outside these three areas gets a short clarifying response listing what Atlas
+Anything outside these supported areas gets a short clarifying response listing what Atlas
 can do, rather than a guess.

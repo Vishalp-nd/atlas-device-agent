@@ -38,3 +38,8 @@ def get_jenkins_prompt() -> str:
 @lru_cache(maxsize=1)
 def get_critical_prompt() -> str:
     return load_agent_system_prompt(REPO_ROOT, "critical-events-insights")
+
+
+@lru_cache(maxsize=1)
+def get_observations_prompt() -> str:
+    return load_agent_system_prompt(REPO_ROOT, "observations-insights")

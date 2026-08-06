@@ -26,11 +26,38 @@ import configparser
 import csv
 import json
 import os
+import socket
 import sys
 from datetime import datetime, timedelta, timezone
 
 import psycopg2
 import psycopg2.extras
+
+
+def _resolve_host(section: str, host: str) -> str:
+    """Resolve DB host with env overrides and Linux-safe docker host fallback."""
+    section_override = os.getenv(f"{section}_HOST", "").strip()
+    global_override = os.getenv("DB_HOST_OVERRIDE", "").strip()
+    resolved_host = section_override or global_override or host
+
+    if section_override or global_override:
+        source = f"{section}_HOST" if section_override else "DB_HOST_OVERRIDE"
+        print(f"Using DB host override from {source} for section {section}: {resolved_host}")
+
+    if resolved_host != "host.docker.internal":
+        return resolved_host
+
+    try:
+        socket.gethostbyname(resolved_host)
+        return resolved_host
+    except OSError:
+        fallback_host = os.getenv("DB_DOCKER_HOST_FALLBACK", "127.0.0.1").strip() or "127.0.0.1"
+        print(
+            "host.docker.internal is not resolvable on this host; "
+            f"using fallback {fallback_host} for section {section}. "
+            f"Set {section}_HOST or DB_HOST_OVERRIDE to control this explicitly."
+        )
+        return fallback_host
 
 def _load_snowflake_private_key_from_ssm(ssm_parameter_name, aws_profile=None):
     """Fetch Snowflake RSA private key from AWS SSM Parameter Store and return DER bytes."""
@@ -70,9 +97,12 @@ def read_db_config(config_file="db_credentials.ini", section="PROD_DB"):
     parser.read(config_file)
     if not parser.has_section(section):
         raise ValueError(f"Section '{section}' not found in {config_file}")
+    host = parser.get(section, "host")
+    resolved_host = _resolve_host(section, host)
+
     return {
         "database": parser.get(section, "database"),
-        "host": parser.get(section, "host"),
+        "host": resolved_host,
         "user": parser.get(section, "user"),
         "password": parser.get(section, "password"),
         "port": parser.getint(section, "port"),

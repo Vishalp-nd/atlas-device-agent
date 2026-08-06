@@ -17,7 +17,8 @@ class Logger:
         stream_handler.setFormatter(formatter)
         self.logger.addHandler(stream_handler)
 
-        log_dir = os.path.join(os.getcwd(), "logs")
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+        log_dir = os.getenv("ATLAS_LOG_DIR", os.path.join(repo_root, "logs"))
         try:
             os.makedirs(log_dir, exist_ok=True)
             file_handler = logging.FileHandler(os.path.join(log_dir, f"{name}.log"))

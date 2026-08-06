@@ -38,7 +38,7 @@ class regionUS:
                 key.append((1, p.lower()))
         return key
 
-    def _latest_version(self, hw: str, major_prefix: str) -> Optional[str]:
+    def _list_versions(self, hw: str, major_prefix: str):
         prefix = f"{self.OTA_PREFIX}/{hw}/"
         paginator = self.s3.get_paginator("list_objects_v2")
         versions = set()
@@ -52,9 +52,22 @@ class regionUS:
                         versions.add(version)
         except ClientError as e:
             logger.log_error(f"Failed to list OTA versions for {hw}: {e}")
-            return None
+            return []
 
+        return sorted(versions, key=self._version_key)
+
+    def _latest_version(self, hw: str, major_prefix: str) -> Optional[str]:
+        versions = self._list_versions(hw, major_prefix)
         if not versions:
             return None
+        return versions[-1]
 
-        return sorted(versions, key=self._version_key)[-1]
+    def all_versions_by_family(self):
+        versions_by_family = {}
+        for family, (hw, major_prefix) in self.FAMILY_CONFIG.items():
+            versions = self._list_versions(hw, major_prefix)
+            if versions:
+                versions_by_family[family] = versions
+            else:
+                versions_by_family[family] = []
+        return versions_by_family

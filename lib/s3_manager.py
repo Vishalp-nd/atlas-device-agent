@@ -32,6 +32,9 @@ class S3Manager:
         end_date = row.get("end_date")
 
         if not device_id or not start_date or not end_date:
+            logger.log_warning(
+                f"Skipping row with missing fields: device_id={device_id}, start_date={start_date}, end_date={end_date}"
+            )
             return {}
 
         loc_conn = None
@@ -65,6 +68,10 @@ class S3Manager:
                 cur.execute(query, tuple(params))
                 rows = cur.fetchall()
 
+            if not rows:
+                logger.log_info(f"No OBS rows found for pending ranges for device {device_id}")
+                return {}
+
             urls = []
             for row_item in rows:
                 url = row_item[0] if isinstance(row_item, (tuple, list)) else row_item.get("s3_path")
@@ -76,6 +83,7 @@ class S3Manager:
                     urls.append(url)
 
             if not urls:
+                logger.log_info(f"No valid S3 URLs after filtering for device {device_id}")
                 return {}
 
             return {device_id: [urls, pending_ranges]}

@@ -1,7 +1,7 @@
 """router.py — the Atlas agent's FastAPI surface.
 
 Everything Atlas exposes over HTTP lives in this one router: session-aware
-supervisor chat, direct per-sub-agent access (coverage/jenkins/critical-events),
+supervisor chat, direct per-sub-agent access (coverage/jenkins/critical-events/observations),
 and a small index-stats endpoint for the Streamlit header. Mounted by
 atlas/main.py under the "/atlas" prefix.
 
@@ -27,10 +27,13 @@ from .config import (
     get_coverage_prompt,
     get_critical_prompt,
     get_jenkins_prompt,
+    get_observations_prompt,
 )
 from .coverage_agent_graph import run_coverage_agent
 from .critical_events_agent_graph import run_critical_events_agent
 from .jenkins_agent_graph import run_jenkins_agent
+from .observations_agent_graph import run_observations_agent
+from .result_store import result_store
 from .supervisor_graph import MAX_HISTORY, run_supervisor
 from .models import (
     AgentQueryRequest,
@@ -38,7 +41,10 @@ from .models import (
     ChatRequest,
     ChatResponse,
     CriticalEventsQueryRequest,
+    DownloadRef,
     IndexStatsResponse,
+    ObservationsAgentQueryResponse,
+    ObservationsQueryRequest,
     SessionCreateResponse,
 )
 from .session_store import session_store
@@ -77,6 +83,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         coverage_prompt=get_coverage_prompt(),
         jenkins_prompt=get_jenkins_prompt(),
         critical_prompt=get_critical_prompt(),
+        observations_prompt=get_observations_prompt(),
         repo_root=REPO_ROOT,
         history=history,
         last_intent=state.last_intent,
@@ -133,6 +140,44 @@ def critical_events_agent(req: CriticalEventsQueryRequest) -> AgentQueryResponse
     if req.session_id:
         session_store.append_turn(req.session_id, req.query, response, "critical_events")
     return AgentQueryResponse(response=response)
+
+
+@router.post("/agents/observations", response_model=ObservationsAgentQueryResponse)
+def observations_agent(req: ObservationsQueryRequest) -> ObservationsAgentQueryResponse:
+    history = _load_session_history(req.session_id) if req.session_id else None
+    response_text, downloads = run_observations_agent(
+        req.query,
+        get_observations_prompt(),
+        REPO_ROOT,
+        table_name=req.table_name,
+        postgres_section=req.postgres_section,
+        history=history,
+    )
+    if req.session_id:
+        session_store.append_turn(req.session_id, req.query, response_text, "observations")
+    download_refs = [
+        DownloadRef(
+            id=d["id"],
+            filename=d["filename"],
+            url=f"/atlas/agents/observations/download/{d['id']}",
+        )
+        for d in downloads
+    ]
+    return ObservationsAgentQueryResponse(response=response_text, downloads=download_refs)
+
+
+@router.get("/agents/observations/download/{result_id}")
+def observations_download(result_id: str):
+    from fastapi.responses import Response
+    entry = result_store.get(result_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Result not found or expired")
+    data, filename = entry
+    return Response(
+        content=data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Meta ──────────────────────────────────────────────────────────────────────
