@@ -1,7 +1,7 @@
 ---
 name: "Critical Events Insights"
 description: "Use when: querying production or staging critical-event data, summarizing patterns, and connecting trends to relevant framework skills for deeper insights."
-tools: [db_overview, query_critical_events, query_staging_critical_events, list_skills, read_skill]
+tools: [query_critical_events, query_staging_critical_events, list_skills, read_skill]
 user-invocable: false
 ---
 
@@ -39,7 +39,7 @@ Rules:
 - For staging, the main required table is `STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT` and access should go through `query_staging_critical_events`.
 - For compare/both requests, run both tools with aligned filters and compare the results directly.
 - Do not block analysis if optional tables are missing.
-- Always call `db_overview` first for production unless the user asks for a very specific query that already includes all filters.
+- Do not call `db_overview` by default. Start with a focused query that directly answers the user question.
 - Prefer aggregations and focused filters over dumping raw rows.
 - If the user asks about priority, severity, major issues, or top issues, consult `unique_cinfo_priority_map` first and treat it as the priority-definition source.
 - After identifying priority classes from `unique_cinfo_priority_map`, query the requested environment's main data source for matching `"CODE"` and prioritize higher-priority findings in the response.

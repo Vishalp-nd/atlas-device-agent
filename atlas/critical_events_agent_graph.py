@@ -98,7 +98,12 @@ def _safe_query(sql: str) -> bool:
     return not any(token in text for token in blocked)
 
 
-def _make_tools(repo_root: Path, table_name: str, postgres_section: str) -> list:
+def _make_tools(
+    repo_root: Path,
+    table_name: str,
+    postgres_section: str,
+    include_db_overview: bool = False,
+) -> list:
     skills_root = repo_root / "skills" / "cinfo-skills"
     db_config_path = repo_root / "db_credentials.ini"
 
@@ -331,7 +336,10 @@ def _make_tools(repo_root: Path, table_name: str, postgres_section: str) -> list
         logger.debug("[tool:read_skill] read %d chars from %s", len(content), skill_path)
         return content
 
-    return [db_overview, query_critical_events, query_staging_critical_events, list_skills, read_skill]
+    tools = [query_critical_events, query_staging_critical_events, list_skills, read_skill]
+    if include_db_overview:
+        tools.insert(0, db_overview)
+    return tools
 
 
 class CriticalEventsAgentState(TypedDict):
@@ -343,8 +351,9 @@ def build_critical_events_graph(
     repo_root: Path,
     table_name: str = "criticalinfo_snowflakes_data",
     postgres_section: str = "IRAVATH_DB",
+    include_db_overview: bool = False,
 ):
-    tools = _make_tools(repo_root, table_name, postgres_section)
+    tools = _make_tools(repo_root, table_name, postgres_section, include_db_overview=include_db_overview)
     llm = _get_llm().bind_tools(tools)
     tool_node = ToolNode(tools)
 
@@ -394,6 +403,7 @@ def run_critical_events_agent(
     repo_root: Path,
     table_name: str = "criticalinfo_snowflakes_data",
     postgres_section: str = "IRAVATH_DB",
+    include_db_overview: bool = False,
     history: list[BaseMessage] | None = None,
 ) -> str:
     """Run the critical-events agent and return the final answer string.
@@ -409,7 +419,12 @@ def run_critical_events_agent(
         query[:200],
     )
     logger.debug("[run] system_prompt_preview=%r", system_prompt[:300])
-    graph = build_critical_events_graph(repo_root, table_name, postgres_section)
+    graph = build_critical_events_graph(
+        repo_root,
+        table_name,
+        postgres_section,
+        include_db_overview=include_db_overview,
+    )
     initial_state: CriticalEventsAgentState = {
         "messages": [
             SystemMessage(content=system_prompt),

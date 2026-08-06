@@ -100,6 +100,23 @@ cp .env.example .env                                  # fill in keys
 cp db_credentials.ini.example db_credentials.ini      # fill in DB creds
 ```
 
+If you run Atlas in Docker and PostgreSQL on the host machine, set
+`host=host.docker.internal` for `IRAVATH_DB` and `POLL_USER_DB` in
+`db_credentials.ini`. The provided `make docker-run*` targets already add the
+required host-gateway mapping.
+
+For this machine, PostgreSQL is using:
+- `/etc/postgresql/12/main/postgresql.conf`
+- `/etc/postgresql/12/main/pg_hba.conf`
+
+To allow the container to connect, set `listen_addresses = '*'` in
+`/etc/postgresql/12/main/postgresql.conf`, add an allow rule for the Docker
+bridge/host-gateway subnet in `/etc/postgresql/12/main/pg_hba.conf`, then run:
+
+```bash
+sudo systemctl restart postgresql
+```
+
 `ANTHROPIC_API_KEY` is required for all agents. Jenkins questions additionally need
 `JENKINS_URL`, `JENKINS_USER`, `JENKINS_API_TOKEN`; critical-events questions need
 `db_credentials.ini` at the repo root.

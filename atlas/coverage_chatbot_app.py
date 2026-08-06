@@ -22,7 +22,7 @@ import requests
 import streamlit as st
 
 API_BASE_URL = os.environ.get("ATLAS_API_URL", "http://localhost:8000").rstrip("/")
-REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = 900
 
 
 def _inject_css() -> None:

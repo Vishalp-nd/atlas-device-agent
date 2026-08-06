@@ -68,7 +68,7 @@ Given the conversation history (if any) and the latest user message, classify th
 LATEST message into exactly one of these intents:
 - "coverage": asking which testcases, skills, or flows cover a feature or service
 - "jenkins": asking to build, run, trigger, or check a Jenkins job
-- "critical_events": asking about critical events data, code trends, error/info split,
+- "critical_events": usually called cinfo, crit info etc. Asking about critical events data, code trends, error/info split,
   top processes, or analytics from local critical-events database
 - "unknown": neither of the above
 
@@ -87,7 +87,7 @@ You can help with exactly three things:
 3. Critical events analytics — e.g. "top error codes for 6.15.rc.1 in last day"
 
 The user sent a message that doesn't clearly match these capabilities.
-Respond conversationally in 2-3 sentences: give one concrete example of each capability.
+Respond appropriately: give one concrete example of each capability.
 """
 
 _CRITICAL_EVENTS_SUMMARY_SYSTEM = """\

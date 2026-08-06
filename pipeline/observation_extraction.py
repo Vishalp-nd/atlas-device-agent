@@ -225,7 +225,7 @@ class DataProcessor:
     def _init_database_connections(self) -> None:
         """Initialize database connections with proper error handling"""
         try:
-            db_params = read_db_config('IRAVATH_TEST')
+            db_params = read_db_config('POLL_USER_DB')
             
             # Create SQLAlchemy engine with optimized settings
             self.db_insert_engine = create_engine(
@@ -241,7 +241,7 @@ class DataProcessor:
                 }
             )
             
-            self.local_conn_pool = db_connect_pool('IRAVATH_TEST')
+            self.local_conn_pool = db_connect_pool('POLL_USER_DB')
             self.obs_conn_pool = None
 
             # Ensure target table schema is ready before any insert path starts.

@@ -31,6 +31,7 @@ docker-build:
 docker-run:
 	docker run --rm -it \
 		--name $(IMAGE_NAME) \
+		--add-host=host.docker.internal:host-gateway \
 		-p $(PORT):8000 \
 		-v $(REPO_ROOT):/repo \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
@@ -42,6 +43,7 @@ docker-run-detached:
 	docker run -d \
 		--restart unless-stopped \
 		--name $(IMAGE_NAME) \
+		--add-host=host.docker.internal:host-gateway \
 		-p $(PORT):8000 \
 		-v $(REPO_ROOT):/repo \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
