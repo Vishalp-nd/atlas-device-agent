@@ -1,0 +1,828 @@
+Date: Fri, 7 Aug 2026 09:00:41 +0000 (UTC)
+Message-ID: <1242399295.49.1786093241221@7b6ac1668b3b>
+Subject: Exported From Confluence
+MIME-Version: 1.0
+Content-Type: multipart/related; 
+	boundary="----=_Part_48_1915471900.1786093241221"
+
+------=_Part_48_1915471900.1786093241221
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: file:///C:/exported.html
+
+<html xmlns:o=3D'urn:schemas-microsoft-com:office:office'
+      xmlns:w=3D'urn:schemas-microsoft-com:office:word'
+      xmlns:v=3D'urn:schemas-microsoft-com:vml'
+      xmlns=3D'urn:w3-org-ns:HTML'>
+<head>
+    <meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8=
+">
+    <title>Template - Test Scope</title>
+    <!--[if gte mso 9]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:TargetScreenSize>1024x640</o:TargetScreenSize>
+            <o:PixelsPerInch>72</o:PixelsPerInch>
+            <o:AllowPNG/>
+        </o:OfficeDocumentSettings>
+        <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>90</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+                <!--
+        @page Section1 {
+            size: 8.5in 11.0in;
+            margin: 1.0in;
+            mso-header-margin: .5in;
+            mso-footer-margin: .5in;
+            mso-paper-source: 0;
+        }
+
+        table {
+            border: solid 1px;
+            border-collapse: collapse;
+        }
+
+        table td, table th {
+            border: solid 1px;
+            padding: 5px;
+        }
+
+        td {
+            page-break-inside: avoid;
+        }
+
+        tr {
+            page-break-after: avoid;
+        }
+
+        div.Section1 {
+            page: Section1;
+        }
+
+        /* Confluence print stylesheet. Common to all themes for print medi=
+a */
+/* Full of !important until we improve batching for print CSS */
+
+@media print {
+    #main {
+        padding-bottom: 1em !important; /* The default padding of 6em is to=
+o much for printouts */
+    }
+
+    body {
+        font: var(--ds-font-body-small, Arial, Helvetica, FreeSans, sans-se=
+rif);
+    }
+
+    body, #full-height-container, #main, #page, #content, .has-personal-sid=
+ebar #content {
+        background: var(--ds-surface, #fff) !important;
+        color: var(--ds-text, #000) !important;
+        border: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    a, a:link, a:visited, a:focus, a:hover, a:active {
+        color: var(--ds-text, #000);
+    }
+
+    #content h1,
+    #content h2,
+    #content h3,
+    #content h4,
+    #content h5,
+    #content h6 {
+        page-break-after: avoid;
+    }
+
+    pre {
+        font: var(--ds-font-code, Monaco, "Courier New", monospace);
+    }
+
+    #header,
+    .aui-header-inner,
+    #navigation,
+    #sidebar,
+    .sidebar,
+    #personal-info-sidebar,
+    .ia-fixed-sidebar,
+    .page-actions,
+    .navmenu,
+    .ajs-menu-bar,
+    .noprint,
+    .inline-control-link,
+    .inline-control-link a,
+    a.show-labels-editor,
+    .global-comment-actions,
+    .comment-actions,
+    .quick-comment-container,
+    #addcomment {
+        display: none !important;
+    }
+
+    /* CONF-28544 cannot print multiple pages in IE */
+    #splitter-content {
+        position: relative !important;
+    }
+
+    .comment .date::before {
+        content: none !important; /* remove middot for print view */
+    }
+
+    h1.pagetitle img {
+        height: auto;
+        width: auto;
+    }
+
+    .print-only {
+        display: block;
+    }
+
+    #footer {
+        position: relative !important; /* CONF-17506 Place the footer at en=
+d of the content */
+        margin: 0;
+        padding: 0;
+        background: none;
+        clear: both;
+    }
+
+    #poweredby {
+        border-top: none;
+        background: none;
+    }
+
+    #poweredby li.print-only {
+        display: list-item;
+        font-style: italic;
+    }
+
+    #poweredby li.noprint {
+        display: none;
+    }
+
+    /* no width controls in print */
+    .wiki-content .table-wrap,
+    .wiki-content p,
+    .panel .codeContent,
+    .panel .codeContent pre,
+    .image-wrap {
+        overflow: visible !important;
+    }
+
+    /* TODO - should this work? */
+    #children-section,
+    #comments-section .comment,
+    #comments-section .comment .comment-body,
+    #comments-section .comment .comment-content,
+    #comments-section .comment p {
+        page-break-inside: avoid;
+    }
+
+    #page-children a {
+        text-decoration: none;
+    }
+
+    /**
+     hide twixies
+
+     the specificity here is a hack because print styles
+     are getting loaded before the base styles. */
+    #comments-section.pageSection .section-header,
+    #comments-section.pageSection .section-title,
+    #children-section.pageSection .section-header,
+    #children-section.pageSection .section-title,
+    .children-show-hide {
+        padding-left: 0;
+        margin-left: 0;
+    }
+
+    .children-show-hide.icon {
+        display: none;
+    }
+
+    /* personal sidebar */
+    .has-personal-sidebar #content {
+        margin-right: 0px;
+    }
+
+    .has-personal-sidebar #content .pageSection {
+        margin-right: 0px;
+    }
+
+    .no-print, .no-print * {
+        display: none !important;
+    }
+}
+-->
+    </style>
+</head>
+<body>
+    <h1>Template - Test Scope</h1>
+    <div class=3D"Section1">
+        <div class=3D"contentLayout2">
+<div class=3D"columnLayout fixed-width" data-layout=3D"fixed-width">
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<style type=3D"text/css">/*<![CDATA[*/
+div.rbtoc1786093241199 {padding: 0px;}
+div.rbtoc1786093241199 ul {list-style: none;margin-left: 0px;}
+div.rbtoc1786093241199 li {margin-left: 0px;padding-left: 0px;}
+
+/*]]>*/</style>
+<div class=3D"toc-macro rbtoc1786093241199">
+<ul class=3D"toc-indentation">
+<li><a href=3D"#Template-TestScope-Overview">Overview</a></li>
+<li><a href=3D"#Template-TestScope-PRD/JiraTickets">PRD/Jira Tickets</a></l=
+i>
+<li><a href=3D"#Template-TestScope-NewlyAdded/ModifiedConfiguration">Newly =
+Added/Modified Configuration</a></li>
+<li><a href=3D"#Template-TestScope-NewlyAdded,Modified&amp;ImpactedServices=
+">Newly Added, Modified &amp; Impacted Services</a></li>
+<li><a href=3D"#Template-TestScope-DeviceConditions(thatcanimpactAnalytics)=
+">Device Conditions (that can impact Analytics)</a></li>
+<li><a href=3D"#Template-TestScope-Scenarios(BasedonDeviceConditionTransiti=
+on)">Scenarios (Based on Device Condition Transition)</a></li>
+<li><a href=3D"#Template-TestScope-ValidationChecklist">Validation Checklis=
+t</a></li>
+<li><a href=3D"#Template-TestScope-MetricsToBeCollected">Metrics To Be Coll=
+ected</a></li>
+</ul>
+</div>
+<div class=3D"confluence-information-macro confluence-information-macro-inf=
+ormation">
+<span class=3D"aui-icon aui-icon-small aui-iconfont-info confluence-informa=
+tion-macro-icon"></span>
+<div class=3D"confluence-information-macro-body">
+<h3 id=3D"Template-TestScope-Overview">Overview</h3>
+<p>This test scope is designed to validate release level change specific . =
+The primary objective is to verify end-to-end device behavior to ensure a b=
+ug-free OTA package. The scope encompasses:</p>
+<ul>
+<li>
+<p>Changed in the release</p></li>
+</ul>
+</div>
+</div>
+<h3 id=3D"Template-TestScope-PRD/JiraTickets">PRD/Jira Tickets</h3>
+<h3 id=3D"Template-TestScope-NewlyAdded/ModifiedConfiguration">Newly Added/=
+Modified Configuration</h3>
+</div>
+</div>
+</div>
+<div class=3D"columnLayout two-equal" data-layout=3D"two-equal">
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<p>Previous Release</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: java; gutter: false; theme: Confluence" data-theme=3D"Confluence">[Existi=
+ng Config]
+</pre>
+</div>
+</div>
+</div>
+</div>
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<p>New Release</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: java; gutter: false; theme: Confluence" data-theme=3D"Confluence">[New Co=
+nfig]
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class=3D"columnLayout fixed-width" data-layout=3D"fixed-width">
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<h3 id=3D"Template-TestScope-NewlyAdded,Modified&amp;ImpactedServices">Newl=
+y Added, Modified &amp; Impacted Services</h3>
+</div>
+</div>
+</div>
+<div class=3D"columnLayout three-equal" data-layout=3D"three-equal">
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<p><strong>New Services</strong></p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: java; gutter: false; theme: Confluence" data-theme=3D"Confluence">GPS</pr=
+e>
+</div>
+</div>
+</div>
+</div>
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<p><strong>Overall Impacted Device-Side Services</strong></p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: java; gutter: false; theme: Confluence" data-theme=3D"Confluence">Ndcentr=
+al
+ScedularManager
+Inference
+AudioPlayback
+UnifiedUploader
+AWSIOT
+Scheduler
+Speed
+Circular Buffer
+HealthStatsManager</pre>
+</div>
+</div>
+<p></p>
+</div>
+</div>
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<p><strong>Analytics Services(If Applicable)</strong></p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: java; gutter: false; theme: Confluence" data-theme=3D"Confluence">Analyti=
+cs
+UnifiedAnalyticsClient
+InwardAnalyticsClient
+OutwardAnalyticsClient
+InertialAnalyticsClient
+Overspeed
+CanAnalyticsClient
+DeviceHealthClient
+DMSAnalyticsClient</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class=3D"columnLayout fixed-width" data-layout=3D"fixed-width">
+<div class=3D"cell normal" data-type=3D"normal">
+<div class=3D"innerCell">
+<h3 id=3D"Template-TestScope-DeviceConditions(thatcanimpactAnalytics)">Devi=
+ce Conditions (that can impact Analytics)</h3>
+<div class=3D"table-wrap">
+<table data-table-width=3D"760" data-layout=3D"align-start" data-local-id=
+=3D"58ec9b32-54bb-47bc-8a33-0f0ca6d45b65" class=3D"confluenceTable">
+<colgroup>
+<col style=3D"width: 60.0px;">
+<col style=3D"width: 699.0px;">
+</colgroup>
+<tbody>
+<tr>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>S No.</strong></p></th>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>Device Condition / State</strong><=
+/p></th>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>1</p></td>
+<td class=3D"confluenceTd">
+<p><strong>Power Condition</strong> (ON / OFF)</p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>1.1</p></td>
+<td class=3D"confluenceTd">
+<p><em>Ignition (ON / OFF)</em></p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>1.2</p></td>
+<td class=3D"confluenceTd">
+<p><em>Low Power Mode (LPM)</em></p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>1.3</p></td>
+<td class=3D"confluenceTd">
+<p><em>Wake-on-Motion (WOM)</em></p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>2</p></td>
+<td class=3D"confluenceTd">
+<p><strong>Speed</strong> (0, &lt; 5 mph, &gt; 5 mph)</p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>3</p></td>
+<td class=3D"confluenceTd">
+<p><strong>GPS</strong> (Valid / Invalid)</p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>4</p></td>
+<td class=3D"confluenceTd">
+<p><strong>Privacy</strong> (ON / OFF)</p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>5</p></td>
+<td class=3D"confluenceTd">
+<p><strong>Vehicle Idle State</strong> (Idle / Out of Idle)</p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>6</p></td>
+<td class=3D"confluenceTd">
+<p><strong>Network Mode</strong> (LTE Only, WiFi Only, LTE + WiFi)</p></td>
+</tr>
+<tr>
+<td class=3D"confluenceTd">
+<p>7</p></td>
+<td class=3D"confluenceTd">
+<p><strong>Network Status</strong> (Valid Network , Poor Network , No netwo=
+rk &amp; Roaming)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id=3D"Template-TestScope-Scenarios(BasedonDeviceConditionTransition)">S=
+cenarios (Based on Device Condition Transition)</h3>
+<div class=3D"table-wrap">
+<table data-table-width=3D"1050" data-layout=3D"align-start" data-local-id=
+=3D"1d43c501-e481-443d-bcbf-291bcc1ee558" class=3D"confluenceTable">
+<colgroup>
+<col>
+<col style=3D"width: 246.0px;">
+<col style=3D"width: 366.0px;">
+<col style=3D"width: 390.0px;">
+</colgroup>
+<tbody>
+<tr>
+<th class=3D"numberingColumn confluenceTh"></th>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>Device Power Condition</strong></p=
+></th>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>GPS &amp; Privacy</strong></p></th=
+>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>Drive Context</strong></p></th>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">1</td>
+<td rowspan=3D"6" class=3D"confluenceTd">
+<p>Power ON</p></td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>No Speed (Vehicle Idle)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">2</td>
+<td class=3D"confluenceTd">
+<p>Valid GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>No Speed (Vehicle Idle)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">3</td>
+<td class=3D"confluenceTd">
+<p>Valid GPS + Privacy OFF</p></td>
+<td class=3D"confluenceTd">
+<p>Speed &gt; 5 mph(Out of Idle)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">4</td>
+<td class=3D"confluenceTd">
+<p>Valid GPS + Privacy OFF</p></td>
+<td class=3D"confluenceTd">
+<p>Speed (Actual Drive) =E2=86=92 Crank OFF</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">5</td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy OFF</p></td>
+<td class=3D"confluenceTd">
+<p>Speed (Corner Case)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">6</td>
+<td class=3D"confluenceTd">
+<p>Valid GPS + Privacy OFF</p></td>
+<td class=3D"confluenceTd">
+<p>Long Drives (5+ hours)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">7</td>
+<td rowspan=3D"4" class=3D"confluenceTd">
+<p>Power OFF</p></td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>No Speed (Usual LPM case)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">8</td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy OFF</p></td>
+<td class=3D"confluenceTd">
+<p>Lab Scenario (Disable the Privacy)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">9</td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>Crank ON =E2=86=92 Speed &gt; 0</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">10</td>
+<td class=3D"confluenceTd">
+<p>Valid GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>Speed &lt; 5 mph</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">11</td>
+<td rowspan=3D"2" class=3D"confluenceTd">
+<p>Low Power Mode (Specific)</p></td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>LPM Continues</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">12</td>
+<td class=3D"confluenceTd">
+<p>No GPS + Privacy ON</p></td>
+<td class=3D"confluenceTd">
+<p>Crank ON =E2=86=92 Speed &gt; 0</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">13</td>
+<td class=3D"confluenceTd">
+<p>Multiple Crank Changes</p></td>
+<td class=3D"confluenceTd">
+<p>Switching GPS/Speed/Privacy</p></td>
+<td class=3D"confluenceTd">
+<p>Test Drive (Mix Conditions)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id=3D"Template-TestScope-ValidationChecklist"><strong>Validation Checkl=
+ist</strong></h3>
+<div class=3D"table-wrap">
+<table data-table-width=3D"1800" data-layout=3D"align-start" data-local-id=
+=3D"af313f8b-ad77-495b-b9c2-b844cffc9f54" class=3D"confluenceTable">
+<colgroup>
+<col>
+<col style=3D"width: 594.0px;">
+<col style=3D"width: 1204.0px;">
+</colgroup>
+<tbody>
+<tr>
+<th class=3D"numberingColumn confluenceTh"></th>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>Checkpoint</strong></p></th>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>Description</strong></p></th>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">1</td>
+<th class=3D"confluenceTh">
+<p>Configuration Validation</p></th>
+<td class=3D"confluenceTd">
+<p>Ensure configurations that impact analytics behavior (e.g., Post Ignitio=
+n Seconds, OverspeedV2, LPM No Record, Enhanced Privacy) are enabled and co=
+rrectly applied.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">2</td>
+<th class=3D"confluenceTh">
+<p>Session Creation</p></th>
+<td class=3D"confluenceTd">
+<p>Confirm session file creation by ndcentral, including initialization of =
+INPUT, OUTPUT, and iriscli/files folders</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">3</td>
+<th class=3D"confluenceTh">
+<p>Scheduler Checks</p></th>
+<td class=3D"confluenceTd">
+<p>Track state transitions for each session (<code>RUNNING_STATE</code>, <c=
+ode>DND_STATE</code>, <code>VISION_RUNNING_STATE</code>, <code>UPLOAD_STATE=
+</code>). Ensure each transition is logged and triggers the appropriate pro=
+cessing.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">4</td>
+<th class=3D"confluenceTh">
+<p>Frame Transfer &amp; Sync</p></th>
+<td class=3D"confluenceTd">
+<p>Validate frame transfer between <code>ndcentral</code> and analytics. En=
+sure synchronization across all camera files.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">5</td>
+<th class=3D"confluenceTh">
+<p>Real-Time (RT) Processing</p></th>
+<td class=3D"confluenceTd">
+<p>Confirm that <code>inwardAnalyticsClient</code>,<code>outwardAnalyticsCl=
+ient</code> &amp; <code>inertialAnalyticsClient</code> initiate RT processi=
+ng and run AN modules to detect alerts (e.g., Speeding, FCW, ADD).</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">6</td>
+<th class=3D"confluenceTh">
+<p>Non-Real-Time (NRT) Processing</p></th>
+<td class=3D"confluenceTd">
+<p>After RT, verify that NRT modules process frames to detect non real time=
+ alerts</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">7</td>
+<th class=3D"confluenceTh">
+<p>Analytics Session Process (Outward &amp; Inward)</p></th>
+<td class=3D"confluenceTd">
+<p>Verify session status as Fully Processed, Partially Processed, False, or=
+ Dropped (e.g., due to LPM).</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">8</td>
+<th class=3D"confluenceTh">
+<p>Inertial &amp; Vision Processing</p></th>
+<td class=3D"confluenceTd">
+<p>Confirm that inertial and vision modules process files and generate expe=
+cted outputs (<code>outward_vis_obs.obsdata</code>, <code>inward_vis_obs.ob=
+sdata</code>, <code>isummary.json</code>).</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">9</td>
+<th class=3D"confluenceTh">
+<p>Alert Detection &amp; Metadata</p></th>
+<td class=3D"confluenceTd">
+<p>Ensure event codes are detected, incab feedback is triggered and played,=
+ and metadata is present for each file.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">10</td>
+<th class=3D"confluenceTh">
+<p>Storage Checks (eMMC &amp; DB)</p></th>
+<td class=3D"confluenceTd">
+<p>Verify that all files are stored in SD card or external eMMC and that en=
+tries are added to the Circular Buffer database.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">11</td>
+<th class=3D"confluenceTh">
+<p>Upload Checks &amp; API Calls</p></th>
+<td class=3D"confluenceTd">
+<p>Validate upload behavior and API calls to IDMS for logs, observations, a=
+lert, VOD, event cards, LLA, and EA images.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">12</td>
+<th class=3D"confluenceTh">
+<p>Cleanup &amp; Delete</p></th>
+<td class=3D"confluenceTd">
+<p>Confirm deletion of input/output files after upload. Ensure the device i=
+s ready for the next session with no file pileup.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">13</td>
+<th class=3D"confluenceTh">
+<p>Observation &amp; Health Payload</p></th>
+<td class=3D"confluenceTd">
+<p>Validate Obs &amp; Health payloads for correct event codes, vision statu=
+s, incab feedback, file sizes, and other metadata.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">14</td>
+<th class=3D"confluenceTh">
+<p>IDMS Checks</p></th>
+<td class=3D"confluenceTd">
+<p>Ensure event cards are created, videos are available on IDMS, annotation=
+s are present for all alerts, and data appears in the Critical Event and Ch=
+art sections.</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">15</td>
+<th class=3D"confluenceTh">
+<p>Error Checks</p></th>
+<td class=3D"confluenceTd">
+<p>Monitor and validate analytics-related errors such as:<br>
+- Linux signal crashes<br>
+- AN services not running<br>
+- Frame delays from Bagheera<br>
+- Soft/Hard timeouts<br>
+- Drops due to slowdown<br>
+- Tracebacks</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">16</td>
+<th class=3D"confluenceTh">
+<p>System &amp; Service Checks</p></th>
+<td class=3D"confluenceTd">
+<p>Overall device stability with respect to other services or functionality=
+</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id=3D"Template-TestScope-MetricsToBeCollected">Metrics To Be Collected<=
+/h3>
+<div class=3D"table-wrap">
+<table data-table-width=3D"778" data-layout=3D"align-start" data-local-id=
+=3D"3d50a29a-970f-471e-988e-e57e40c94e5b" class=3D"confluenceTable">
+<colgroup>
+<col>
+</colgroup>
+<tbody>
+<tr>
+<th class=3D"numberingColumn confluenceTh"></th>
+<th data-highlight-colour=3D"#e6fcff" class=3D"confluenceTh">
+<p style=3D"text-align: center;"><strong>Parameter</strong></p></th>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">1</td>
+<td class=3D"confluenceTd">
+<p>Service Start Time (Impacted services)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">2</td>
+<td class=3D"confluenceTd">
+<p>Communication Setup (MSGQ Creation, ZMQ Socket)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">3</td>
+<td class=3D"confluenceTd">
+<p>Delay to Transfer Frames</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">4</td>
+<td class=3D"confluenceTd">
+<p>Outward/Inward RT Start</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">5</td>
+<td class=3D"confluenceTd">
+<p>Outward/Inward NRT Start</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">6</td>
+<td class=3D"confluenceTd">
+<p>Alert Detection</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">7</td>
+<td class=3D"confluenceTd">
+<p>Alert Upload Duration</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">8</td>
+<td class=3D"confluenceTd">
+<p>Playback Start/End(Incab Feedback)</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">9</td>
+<td class=3D"confluenceTd">
+<p>Summary.json Creation</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">10</td>
+<td class=3D"confluenceTd">
+<p>Observation File Size</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">11</td>
+<td class=3D"confluenceTd">
+<p>E2E Latency Outward/Inward</p></td>
+</tr>
+<tr>
+<td class=3D"numberingColumn confluenceTd">12</td>
+<td class=3D"confluenceTd">
+<p>Stability Metrics (CPU/GPU, Thermal, Memory, ISP &amp; Outcam)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+    </div>
+</body>
+</html>
+------=_Part_48_1915471900.1786093241221--

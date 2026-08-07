@@ -19,6 +19,15 @@ A `supervisor_graph.py` sits in front of all sub-agents: it classifies the incom
 routes it to the right sub-agent, and keeps enough conversation history to support
 natural follow-up questions.
 
+Alongside these, the **knowledge-graph agent** lives in its own `cypher/` package and is
+reached directly at `/cypher/*` rather than through the supervisor. It answers questions
+about the Neo4j graph modelling the device QA workflow — product lines, services, features,
+test flows, and the device conditions that gate them. See [cypher/README.md](cypher/README.md).
+
+| Agent | Endpoint | Answers questions about |
+|-------|----------|--------------------------|
+| `cypher` | `POST /cypher/query` | The QA knowledge graph: which flows cover a feature, what gates a flow, what applies to a SKU, how to validate it |
+
 ## Folder Structure
 
 ```
@@ -37,6 +46,16 @@ atlas-device-agent/
 │   ├── observations_agent_graph.py  #   Observations sub-agent (GPS/video-loss/query tools)
 │   ├── coverage_chatbot_core.py    #   Loads .agent.md system prompts
 │   └── coverage_chatbot_app.py     #   Streamlit UI — thin HTTP client for the API
+├── cypher/                         # Knowledge-graph agent (Neo4j), mounted at /cypher
+│   ├── router.py                   #   /cypher API: query, health, schema, overview, audit
+│   ├── agent_graph.py              #   LangGraph ReAct loop over the graph tools
+│   ├── graph_client.py             #   Neo4j driver; all queries in READ transactions
+│   ├── cypher_guard.py             #   Read-only validation of model-authored Cypher
+│   ├── graph_queries.py            #   Curated Cypher (LLM-free, unit-tested)
+│   ├── tools.py                    #   Tool wrappers + guarded run_cypher escape hatch
+│   ├── skill_resolver.py           #   Tolerant SKILL.md path resolution
+│   ├── scripts/                    #   repair_skill_paths, create_fulltext_indexes
+│   └── tests/                      #   Guard + resolver tests (pytest)
 ├── prompts/                        # System prompts (<name>.agent.md) for the sub-agents
 ├── skills/                         # Skill namespaces read by the sub-agents
 │   ├── cinfo-skills/               #   Used only by critical_events agent
@@ -181,6 +200,12 @@ The nightly poll expects the venv at `.venv/` in the repo root:
 - "Show cumulative GPS accuracy buckets for OTA 7.6.11.rc.8"
 - "Which devices have highest video loss in last day?"
 - "How many rows are missing videometadata in extracteddata?"
+
+**Knowledge graph** (`POST /cypher/query`, not routed by the supervisor)
+- "How do I validate that haptic recovers from a SIGABRT crash?"
+- "Which flows apply to a D470 device?"
+- "Which test flows need privacy mode active?"
+- "What features have no test flows modelled yet?"
 
 **Follow-ups** (same intent, context is kept automatically):
 - "Which test cases cover reboot validation?" → "Which of those run in nightly?"

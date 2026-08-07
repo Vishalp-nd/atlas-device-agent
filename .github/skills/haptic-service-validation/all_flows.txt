@@ -1,0 +1,613 @@
+{
+  name: "SIGABRT Crash Respawn",
+  flow_number: 1,
+  description: "haptic_feedback recovers from a SIGABRT (kill -6) crash; service_mon logs the respawn and the service plus its 6 dependents (dmsAnalyticsClient, audioPlayback, bagheera, cam_rec, uploader, analyticsService) report active again.",
+  flow_skill_path: ".github/skills/haptic-service-validation/sigabrt-crash/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Service Lifecycle + Control File + Permissions"]
+}
+
+{
+  name: "Service Lifecycle Control & File Permissions",
+  flow_number: 2,
+  description: "systemctl stop→inactive, restart→active, enable/disable (disable does not stop the running process), and installed file permission checks (.sh/binary -rwxr-xr-x, .service unit -rw-r--r--).",
+  flow_skill_path: ".github/skills/haptic-service-validation/service-status-lifecycle/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["SIGABRT Crash Respawn"]
+}
+
+{
+  name: "Ignition-ON Audio Health Check",
+  flow_number: 3,
+  description: "Fresh ignition-on event runs the throttled (24h) haptic health check with audio cue, motor-off GPIO read-back confirmation, and success reported to HealthStatsManager.",
+  flow_skill_path: ".github/skills/haptic-service-validation/ignition-audio-health/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Bootup / Periodic GPIO + USB Hub Health Check", "Haptic Disabled GPIO OFF Behavior", "Rapid Ignition Cycle State Machine Correctness"]
+}
+
+{
+  name: "Bootup Periodic GPIO/USB Hub Health Check",
+  flow_number: 4,
+  description: "On every boot, periodic_health_monitor runs its first check independent of ignition and confirms the USB hub is detected with no GPIO read errors.",
+  flow_skill_path: ".github/skills/haptic-service-validation/bootup-periodic-health-check/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Ignition ON Audio Health Check", "Haptic Disabled GPIO OFF Behavior", "Rapid Ignition Cycle State Machine Correctness"]
+}
+
+{
+  name: "Haptic Disabled GPIO-Off Behavior",
+  flow_number: 5,
+  description: "With [haptic_feedback] enabled=0, GPIO is held OFF at service start and the ignition-ON health check path is explicitly skipped.",
+  flow_skill_path: ".github/skills/haptic-service-validation/haptic-disabled-gpio-off/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Ignition ON Audio Health Check", "Bootup / Periodic GPIO + USB Hub Health Check", "Rapid Ignition Cycle State Machine Correctness"]
+}
+
+{
+  name: "Rapid Ignition-Cycle State Machine Correctness",
+  flow_number: 6,
+  description: "Rapid ignition on/off/on cycling must not corrupt the health-check state machine — each fresh ignition-on either runs the full check or hits a valid 24h-skip path.",
+  flow_skill_path: ".github/skills/haptic-service-validation/rapid-ignition-state-machine/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Ignition ON Audio Health Check", "Bootup / Periodic GPIO + USB Hub Health Check", "Haptic Disabled GPIO OFF Behavior"]
+}
+
+{
+  name: "Legacy GPIO Section Removed (Clean Boot)",
+  flow_number: 7,
+  description: "All legacy [GPIO] haptic keys removed and [haptic_feedback] set enabled=0 — device (octo and bagheera3 only) must boot cleanly without those keys present.",
+  flow_skill_path: ".github/skills/haptic-service-validation/legacy-gpio-clean-boot/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["hapticfeedback_enable Config Read-Back"]
+}
+
+{
+  name: "[hapticFeedback] Enable Config Read-back",
+  flow_number: 8,
+  description: "Plain config read-back confirms [hapticFeedback] enable is queryable via device.check_config_value, independent of any service restart.",
+  flow_skill_path: ".github/skills/haptic-service-validation/config-readback/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Legacy GPIO Section Removed Clean Boot"]
+}
+
+{
+  name: "Cyclic Reboot Recovery",
+  flow_number: 9,
+  description: "haptic_feedback returns to active/healthy state after a cyclic reboot cycle.",
+  flow_skill_path: ".github/skills/haptic-service-validation/cyclic-reboot-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Bagheera Kill Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Bagheera Kill Recovery",
+  flow_number: 10,
+  description: "haptic_feedback is unaffected by a bagheera process kill + restart.",
+  flow_skill_path: ".github/skills/haptic-service-validation/bagheera-kill-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "SVC Kill Recovery",
+  flow_number: 11,
+  description: "haptic_feedback is unaffected by an svc process kill + restart.",
+  flow_skill_path: ".github/skills/haptic-service-validation/svc-kill-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Cloud-Triggered AWS Reboot Recovery",
+  flow_number: 12,
+  description: "device.aws_reboot() → awsiot → power_monitor reboot round-trip; haptic_feedback active and DMS camera stream resumes after.",
+  flow_skill_path: ".github/skills/haptic-service-validation/cloud-triggered-aws-reboot-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 1,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "SVC Kill Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Camera-Crash Reboot Recovery",
+  flow_number: 13,
+  description: "haptic_feedback recovers after a camera-crash-triggered reboot.",
+  flow_skill_path: ".github/skills/haptic-service-validation/camera-crash-reboot-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Low-Power Wakeup Cycle Recovery",
+  flow_number: 14,
+  description: "haptic_feedback recovers across a full low-power-wakeup (LPW) cycle.",
+  flow_skill_path: ".github/skills/haptic-service-validation/low-power-wakeup-cycle-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Crank Shutdown Recovery",
+  flow_number: 15,
+  description: "haptic_feedback recovers across a crank-based shutdown/restart.",
+  flow_skill_path: ".github/skills/haptic-service-validation/crank-shutdown-recovery/SKILL.md",
+  automated: 1,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Power On Reset (POR) Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Power On Reset (POR) Recovery",
+  flow_number: 16,
+  description: "Confluence-tested reboot scenario (part of the 'no service crashes post all reboot scenarios' matrix) — no dedicated tests/haptic/ TC exists yet; validated manually/via confluence only.",
+  flow_skill_path: ".github/skills/haptic-service-validation/power-on-reset-recovery/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Device Stability - Long Run Stability"]
+}
+
+{
+  name: "Device Stability - Long Run Stability",
+  flow_number: 17,
+  description: "Extended long-run stability beyond the discrete reboot scenarios above. Confluence status: In Progress — no pass/fail verdict exists yet.",
+  flow_skill_path: ".github/skills/haptic-service-validation/device-stability-long-run/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Cyclic Reboot Recovery", "Bagheera Kill Recovery", "SVC Kill Recovery", "Cloud-Triggered AWS Reboot Recovery", "Camera-Crash Reboot Recovery", "Low-Power Wakeup Cycle Recovery", "Crank Shutdown Recovery", "Power On Reset (POR) Recovery"]
+}
+
+{
+  name: "ACCESSORY Table Row-Count Check",
+  flow_number: 18,
+  description: "SELECT * FROM ACCESSORY in accessory.db returns at least one row, confirming haptic hardware was paired/provisioned.",
+  flow_skill_path: ".github/skills/haptic-service-validation/accessory-table-row-count-check/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: []
+}
+
+{
+  name: "Last-Minute / Partial Session",
+  flow_number: 19,
+  description: "Session ends abruptly (e.g. reboot mid-session) — no metadata processed for the partial file, Haptic_events section must not be present.",
+  flow_skill_path: ".github/skills/haptic-service-validation/last-minute-partial-session/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Metadata Leftovers Session", "Privacy Session", "Non-Alert Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "Metadata Leftovers Session",
+  flow_number: 20,
+  description: "haptic_event section must be empty under inference data for the metadata-leftover file.",
+  flow_skill_path: ".github/skills/haptic-service-validation/metadata-leftovers-session/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Privacy Session", "Non-Alert Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "Privacy Session",
+  flow_number: 21,
+  description: "haptic_event section must be empty under inference data for the privacy file (no data upload, no haptic in privacy mode).",
+  flow_skill_path: ".github/skills/haptic-service-validation/privacy-session/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Non-Alert Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "Non-Alert Session",
+  flow_number: 22,
+  description: "Haptic remains OFF — no DMS drowsy alert/audio events in a session with no triggering event.",
+  flow_skill_path: ".github/skills/haptic-service-validation/non-alert-session/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Privacy Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "Session when Ignition LOW",
+  flow_number: 23,
+  description: "Haptic remains OFF because analytics does not run during ignition-OFF, so no DMS drowsy/audio events are produced.",
+  flow_skill_path: ".github/skills/haptic-service-validation/session-when-ignition-low/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Privacy Session", "Non-Alert Session", "Session when Device Woke Up in LPM", "First Minute Session", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "Session when Device Woke Up in LPM",
+  flow_number: 24,
+  description: "Haptic remains OFF — analytics doesn't run during low-power mode.",
+  flow_skill_path: ".github/skills/haptic-service-validation/session-device-woke-up-lpm/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Privacy Session", "Non-Alert Session", "Session when Ignition LOW", "First Minute Session", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "First Minute Session",
+  flow_number: 25,
+  description: "haptic_feedback service is up and running within 12 seconds from bootup.",
+  flow_skill_path: ".github/skills/haptic-service-validation/first-minute-session/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Privacy Session", "Non-Alert Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session with Alert", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "First Minute Session with Alert",
+  flow_number: 26,
+  description: "Edge case: a DMS drowsy alert generated in the very first session — hard to reproduce in lab/drive, monitored from field drives, Not Evaluated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/first-minute-session-with-alert/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Privacy Session", "Non-Alert Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session", "Session with Multiple Alerts Back-to-Back"]
+}
+
+{
+  name: "Session with Multiple Alerts (back-to-back)",
+  flow_number: 27,
+  description: "Edge case: back-to-back DMS drowsy alerts in one session — hard to reproduce in lab/drive, monitored from field drives, Not Evaluated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/session-multiple-alerts-back-to-back/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Last-Minute / Partial Session", "Metadata Leftovers Session", "Privacy Session", "Non-Alert Session", "Session when Ignition LOW", "Session when Device Woke Up in LPM", "First Minute Session", "First Minute Session with Alert"]
+}
+
+{
+  name: "Alert/VOD End-to-End Flow + Haptic Health Check",
+  flow_number: 28,
+  description: "Full alert-session e2e flow (shadow keep-alive, push alert, svc/ndcentral/inference/uploader verification, per-camera VOD upload) followed by haptic_feedback service health check.",
+  flow_skill_path: ".github/skills/haptic-service-validation/alert-vod-end-to-end-flow-haptic-health-check/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 1,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Alert Session (DMS Severe Drowsy) Motor Trigger",
+  flow_number: 29,
+  description: "Triggering DMS severe drowsy (401.1.5.0.20 / published 401.1.5.1.0) activates the haptic motor; confirmed via dmsanalytics.log and alert_publisher latency log. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/alert-session-dms-severe-drowsy-motor-trigger/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Incab Feedback Validation",
+  flow_number: 30,
+  description: "Both severe drowsy (401.1.5.1.0) and moderate drowsy (401.1.5.1.1) event codes trigger haptic feedback.",
+  flow_skill_path: ".github/skills/haptic-service-validation/incab-feedback-validation/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Privacy Session (No Upload, No Haptic)",
+  flow_number: 31,
+  description: "No data upload and no haptic when device is in privacy mode. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/privacy-session-no-upload-no-haptic/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Analytics Session Processing (E2E)",
+  flow_number: 32,
+  description: "Inward, outward, and DMS sessions are all processed and alert-session data correctly attributed per camera. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/analytics-session-processing-e2e/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Post Ignition Analytics Seconds",
+  flow_number: 33,
+  description: "Haptic behavior during the post-ignition analytics window follows the post_ignition_analytics_seconds config value. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/post-ignition-analytics-seconds/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Haptic When Inward Camera Disabled",
+  flow_number: 34,
+  description: "No DMS alerts triggered (inward camera disabled from cloud) → no haptic. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/haptic-when-inward-camera-disabled/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Alert Behavior When DMS Disabled",
+  flow_number: 35,
+  description: "No haptic or audio alert triggered when DMS is disabled. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/alert-behavior-dms-disabled/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Audio Fallback When Haptic Motor Disconnected",
+  flow_number: 36,
+  description: "Expected: audio alert should be used when the haptic actuator is disconnected. FAIL — audio fallback did not occur correctly (unresolved, known issue).",
+  flow_skill_path: ".github/skills/haptic-service-validation/audio-fallback-haptic-motor-disconnected/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Both Alert Channels (Audio + Haptic) Unavailable",
+  flow_number: 37,
+  description: "No DMS/haptic alerts triggered when both channels are unavailable. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/both-alert-channels-unavailable/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "DMS Camera Manual Disconnect/Reconnect",
+  flow_number: 38,
+  description: "Haptic alerts correctly triggered/not-triggered across a manual DMS camera disconnect+reconnect cycle. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/dms-camera-manual-disconnect-reconnect/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Haptic Motor Disconnection During a Drive",
+  flow_number: 39,
+  description: "Motor disconnection/reconnection during an active drive is not handled correctly in metadata. FAIL — BGR3-1394 (unresolved, known issue).",
+  flow_skill_path: ".github/skills/haptic-service-validation/haptic-motor-disconnection-during-drive/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Back-to-Back Alert Generation",
+  flow_number: 40,
+  description: "Multiple alerts for the same event type (severe + moderate drowsy) back-to-back — difficult to reproduce in lab/drive. Not Evaluated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/back-to-back-alert-generation/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Supercap Events During an Active Haptic Trigger",
+  flow_number: 41,
+  description: "Supercap events must NOT be received by the device while a haptic alert is triggering. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/supercap-events-active-haptic-trigger/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Haptic Service Restart During an Active Trigger",
+  flow_number: 42,
+  description: "Restarting haptic_feedback mid-trigger (including multiple restarts) is handled correctly — a queued haptic trigger message is still received once the service restarts. PASS.",
+  flow_skill_path: ".github/skills/haptic-service-validation/haptic-service-restart-active-trigger/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "GPIO Disconnection During an Active Haptic Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "GPIO Disconnection During an Active Haptic Trigger",
+  flow_number: 43,
+  description: "Disconnecting the GPIO pin while the motor is triggering, or restarting the service mid-trigger, correctly stops the motor in both cases. PASS — tracked under BGR3-1394.",
+  flow_skill_path: ".github/skills/haptic-service-validation/gpio-disconnection-active-haptic-trigger/SKILL.md",
+  automated: 0,
+  flow_type: "negative",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "Observation Payload Includes Haptic Status"]
+}
+
+{
+  name: "Observation Payload Includes Haptic Status",
+  flow_number: 44,
+  description: "The observation/metadata report should include haptic status. FAIL — AN-28689, not currently included (unresolved, known issue).",
+  flow_skill_path: ".github/skills/haptic-service-validation/observation-payload-haptic-status/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Alert/VOD End-to-End Flow + Haptic Health Check", "Alert Session (DMS Severe Drowsy) Motor Trigger", "Incab Feedback Validation", "Privacy Session (No Upload, No Haptic)", "Analytics Session Processing (E2E)", "Post Ignition Analytics Seconds", "Haptic When Inward Camera Disabled", "Alert Behavior When DMS Disabled", "Audio Fallback When Haptic Motor Disconnected", "Both Alert Channels (Audio + Haptic) Unavailable", "DMS Camera Manual Disconnect/Reconnect", "Haptic Motor Disconnection During a Drive", "Back-to-Back Alert Generation", "Supercap Events During an Active Haptic Trigger", "Haptic Service Restart During an Active Trigger", "GPIO Disconnection During an Active Haptic Trigger"]
+}
+
+{
+  name: "Inward Livestream Haptic Health Check",
+  flow_number: 45,
+  description: "Cloud-triggered inward AWS livestream; cam_rec starts kinesis_req_cam_id=1 and haptic_feedback remains active/ready throughout.",
+  flow_skill_path: ".github/skills/haptic-service-validation/inward-livestream-haptic-health-check/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 1,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Outward Livestream Haptic Health Check", "Dual Livestream Haptic Health Check"]
+}
+
+{
+  name: "Outward Livestream Haptic Health Check",
+  flow_number: 46,
+  description: "Cloud-triggered outward AWS livestream; cam_rec starts kinesis_req_cam_id=0 and haptic_feedback remains active/ready throughout.",
+  flow_skill_path: ".github/skills/haptic-service-validation/outward-livestream-haptic-health-check/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 1,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Inward Livestream Haptic Health Check", "Dual Livestream Haptic Health Check"]
+}
+
+{
+  name: "Dual Livestream Haptic Health Check",
+  flow_number: 47,
+  description: "Cloud-triggered dual (inward+outward) AWS livestream; cam_rec starts both kinesis_req_cam_id streams and haptic_feedback remains active/ready under concurrent camera load.",
+  flow_skill_path: ".github/skills/haptic-service-validation/dual-livestream-haptic-health-check/SKILL.md",
+  automated: 1,
+  flow_type: "positive",
+  is_cloud_dependent: 1,
+  is_analytics_dependent: 0,
+  dependent_flows: ["Inward Livestream Haptic Health Check", "Outward Livestream Haptic Health Check"]
+}
+
+{
+  name: "Logging Operations",
+  flow_number: 48,
+  description: "haptic_feedback log lifecycle: creation on start/stop/restart, error logging on failure, size/time-based rotation, upload (incl. under network failure), and deletion (retention policy + manual). Not yet automated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/logging-operations/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 1,
+  is_analytics_dependent: 0,
+  dependent_flows: []
+}
+
+{
+  name: "API Calls & Audio Trigger Processing",
+  flow_number: 49,
+  description: "API-level validation (valid/invalid-payload/unauthorized calls, service-stopped calls — not evaluated) and DMS-drowsy-alert-driven audio trigger message processing (valid/unsupported-format/corrupted audio files) into the haptic motor. Not yet automated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/api-audio-trigger-processing/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: []
+}
+
+{
+  name: "Health Stats Payload",
+  flow_number: 50,
+  description: "haptic_feedback HealthStatsManager JSON payload: format validation, process info when enabled/disabled, memory usage (normal + leak test), CPU usage during an alert trigger, and missing-fields negative case (AN-28689). Not yet automated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/health-stats-payload/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 0,
+  dependent_flows: []
+}
+
+{
+  name: "Haptic Accessory Detection",
+  flow_number: 51,
+  description: "System detects the haptic motor as a connected accessory at boot, keeps it OFF except during DMS drowsy alerts, turns it ON upon drowsy-alert detection, and vibration-ON duration is measured. FAIL — no motor-detection logging exists (AN-28721). Not yet automated.",
+  flow_skill_path: ".github/skills/haptic-service-validation/accessory-detection/SKILL.md",
+  automated: 0,
+  flow_type: "positive",
+  is_cloud_dependent: 0,
+  is_analytics_dependent: 1,
+  dependent_flows: []
+}
+
+

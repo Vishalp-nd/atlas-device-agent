@@ -17,6 +17,12 @@ requests>=2.31.0
 # Jenkins sub-agent
 python-jenkins>=1.8.0
 
+# Knowledge-graph agent (cypher/)
+neo4j>=5.26.0
+
+# Observability
+logfire[system-metrics,fastapi]>=3.0.0
+
 # Critical-events sub-agent + pipeline/ (Postgres, Snowflake staging, SVM classifier)
 psycopg2-binary>=2.9.9
 snowflake-connector-python>=3.12.0
