@@ -4,13 +4,43 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlparse
 
 import requests
 import streamlit as st
+from dotenv import load_dotenv
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ENV_PATH = _REPO_ROOT / ".env"
+if _ENV_PATH.exists():
+    # override=False so real env vars (container, CI) beat the file — same as atlas/config elsewhere.
+    load_dotenv(str(_ENV_PATH), override=False)
 
 API_BASE_URL = os.environ.get("ATLAS_API_URL", "http://172.16.18.142:8501").rstrip("/")
 REQUEST_TIMEOUT = 900
+
+
+def _neo4j_browser_url() -> str:
+    """Build a Neo4j Browser link that pre-fills the connection form from NEO4J_* env vars.
+
+    Falls back to a plain (non-auto-connecting) Browser URL if NEO4J_URI is unset.
+    """
+    uri = os.environ.get("NEO4J_URI", "").strip()
+    default = "http://172.16.18.142:7474/browser/"
+    if not uri:
+        return default
+    parsed = urlparse(uri)
+    host = parsed.hostname
+    if not host:
+        return default
+    port = parsed.port or 7687
+    user = os.environ.get("NEO4J_USERNAME", "").strip()
+    password = os.environ.get("NEO4J_PASSWORD", "").strip()
+    creds = f"{quote(user, safe='')}:{quote(password, safe='')}@" if user and password else ""
+    connect_url = f"bolt://{creds}{host}:{port}"
+    return f"http://{host}:7474/browser/?connectURL={quote(connect_url, safe='')}"
 
 
 def _normalize_download_links(text: str) -> str:
@@ -72,7 +102,9 @@ def _inject_css() -> None:
         }
 
         [data-testid="stMainBlockContainer"] {
-            padding-top: 1.75rem !important;
+            /* Streamlit's fixed top toolbar overlaps the first hero card unless
+               the main content container is pushed below it. */
+            padding-top: 4.75rem !important;
         }
 
         [data-testid="stSidebar"] {
@@ -295,6 +327,40 @@ def _inject_css() -> None:
             font-size: clamp(1.35rem, 2.6vw, 2rem);
         }
 
+        .hero-title-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .hero-title-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.32rem 0.72rem;
+            border-radius: 999px;
+            border: 1px solid rgba(126, 232, 170, 0.95);
+            background: rgba(240, 255, 246, 0.95);
+            color: #007a3d !important;
+            text-decoration: none !important;
+            font-size: 0.82rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .hero-title-link::after {
+            content: "↗";
+            font-size: 0.92rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .hero-title-link:hover {
+            border-color: rgba(46, 207, 122, 0.95);
+            box-shadow: 0 8px 18px rgba(0, 166, 81, 0.12);
+        }
+
         .hero p {
             margin: 0.45rem 0 0;
             color: var(--muted);
@@ -507,20 +573,26 @@ def _append_message(page_key: str, role: str, content: str) -> None:
     messages.append({"role": role, "content": content})
 
 
-def _render_header(title: str, subtitle: str, chips: list[str]) -> None:
+def _render_header(title: str, subtitle: str, chips: list[str], title_link: tuple[str, str] | None = None) -> None:
     chip_html = "\n".join(f"<span class=\"chip\">{chip}</span>" for chip in chips)
-    st.markdown(
-        f"""
-        <section class="hero">
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-          <div class="chip-row">
-            {chip_html}
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    title_link_html = ""
+    if title_link:
+        label, href = title_link
+        title_link_html = f'<a class="hero-title-link" href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>'
+
+    hero_html = (
+        '<section class="hero">'
+        '<div class="hero-title-row">'
+        f'<h1>{title}</h1>'
+        f'{title_link_html}'
+        '</div>'
+        f'<p>{subtitle}</p>'
+        '<div class="chip-row">'
+        f'{chip_html}'
+        '</div>'
+        '</section>'
     )
+    st.markdown(hero_html, unsafe_allow_html=True)
 
 
 def _render_messages(page_key: str) -> None:
@@ -688,6 +760,7 @@ def render_cypher_page() -> None:
         "Cypher: Knowledge Graph",
         "Ask knowledge-graph questions over the Neo4j-backed Cypher agent.",
         ["source: Neo4j knowledge graph"],
+        title_link=("Open Neo4j Knowledge Graph", _neo4j_browser_url()),
     )
     _render_backend_warning(page_key, "Cypher")
     st.markdown("### Ask me anything")
