@@ -325,105 +325,47 @@ def _make_tools(
         expected_samples_per_file: int = 60,
         start_dt: str = "",
         end_dt: str = "",
+        fleet_level: bool = True,
+        device_level: bool = False,
+        ota_level: bool = False,
+        max_groups: int = 200,
     ) -> str:
         """Return GPS quality KPIs (loss %, accuracy buckets, avg accuracy).
 
         Time window: provide start_dt/end_dt (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) for an
         explicit range, or hours (default 24) for a rolling window from now.
         Filter by device_id or ota to narrow results.
+
+        Level switches:
+        - fleet_level: aggregate all filtered rows into one fleet summary
+        - device_level: aggregate per device_id (top max_groups by file_count)
+        - ota_level: aggregate per ota (top max_groups by file_count)
+                - max_groups: max rows returned in JSON for device/ota levels (capped at 200).
+                    CSV exports still include all rows for the filtered data.
+
+        Any combination of level switches is supported.
         """
-        logger.info("[tool:gps_kpi_summary] called — hours=%d start_dt=%r end_dt=%r", hours, start_dt, end_dt)
+        logger.info(
+            "[tool:gps_kpi_summary] called — hours=%d start_dt=%r end_dt=%r fleet=%s device=%s ota=%s",
+            hours,
+            start_dt,
+            end_dt,
+            fleet_level,
+            device_level,
+            ota_level,
+        )
         try:
             safe_expected = max(1, min(expected_samples_per_file, 600))
+            safe_groups = max(1, min(max_groups, 200))
+            if not (fleet_level or device_level or ota_level):
+                fleet_level = True
+
             where_sql, params = _build_filter_clause(
                 hours=hours, device_id=device_id, ota=ota, start_dt=start_dt, end_dt=end_dt
             )
 
             conn = _connect_ro()
             cur = conn.cursor()
-            cur.execute(
-                f"""
-                WITH filtered AS (
-                    SELECT *
-                    FROM {table_ident}
-                    WHERE {where_sql}
-                ),
-                base AS (
-                    SELECT
-                        COUNT(*) AS file_count,
-                        MIN(start_time) AS min_start_time,
-                        MAX(start_time) AS max_start_time,
-                        COUNT(*) FILTER (
-                            WHERE jsonb_typeof(videometadata) = 'array'
-                            AND jsonb_array_length(videometadata) > 0
-                        ) AS files_with_videometadata
-                    FROM filtered
-                ),
-                samples AS (
-                    SELECT
-                        CASE
-                            WHEN COALESCE(
-                                elem->>'accuracy',
-                                elem->>'gpsAccuracy',
-                                elem->>'gps_accuracy'
-                            ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                                THEN COALESCE(
-                                    elem->>'accuracy',
-                                    elem->>'gpsAccuracy',
-                                    elem->>'gps_accuracy'
-                                )::double precision
-                            ELSE NULL
-                        END AS acc
-                    FROM filtered f
-                    CROSS JOIN LATERAL jsonb_array_elements(
-                        CASE
-                            WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
-                            ELSE '[]'::jsonb
-                        END
-                    ) AS elem
-                ),
-                agg AS (
-                    SELECT
-                        COUNT(*) AS parsed_sample_rows,
-                        COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
-                        COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
-                        COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
-                        COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
-                        COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
-                        COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
-                        COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
-                        AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
-                    FROM samples
-                )
-                SELECT
-                    b.file_count,
-                    b.files_with_videometadata,
-                    b.min_start_time,
-                    b.max_start_time,
-                    a.parsed_sample_rows,
-                    a.valid_accuracy_count,
-                    a.invalid_accuracy_in_samples,
-                    a.le_2m,
-                    a.le_3_5m,
-                    a.le_6m,
-                    a.le_10m,
-                    a.gt_10m,
-                    a.avg_accuracy_m,
-                    (b.file_count * %s)::bigint AS expected_accuracy_count,
-                    GREATEST((b.file_count * %s)::bigint - a.valid_accuracy_count, 0)::bigint AS invalid_or_missing_accuracy_count,
-                    CASE
-                        WHEN (b.file_count * %s) > 0
-                        THEN (GREATEST((b.file_count * %s)::bigint - a.valid_accuracy_count, 0) * 100.0) / (b.file_count * %s)
-                        ELSE NULL
-                    END AS gps_loss_percent
-                FROM base b
-                CROSS JOIN agg a
-                """,
-                [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
-            )
-            row = cur.fetchone()
-            conn.close()
-
             payload = {
                 "table_name": table_name,
                 "postgres_section": postgres_section,
@@ -432,49 +374,494 @@ def _make_tools(
                     "device_id": device_id.strip() or None,
                     "ota": ota.strip() or None,
                 },
-                "time_range": {
+                "expected_samples_per_file": safe_expected,
+                "levels_requested": {
+                    "fleet_level": fleet_level,
+                    "device_level": device_level,
+                    "ota_level": ota_level,
+                },
+                "max_groups": safe_groups,
+                "coverage_notes": [
+                    "gps_loss_percent uses (invalid_or_missing_accuracy_count * 100) / expected_accuracy_count",
+                    "expected_accuracy_count defaults to file_count * expected_samples_per_file",
+                    "device_level/ota_level JSON rows are capped by max_groups (<=200); CSV contains all matching rows",
+                ],
+            }
+
+            if fleet_level:
+                cur.execute(
+                    f"""
+                    WITH filtered AS (
+                        SELECT *
+                        FROM {table_ident}
+                        WHERE {where_sql}
+                    ),
+                    base AS (
+                        SELECT
+                            COUNT(*) AS file_count,
+                            MIN(start_time) AS min_start_time,
+                            MAX(start_time) AS max_start_time,
+                            COUNT(*) FILTER (
+                                WHERE jsonb_typeof(videometadata) = 'array'
+                                AND jsonb_array_length(videometadata) > 0
+                            ) AS files_with_videometadata
+                        FROM filtered
+                    ),
+                    samples AS (
+                        SELECT
+                            CASE
+                                WHEN COALESCE(
+                                    elem->>'accuracy',
+                                    elem->>'gpsAccuracy',
+                                    elem->>'gps_accuracy'
+                                ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                                    THEN COALESCE(
+                                        elem->>'accuracy',
+                                        elem->>'gpsAccuracy',
+                                        elem->>'gps_accuracy'
+                                    )::double precision
+                                ELSE NULL
+                            END AS acc
+                        FROM filtered f
+                        CROSS JOIN LATERAL jsonb_array_elements(
+                            CASE
+                                WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS elem
+                    ),
+                    agg AS (
+                        SELECT
+                            COUNT(*) AS parsed_sample_rows,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
+                            COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
+                            AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
+                        FROM samples
+                    )
+                    SELECT
+                        b.file_count,
+                        b.files_with_videometadata,
+                        b.min_start_time,
+                        b.max_start_time,
+                        COALESCE(a.parsed_sample_rows, 0) AS parsed_sample_rows,
+                        COALESCE(a.valid_accuracy_count, 0) AS valid_accuracy_count,
+                        COALESCE(a.invalid_accuracy_in_samples, 0) AS invalid_accuracy_in_samples,
+                        COALESCE(a.le_2m, 0) AS le_2m,
+                        COALESCE(a.le_3_5m, 0) AS le_3_5m,
+                        COALESCE(a.le_6m, 0) AS le_6m,
+                        COALESCE(a.le_10m, 0) AS le_10m,
+                        COALESCE(a.gt_10m, 0) AS gt_10m,
+                        a.avg_accuracy_m,
+                        (b.file_count * %s)::bigint AS expected_accuracy_count,
+                        GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0)::bigint AS invalid_or_missing_accuracy_count,
+                        CASE
+                            WHEN (b.file_count * %s) > 0
+                            THEN (GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0) * 100.0) / (b.file_count * %s)
+                            ELSE NULL
+                        END AS gps_loss_percent
+                    FROM base b
+                    CROSS JOIN agg a
+                    """,
+                    [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
+                )
+                row = cur.fetchone()
+
+                payload["time_range"] = {
                     "min": row[2].isoformat() if row[2] else None,
                     "max": row[3].isoformat() if row[3] else None,
-                },
-                "file_count": row[0],
-                "files_with_videometadata": row[1],
-                "expected_samples_per_file": safe_expected,
-                "expected_accuracy_count": row[13],
-                "parsed_sample_rows": row[4],
-                "valid_accuracy_count": row[5],
-                "invalid_accuracy_in_samples": row[6],
-                "invalid_or_missing_accuracy_count": row[14],
-                "gps_loss_percent": float(row[15]) if row[15] is not None else None,
-                "accuracy_buckets_cumulative": {
+                }
+                payload["file_count"] = row[0]
+                payload["files_with_videometadata"] = row[1]
+                payload["expected_accuracy_count"] = row[13]
+                payload["parsed_sample_rows"] = row[4]
+                payload["valid_accuracy_count"] = row[5]
+                payload["invalid_accuracy_in_samples"] = row[6]
+                payload["invalid_or_missing_accuracy_count"] = row[14]
+                payload["gps_loss_percent"] = float(row[15]) if row[15] is not None else None
+                payload["accuracy_buckets_cumulative"] = {
                     "le_2m": row[7],
                     "le_3_5m": row[8],
                     "le_6m": row[9],
                     "le_10m": row[10],
                     "gt_10m": row[11],
-                },
-                "avg_accuracy_m": float(row[12]) if row[12] is not None else None,
-                "coverage_notes": [
-                    "gps_loss_percent uses (invalid_or_missing_accuracy_count * 100) / expected_accuracy_count",
-                    "expected_accuracy_count defaults to file_count * expected_samples_per_file",
-                ],
-            }
-            csv_cols = ["file_count", "files_with_videometadata", "expected_accuracy_count",
-                        "valid_accuracy_count", "invalid_or_missing_accuracy_count",
-                        "gps_loss_percent", "avg_accuracy_m",
-                        "le_2m", "le_3_5m", "le_6m", "le_10m", "gt_10m"]
-            csv_row = [payload["file_count"], payload["files_with_videometadata"],
-                       payload["expected_accuracy_count"], payload["valid_accuracy_count"],
-                       payload["invalid_or_missing_accuracy_count"], payload["gps_loss_percent"],
-                       payload["avg_accuracy_m"],
-                       payload["accuracy_buckets_cumulative"]["le_2m"],
-                       payload["accuracy_buckets_cumulative"]["le_3_5m"],
-                       payload["accuracy_buckets_cumulative"]["le_6m"],
-                       payload["accuracy_buckets_cumulative"]["le_10m"],
-                       payload["accuracy_buckets_cumulative"]["gt_10m"]]
-            csv_bytes = rows_to_csv_bytes(csv_cols, [csv_row])
-            rid = result_store.put(csv_bytes, "gps_kpi_summary.csv")
-            _collect_download(rid, "gps_kpi_summary.csv")
-            payload["_download_id"] = rid
+                }
+                payload["avg_accuracy_m"] = float(row[12]) if row[12] is not None else None
+
+                csv_cols = [
+                    "file_count",
+                    "files_with_videometadata",
+                    "expected_accuracy_count",
+                    "valid_accuracy_count",
+                    "invalid_or_missing_accuracy_count",
+                    "gps_loss_percent",
+                    "avg_accuracy_m",
+                    "le_2m",
+                    "le_3_5m",
+                    "le_6m",
+                    "le_10m",
+                    "gt_10m",
+                ]
+                csv_row = [
+                    payload["file_count"],
+                    payload["files_with_videometadata"],
+                    payload["expected_accuracy_count"],
+                    payload["valid_accuracy_count"],
+                    payload["invalid_or_missing_accuracy_count"],
+                    payload["gps_loss_percent"],
+                    payload["avg_accuracy_m"],
+                    payload["accuracy_buckets_cumulative"]["le_2m"],
+                    payload["accuracy_buckets_cumulative"]["le_3_5m"],
+                    payload["accuracy_buckets_cumulative"]["le_6m"],
+                    payload["accuracy_buckets_cumulative"]["le_10m"],
+                    payload["accuracy_buckets_cumulative"]["gt_10m"],
+                ]
+                csv_bytes = rows_to_csv_bytes(csv_cols, [csv_row])
+                rid = result_store.put(csv_bytes, "gps_kpi_summary.csv")
+                _collect_download(rid, "gps_kpi_summary.csv")
+                payload["_download_id"] = rid
+
+            if device_level:
+                cur.execute(
+                    f"""
+                    WITH filtered AS (
+                        SELECT *
+                        FROM {table_ident}
+                        WHERE {where_sql}
+                    ),
+                    base AS (
+                        SELECT
+                            device_id,
+                            COUNT(*) AS file_count,
+                            MIN(start_time) AS min_start_time,
+                            MAX(start_time) AS max_start_time,
+                            COUNT(*) FILTER (
+                                WHERE jsonb_typeof(videometadata) = 'array'
+                                AND jsonb_array_length(videometadata) > 0
+                            ) AS files_with_videometadata
+                        FROM filtered
+                        WHERE device_id IS NOT NULL AND device_id <> ''
+                        GROUP BY device_id
+                    ),
+                    samples AS (
+                        SELECT
+                            f.device_id,
+                            CASE
+                                WHEN COALESCE(
+                                    elem->>'accuracy',
+                                    elem->>'gpsAccuracy',
+                                    elem->>'gps_accuracy'
+                                ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                                    THEN COALESCE(
+                                        elem->>'accuracy',
+                                        elem->>'gpsAccuracy',
+                                        elem->>'gps_accuracy'
+                                    )::double precision
+                                ELSE NULL
+                            END AS acc
+                        FROM filtered f
+                        CROSS JOIN LATERAL jsonb_array_elements(
+                            CASE
+                                WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS elem
+                        WHERE f.device_id IS NOT NULL AND f.device_id <> ''
+                    ),
+                    agg AS (
+                        SELECT
+                            device_id,
+                            COUNT(*) AS parsed_sample_rows,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
+                            COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
+                            AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
+                        FROM samples
+                        GROUP BY device_id
+                    )
+                    SELECT
+                        b.device_id,
+                        b.file_count,
+                        b.files_with_videometadata,
+                        b.min_start_time,
+                        b.max_start_time,
+                        COALESCE(a.parsed_sample_rows, 0) AS parsed_sample_rows,
+                        COALESCE(a.valid_accuracy_count, 0) AS valid_accuracy_count,
+                        COALESCE(a.invalid_accuracy_in_samples, 0) AS invalid_accuracy_in_samples,
+                        COALESCE(a.le_2m, 0) AS le_2m,
+                        COALESCE(a.le_3_5m, 0) AS le_3_5m,
+                        COALESCE(a.le_6m, 0) AS le_6m,
+                        COALESCE(a.le_10m, 0) AS le_10m,
+                        COALESCE(a.gt_10m, 0) AS gt_10m,
+                        a.avg_accuracy_m,
+                        (b.file_count * %s)::bigint AS expected_accuracy_count,
+                        GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0)::bigint AS invalid_or_missing_accuracy_count,
+                        CASE
+                            WHEN (b.file_count * %s) > 0
+                            THEN (GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0) * 100.0) / (b.file_count * %s)
+                            ELSE NULL
+                        END AS gps_loss_percent
+                    FROM base b
+                    LEFT JOIN agg a ON a.device_id = b.device_id
+                    ORDER BY b.file_count DESC, b.device_id
+                    """,
+                    [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
+                )
+                device_rows = cur.fetchall()
+                llm_device_rows = device_rows[:safe_groups]
+
+                device_payload = []
+                for r in llm_device_rows:
+                    device_payload.append(
+                        {
+                            "device_id": r[0],
+                            "file_count": r[1],
+                            "files_with_videometadata": r[2],
+                            "time_range": {
+                                "min": r[3].isoformat() if r[3] else None,
+                                "max": r[4].isoformat() if r[4] else None,
+                            },
+                            "parsed_sample_rows": r[5],
+                            "valid_accuracy_count": r[6],
+                            "invalid_accuracy_in_samples": r[7],
+                            "expected_accuracy_count": r[14],
+                            "invalid_or_missing_accuracy_count": r[15],
+                            "gps_loss_percent": float(r[16]) if r[16] is not None else None,
+                            "accuracy_buckets_cumulative": {
+                                "le_2m": r[8],
+                                "le_3_5m": r[9],
+                                "le_6m": r[10],
+                                "le_10m": r[11],
+                                "gt_10m": r[12],
+                            },
+                            "avg_accuracy_m": float(r[13]) if r[13] is not None else None,
+                        }
+                    )
+
+                payload["device_level"] = {
+                    "total_groups": len(device_rows),
+                    "returned_groups": len(device_payload),
+                    "truncated_for_llm": len(device_rows) > len(device_payload),
+                    "rows": device_payload,
+                }
+
+                device_cols = [
+                    "device_id",
+                    "file_count",
+                    "files_with_videometadata",
+                    "min_start_time",
+                    "max_start_time",
+                    "expected_accuracy_count",
+                    "valid_accuracy_count",
+                    "invalid_or_missing_accuracy_count",
+                    "gps_loss_percent",
+                    "avg_accuracy_m",
+                    "le_2m",
+                    "le_3_5m",
+                    "le_6m",
+                    "le_10m",
+                    "gt_10m",
+                ]
+                device_csv_rows = [
+                    (
+                        r[0],
+                        r[1],
+                        r[2],
+                        r[3],
+                        r[4],
+                        r[14],
+                        r[6],
+                        r[15],
+                        float(r[16]) if r[16] is not None else None,
+                        float(r[13]) if r[13] is not None else None,
+                        r[8],
+                        r[9],
+                        r[10],
+                        r[11],
+                        r[12],
+                    )
+                    for r in device_rows
+                ]
+                rid = result_store.put(rows_to_csv_bytes(device_cols, device_csv_rows), "gps_kpi_by_device.csv")
+                _collect_download(rid, "gps_kpi_by_device.csv")
+
+            if ota_level:
+                cur.execute(
+                    f"""
+                    WITH filtered AS (
+                        SELECT *
+                        FROM {table_ident}
+                        WHERE {where_sql}
+                    ),
+                    base AS (
+                        SELECT
+                            ota,
+                            COUNT(*) AS file_count,
+                            MIN(start_time) AS min_start_time,
+                            MAX(start_time) AS max_start_time,
+                            COUNT(*) FILTER (
+                                WHERE jsonb_typeof(videometadata) = 'array'
+                                AND jsonb_array_length(videometadata) > 0
+                            ) AS files_with_videometadata
+                        FROM filtered
+                        WHERE ota IS NOT NULL AND ota <> ''
+                        GROUP BY ota
+                    ),
+                    samples AS (
+                        SELECT
+                            f.ota,
+                            CASE
+                                WHEN COALESCE(
+                                    elem->>'accuracy',
+                                    elem->>'gpsAccuracy',
+                                    elem->>'gps_accuracy'
+                                ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                                    THEN COALESCE(
+                                        elem->>'accuracy',
+                                        elem->>'gpsAccuracy',
+                                        elem->>'gps_accuracy'
+                                    )::double precision
+                                ELSE NULL
+                            END AS acc
+                        FROM filtered f
+                        CROSS JOIN LATERAL jsonb_array_elements(
+                            CASE
+                                WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
+                                ELSE '[]'::jsonb
+                            END
+                        ) AS elem
+                        WHERE f.ota IS NOT NULL AND f.ota <> ''
+                    ),
+                    agg AS (
+                        SELECT
+                            ota,
+                            COUNT(*) AS parsed_sample_rows,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
+                            COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
+                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
+                            AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
+                        FROM samples
+                        GROUP BY ota
+                    )
+                    SELECT
+                        b.ota,
+                        b.file_count,
+                        b.files_with_videometadata,
+                        b.min_start_time,
+                        b.max_start_time,
+                        COALESCE(a.parsed_sample_rows, 0) AS parsed_sample_rows,
+                        COALESCE(a.valid_accuracy_count, 0) AS valid_accuracy_count,
+                        COALESCE(a.invalid_accuracy_in_samples, 0) AS invalid_accuracy_in_samples,
+                        COALESCE(a.le_2m, 0) AS le_2m,
+                        COALESCE(a.le_3_5m, 0) AS le_3_5m,
+                        COALESCE(a.le_6m, 0) AS le_6m,
+                        COALESCE(a.le_10m, 0) AS le_10m,
+                        COALESCE(a.gt_10m, 0) AS gt_10m,
+                        a.avg_accuracy_m,
+                        (b.file_count * %s)::bigint AS expected_accuracy_count,
+                        GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0)::bigint AS invalid_or_missing_accuracy_count,
+                        CASE
+                            WHEN (b.file_count * %s) > 0
+                            THEN (GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0) * 100.0) / (b.file_count * %s)
+                            ELSE NULL
+                        END AS gps_loss_percent
+                    FROM base b
+                    LEFT JOIN agg a ON a.ota = b.ota
+                    ORDER BY b.file_count DESC, b.ota
+                    """,
+                    [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
+                )
+                ota_rows = cur.fetchall()
+                llm_ota_rows = ota_rows[:safe_groups]
+
+                ota_payload = []
+                for r in llm_ota_rows:
+                    ota_payload.append(
+                        {
+                            "ota": r[0],
+                            "file_count": r[1],
+                            "files_with_videometadata": r[2],
+                            "time_range": {
+                                "min": r[3].isoformat() if r[3] else None,
+                                "max": r[4].isoformat() if r[4] else None,
+                            },
+                            "parsed_sample_rows": r[5],
+                            "valid_accuracy_count": r[6],
+                            "invalid_accuracy_in_samples": r[7],
+                            "expected_accuracy_count": r[14],
+                            "invalid_or_missing_accuracy_count": r[15],
+                            "gps_loss_percent": float(r[16]) if r[16] is not None else None,
+                            "accuracy_buckets_cumulative": {
+                                "le_2m": r[8],
+                                "le_3_5m": r[9],
+                                "le_6m": r[10],
+                                "le_10m": r[11],
+                                "gt_10m": r[12],
+                            },
+                            "avg_accuracy_m": float(r[13]) if r[13] is not None else None,
+                        }
+                    )
+
+                payload["ota_level"] = {
+                    "total_groups": len(ota_rows),
+                    "returned_groups": len(ota_payload),
+                    "truncated_for_llm": len(ota_rows) > len(ota_payload),
+                    "rows": ota_payload,
+                }
+
+                ota_cols = [
+                    "ota",
+                    "file_count",
+                    "files_with_videometadata",
+                    "min_start_time",
+                    "max_start_time",
+                    "expected_accuracy_count",
+                    "valid_accuracy_count",
+                    "invalid_or_missing_accuracy_count",
+                    "gps_loss_percent",
+                    "avg_accuracy_m",
+                    "le_2m",
+                    "le_3_5m",
+                    "le_6m",
+                    "le_10m",
+                    "gt_10m",
+                ]
+                ota_csv_rows = [
+                    (
+                        r[0],
+                        r[1],
+                        r[2],
+                        r[3],
+                        r[4],
+                        r[14],
+                        r[6],
+                        r[15],
+                        float(r[16]) if r[16] is not None else None,
+                        float(r[13]) if r[13] is not None else None,
+                        r[8],
+                        r[9],
+                        r[10],
+                        r[11],
+                        r[12],
+                    )
+                    for r in ota_rows
+                ]
+                rid = result_store.put(rows_to_csv_bytes(ota_cols, ota_csv_rows), "gps_kpi_by_ota.csv")
+                _collect_download(rid, "gps_kpi_by_ota.csv")
+
+            conn.close()
             return json.dumps(payload, indent=2)
         except Exception as exc:
             logger.error("[tool:gps_kpi_summary] failed: %s", exc)

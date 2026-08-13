@@ -36,6 +36,18 @@ _lock_fd = None
 DEFAULT_ENV_PATH = os.path.join(REPO_ROOT, ".env")
 
 
+def _product_family_slug(product_lines):
+    if not product_lines:
+        return "all"
+    if len(product_lines) == 1:
+        return product_lines[0]
+    return "__".join(product_lines)
+
+
+def _output_root_for_product_lines(product_lines):
+    return os.path.join(current_dir, "OUTPUT", _product_family_slug(product_lines))
+
+
 def acquire_lock():
     """Acquire an exclusive file lock, waiting if another instance is running."""
     global _lock_fd
@@ -191,12 +203,14 @@ def daily_device_extraction(ys=False):
     try:
         logging.log_info("Starting daily device extraction process")
         device_setup_script = os.path.join(REPO_ROOT, "device_data_setup/main_device_setup.py")
-        trigger_folder_path = os.path.join(current_dir, f"OUTPUT/polling/{datetime.date.today().strftime('%Y-%m-%d')}")
+        product_lines, allowed_ota_versions = _load_runtime_filters()
+        output_root = _output_root_for_product_lines(product_lines)
+        trigger_folder_path = os.path.join(output_root, "polling", datetime.date.today().strftime('%Y-%m-%d'))
+        logging.log_info(f"Using product-family output root: {output_root}")
         logging.log_info(f"Creating trigger folder at: {trigger_folder_path}")
         os.makedirs(trigger_folder_path, exist_ok=True)
         logging.log_info(f"Trigger folder created successfully at: {trigger_folder_path}")
 
-        product_lines, allowed_ota_versions = _load_runtime_filters()
         if allowed_ota_versions:
             logging.log_info(
                 "Using explicit OTA filter values; discovery will use latest-per-family map "
@@ -245,7 +259,7 @@ def daily_device_extraction(ys=False):
                     logging.log_info(f"Fetching device list directly for version {version}")
                     device_list_csv = fetch_device_list(
                         trigger_hash=version,
-                        output_dir=os.path.join(current_dir, "OUTPUT"),
+                        output_dir=output_root,
                         ota_versions=[version],
                         section='PROD_DB',
                     )
@@ -268,9 +282,9 @@ def daily_device_extraction(ys=False):
                 logging.log_info(f"Starting file copy operations for version {version}")
 
                 if use_fallback_fetcher:
-                    device_data_csv_path = os.path.join(current_dir, f"OUTPUT/trigger_{trigger_id}/device_list.csv")
+                    device_data_csv_path = os.path.join(output_root, f"trigger_{trigger_id}", "device_list.csv")
                 else:
-                    device_data_csv_path = os.path.join(current_dir, f"OUTPUT/trigger_{trigger_id}/device_list_config_mapped.csv")
+                    device_data_csv_path = os.path.join(output_root, f"trigger_{trigger_id}", "device_list_config_mapped.csv")
                 device_data_final_csv_path = os.path.join(trigger_folder_path, f"device_data_{version}.csv")
                 if os.path.exists(device_data_csv_path):
                     logging.log_info(f"Copying {device_data_csv_path} to {device_data_final_csv_path}")
@@ -284,7 +298,7 @@ def daily_device_extraction(ys=False):
                 else:
                     logging.log_warning(f"Source file not found: {device_data_csv_path}")
 
-                feature_level_csv = os.path.join(current_dir, f"OUTPUT/trigger_{trigger_id}/Feature_level_summary.csv")
+                feature_level_csv = os.path.join(output_root, f"trigger_{trigger_id}", "Feature_level_summary.csv")
                 feature_level_final_csv_path = os.path.join(trigger_folder_path, f"feature_level_summary_{version}.csv")
                 if os.path.exists(feature_level_csv):
                     logging.log_info(f"Copying {feature_level_csv} to {feature_level_final_csv_path}")
@@ -293,7 +307,7 @@ def daily_device_extraction(ys=False):
                 else:
                     logging.log_warning(f"Source file not found: {feature_level_csv}")
 
-                config_csv = os.path.join(current_dir, f"OUTPUT/trigger_{trigger_id}/device_list_config.csv")
+                config_csv = os.path.join(output_root, f"trigger_{trigger_id}", "device_list_config.csv")
                 config_final_csv_path = os.path.join(trigger_folder_path, f"device_config_{version}.csv")
                 if os.path.exists(config_csv):
                     logging.log_info(f"Copying {config_csv} to {config_final_csv_path}")
@@ -302,7 +316,7 @@ def daily_device_extraction(ys=False):
                 else:
                     logging.log_warning(f"Source file not found: {config_csv}")
 
-                feature_xlsx = os.path.join(current_dir, f"OUTPUT/trigger_{trigger_id}/Feature_device_summary.xlsx")
+                feature_xlsx = os.path.join(output_root, f"trigger_{trigger_id}", "Feature_device_summary.xlsx")
                 feature_xlsx_final_path = os.path.join(trigger_folder_path, f"feature_device_{version}.xlsx")
                 if os.path.exists(feature_xlsx):
                     logging.log_info(f"Copying {feature_xlsx} to {feature_xlsx_final_path}")
@@ -325,7 +339,12 @@ def daily_device_extraction(ys=False):
 
 
 def _populate_obs_for_window(target_date, start_datetime, end_datetime):
-    trigger_folder = os.path.join(current_dir, f"OUTPUT/polling/{target_date.strftime('%Y-%m-%d')}")
+    product_lines, _ = _load_runtime_filters()
+    trigger_folder = os.path.join(
+        _output_root_for_product_lines(product_lines),
+        "polling",
+        target_date.strftime('%Y-%m-%d')
+    )
 
     if not os.path.exists(trigger_folder):
         logging.log_error(f"Trigger folder does not exist: {trigger_folder}")

@@ -53,6 +53,8 @@ END_TS="${TODAY}T01:00:00"
 # Data-polling window: yesterday 01:00 to now
 DATA_POLL_START="${YESTERDAY} 01:00:00"
 DATA_POLL_END="${NOW_DT}"
+GPS_SUMMARY_END=$(date -d "${DATA_POLL_END}" +"%Y-%m-%d")
+GPS_SUMMARY_START=$(date -d "${GPS_SUMMARY_END} -7 days" +"%Y-%m-%d")
 
 echo "=== Nightly Critical Events Poll ===" | tee -a "${LOG_FILE}"
 echo "Timestamp: $(date)" | tee -a "${LOG_FILE}"
@@ -133,6 +135,22 @@ if [ $EXTRACT_EXIT -eq 0 ]; then
   else
     echo "✗ Obs population failed with exit code $OBS_EXIT" | tee -a "${LOG_FILE}"
     EXIT_CODE=$OBS_EXIT
+  fi
+fi
+
+if [ ${OBS_EXIT:-1} -eq 0 ]; then
+  echo "" | tee -a "${LOG_FILE}"
+  echo "=== GPS OH summary (${GPS_SUMMARY_START} -> ${GPS_SUMMARY_END}) ===" | tee -a "${LOG_FILE}"
+  python3 ../atlas/gps_oh_summary_generator.py \
+    --start "${GPS_SUMMARY_START}" \
+    --end "${GPS_SUMMARY_END}" \
+    2>&1 | tee -a "${LOG_FILE}"
+  GPS_SUMMARY_EXIT=${PIPESTATUS[0]}
+  if [ $GPS_SUMMARY_EXIT -eq 0 ]; then
+    echo "✓ GPS OH summary completed successfully" | tee -a "${LOG_FILE}"
+  else
+    echo "✗ GPS OH summary failed with exit code $GPS_SUMMARY_EXIT" | tee -a "${LOG_FILE}"
+    EXIT_CODE=$GPS_SUMMARY_EXIT
   fi
 fi
 

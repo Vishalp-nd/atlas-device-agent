@@ -6,6 +6,7 @@ import json
 import io
 import tempfile
 from datetime import datetime
+import math
 import re
 import traceback
 from typing import Dict, List, Optional, Tuple, Any
@@ -179,6 +180,24 @@ EXTRACTEDDATA_SCHEMA_COLUMNS: Dict[str, str] = {
     'protocol_info': 'TEXT',
     'tc_recommendation': 'TEXT',
     'session_type': 'TEXT',
+    'rtc_valid': 'TEXT',
+    'rtc_jump_from': 'BIGINT',
+    'rtc_jump_to': 'BIGINT',
+    'session_count': 'INTEGER',
+    'valid_gps_entries': 'INTEGER',
+    'gps_start_time': 'BIGINT',
+    'gps_end_time': 'BIGINT',
+    'nw_source': 'TEXT',
+    'sinr': 'DOUBLE PRECISION',
+    'nw_recorded_time': 'BIGINT',
+    'idle': 'INTEGER',
+    'obdformat': 'TEXT',
+    'is_inward_cam_obstructed': 'BOOLEAN',
+    'has_multi_lane': 'BOOLEAN',
+    'has_road_boundary_tracks': 'BOOLEAN',
+    'has_ipc_events': 'BOOLEAN',
+    'is_hd_file': 'BOOLEAN',
+    'inward_vision_processed': 'TEXT',
 }
 
 @dataclass
@@ -215,10 +234,90 @@ class DataProcessor:
         self.env = None
         self.shared_s3_client = None
         self._thread_lock = threading.Lock()
+        self._live_extracteddata_column_types: Optional[Dict[str, str]] = None
+        self._last_progress_time = time.time()
         self.metrics = ProcessingMetrics()
         
         # Initialize database connections with proper error handling
         self._init_database_connections()
+
+    def _get_live_extracteddata_column_types(self) -> Dict[str, str]:
+        """Cache the live PostgreSQL column types for extracteddata."""
+        if self._live_extracteddata_column_types is not None:
+            return self._live_extracteddata_column_types
+
+        query = text(
+            """
+            SELECT column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'extracteddata'
+            """
+        )
+
+        with self.db_insert_engine.begin() as conn:
+            rows = conn.execute(query).fetchall()
+
+        self._live_extracteddata_column_types = {row[0]: row[1] for row in rows}
+        return self._live_extracteddata_column_types
+
+    def _coerce_int_candidate(self, value: Any) -> Optional[int]:
+        """Best-effort conversion for values heading into integer-like columns."""
+        if value is None or isinstance(value, bool):
+            return None
+
+        if isinstance(value, int):
+            return value
+
+        if isinstance(value, float):
+            if not math.isfinite(value) or not value.is_integer():
+                return None
+            return int(value)
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            if re.fullmatch(r'-?\d+', stripped):
+                try:
+                    return int(stripped)
+                except ValueError:
+                    return None
+
+        return None
+
+    def _diagnose_numeric_overflow(self, rows: List[Dict]) -> Optional[Dict[str, Any]]:
+        """Find the first row/value that exceeds the live INTEGER type in Postgres."""
+        int_bounds = {
+            'smallint': (-32768, 32767),
+            'integer': (-2147483648, 2147483647),
+        }
+
+        live_types = self._get_live_extracteddata_column_types()
+
+        for row_index, row in enumerate(rows):
+            for column, value in row.items():
+                data_type = live_types.get(column)
+                if data_type not in int_bounds:
+                    continue
+
+                candidate = self._coerce_int_candidate(value)
+                if candidate is None:
+                    continue
+
+                lower, upper = int_bounds[data_type]
+                if candidate < lower or candidate > upper:
+                    return {
+                        'row_index': row_index,
+                        'column': column,
+                        'value': candidate,
+                        'postgres_type': data_type,
+                        'allowed_range': (lower, upper),
+                        'file_name': row.get('file_name'),
+                        's3_path': row.get('s3_path'),
+                        'start_time': row.get('start_time'),
+                    }
+
+        return None
         
         # Performance monitoring
         self._last_progress_time = time.time()
@@ -630,6 +729,27 @@ class DataProcessor:
                 'irled_states_timestamp': ','.join(str(item.get('time')) for item in data.get('irled_states', []) if item.get('time') is not None),
                 'irled_states_status': ','.join(str(item.get('status')) for item in data.get('irled_states', []) if item.get('status') is not None),
                 'faceImageCaptured': data.get('inference_data', {}).get('faceImageCaptured', None),
+                'obs_filetype': 'Observation' if 'observations_data' in data.get('inference_data', {}) else 'Metadata',
+                'audioEnable': data.get('audioEnable'),
+                'user_generated_alert': data.get('user_generated_alert', []),
+                'rtc_valid': data.get('rtcValid'),
+                'rtc_jump_from': data.get('rtc_jump_from'),
+                'rtc_jump_to': data.get('rtc_jump_to'),
+                'session_count': data.get('sessionCount'),
+                'valid_gps_entries': data.get('validGPSEntries'),
+                'gps_start_time': data.get('gpsStartTime'),
+                'gps_end_time': data.get('gpsEndTime'),
+                'nw_source': data.get('networkInfo', {}).get('rat'),
+                'sinr': data.get('networkInfo', {}).get('sinr'),
+                'nw_recorded_time': data.get('networkInfo', {}).get('recordedTime'),
+                'idle': data.get('deviceModes', {}).get('idle'),
+                'obdformat': data.get('obdFormat'),
+                'is_inward_cam_obstructed': bool(data.get('inference_data', {}).get('is_inward_cam_obstructed')) if data.get('inference_data', {}).get('is_inward_cam_obstructed') is not None else None,
+                'has_multi_lane': 'multiLane' in data.get('inference_data', {}).get('observations_data', {}),
+                'has_road_boundary_tracks': 'roadBoundaryTracks' in data.get('inference_data', {}).get('observations_data', {}),
+                'has_ipc_events': 'ipc_events' in data.get('inference_data', {}).get('inward', {}),
+                'is_hd_file': 'carBoxTrackerListCompressed' in data.get('inference_data', {}).get('observations_data', {}),
+                'inward_vision_processed': self._check_module_processed(data, 'inward_vision'),
             }
             
             return extracted_data
@@ -714,8 +834,22 @@ class DataProcessor:
             with raw_conn.cursor() as cur:
                 execute_values(cur, sql, values, page_size=2000)
             raw_conn.commit()
-        except Exception:
+        except Exception as exc:
             raw_conn.rollback()
+            if exc.__class__.__name__ == 'NumericValueOutOfRange' or 'integer out of range' in str(exc).lower():
+                overflow_details = self._diagnose_numeric_overflow(rows)
+                if overflow_details:
+                    logger.log_error(
+                        "Numeric overflow candidate identified: "
+                        f"row_index={overflow_details['row_index']}, "
+                        f"column={overflow_details['column']}, "
+                        f"value={overflow_details['value']}, "
+                        f"postgres_type={overflow_details['postgres_type']}, "
+                        f"allowed_range={overflow_details['allowed_range']}, "
+                        f"file_name={overflow_details['file_name']}, "
+                        f"start_time={overflow_details['start_time']}, "
+                        f"s3_path={overflow_details['s3_path']}"
+                    )
             raise
         finally:
             raw_conn.close()
