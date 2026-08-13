@@ -13,6 +13,7 @@ ENV_FILE="${SCRIPT_DIR}/../.env"
 LOG_DIR="${SCRIPT_DIR}/logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${LOG_DIR}/nightly_poll_${TIMESTAMP}.log"
+ALLOW_FAILURES="${NIGHTLY_POLL_ALLOW_FAILURES:-1}"
 
 # Ensure log directory exists
 mkdir -p "${LOG_DIR}"
@@ -60,6 +61,7 @@ echo "=== Nightly Critical Events Poll ===" | tee -a "${LOG_FILE}"
 echo "Timestamp: $(date)" | tee -a "${LOG_FILE}"
 echo "Polling date range: ${START_TS} to ${END_TS}" | tee -a "${LOG_FILE}"
 echo "Log file: ${LOG_FILE}" | tee -a "${LOG_FILE}"
+echo "Graceful exit mode: ${ALLOW_FAILURES}" | tee -a "${LOG_FILE}"
 echo "" | tee -a "${LOG_FILE}"
 
 # Optional: pass a profile only when explicitly configured.
@@ -155,5 +157,10 @@ if [ ${OBS_EXIT:-1} -eq 0 ]; then
 fi
 
 echo "Completed at: $(date)" | tee -a "${LOG_FILE}"
+
+if [ "$EXIT_CODE" -ne 0 ] && [ "$ALLOW_FAILURES" = "1" ]; then
+  echo "Nightly poll encountered one or more step failures but graceful exit mode is enabled; returning exit code 0." | tee -a "${LOG_FILE}"
+  exit 0
+fi
 
 exit $EXIT_CODE

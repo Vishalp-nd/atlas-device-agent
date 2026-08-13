@@ -84,10 +84,13 @@ def _get_llm() -> ChatAnthropic:
     if env_path.exists():
         load_dotenv(str(env_path), override=False)
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6").strip()
+    model = os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip()
     if not api_key:
         raise EnvironmentError("ANTHROPIC_API_KEY not set in .env")
-    return ChatAnthropic(api_key=api_key, model=model, temperature=0.0)
+    kwargs = {"api_key": api_key, "model": model}
+    if model != "claude-sonnet-5":
+        kwargs["temperature"] = 0.0
+    return ChatAnthropic(**kwargs)
 
 
 def _safe_query(sql: str) -> bool:

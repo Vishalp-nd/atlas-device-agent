@@ -56,6 +56,21 @@ def _normalize_download_links(text: str) -> str:
     return text
 
 
+def _render_download_refs(downloads: list[dict[str, str]] | None) -> None:
+    if not downloads:
+        return
+    api_base = API_BASE_URL.rstrip("/")
+    st.markdown("Downloads:")
+    for item in downloads:
+        filename = item.get("filename", "download")
+        url = item.get("url", "")
+        if not url:
+            continue
+        if url.startswith("/"):
+            url = f"{api_base}{url}"
+        st.markdown(f"- [{filename}]({url})")
+
+
 def _inject_css() -> None:
     st.markdown(
         """
@@ -725,7 +740,7 @@ def render_atlas_page() -> None:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    def _request() -> str:
+    def _request() -> tuple[str, list[dict[str, str]]]:
         session_key = _state_key(page_key, "session_id")
         session_id = _ensure_session(page_key)
         payload = {"session_id": session_id, "query": prompt}
@@ -740,14 +755,16 @@ def render_atlas_page() -> None:
             )
         resp.raise_for_status()
         data = resp.json()
-        return _normalize_download_links(data["response"])
+        return _normalize_download_links(data["response"]), data.get("downloads", [])
 
     with st.chat_message("assistant"):
         try:
-            answer = _run_with_progress(_request)
+            answer, downloads = _run_with_progress(_request)
         except requests.RequestException as exc:
             answer = f"Could not reach the Atlas API at {API_BASE_URL}: {exc}"
+            downloads = []
         st.markdown(answer)
+        _render_download_refs(downloads)
 
     _append_message(page_key, "assistant", answer)
 

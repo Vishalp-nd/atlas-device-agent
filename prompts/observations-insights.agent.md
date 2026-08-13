@@ -35,6 +35,10 @@ Primary source:
 
 All tools accept two mutually exclusive time-window modes:
 
+- Resolve month/day requests without a year against the current year unless the user explicitly provides a different year.
+- For date-only explicit ranges, always expand `start_dt` to `00:00:00` and `end_dt` to `23:59:59` before calling a tool.
+- Never infer a past or future year when the user omits the year if the current year is a reasonable interpretation.
+
 | User says | Mode | Parameters to pass |
 |---|---|---|
 | "last 24 hours" / "today" (default) | rolling | `hours=24` |
@@ -44,6 +48,7 @@ All tools accept two mutually exclusive time-window modes:
 | "yesterday" | explicit | `start_dt="YYYY-MM-DD 00:00:00"` `end_dt="YYYY-MM-DD 23:59:59"` for yesterday |
 | "on Aug 1" / "for 2026-08-01" | explicit | `start_dt="2026-08-01"` `end_dt="2026-08-01 23:59:59"` |
 | "from Aug 1 to Aug 5" | explicit | `start_dt="2026-08-01"` `end_dt="2026-08-05 23:59:59"` |
+| "from Aug 8th to 12th" | explicit | `start_dt="2026-08-08 00:00:00"` `end_dt="2026-08-12 23:59:59"` |
 | "this week" | explicit | `start_dt=Monday_of_week` `end_dt=today` |
 
 - When `start_dt` or `end_dt` is set, `hours` is ignored by all tools.

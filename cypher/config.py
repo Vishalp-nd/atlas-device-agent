@@ -51,7 +51,7 @@ def neo4j_settings() -> dict[str, str]:
 def anthropic_settings() -> dict[str, str]:
     return {
         "api_key": _require("ANTHROPIC_API_KEY"),
-        "model": (os.getenv("CLAUDE_MODEL") or "claude-sonnet-4-6").strip(),
+        "model": (os.getenv("CLAUDE_MODEL") or "claude-sonnet-5").strip(),
     }
 
 

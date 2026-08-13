@@ -28,9 +28,10 @@ class KGAgentState(TypedDict):
 
 def _get_llm() -> ChatAnthropic:
     settings = config.anthropic_settings()
-    return ChatAnthropic(
-        api_key=settings["api_key"], model=settings["model"], temperature=0.0
-    )
+    kwargs = {"api_key": settings["api_key"], "model": settings["model"]}
+    if settings["model"] != "claude-sonnet-5":
+        kwargs["temperature"] = 0.0
+    return ChatAnthropic(**kwargs)
 
 
 @lru_cache(maxsize=1)

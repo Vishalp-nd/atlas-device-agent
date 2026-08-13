@@ -136,7 +136,10 @@ def _get_haiku() -> ChatAnthropic:
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         raise EnvironmentError("ANTHROPIC_API_KEY not set in .env")
-    return ChatAnthropic(api_key=api_key, model=_HAIKU_MODEL, temperature=0.0)
+    kwargs = {"api_key": api_key, "model": _HAIKU_MODEL}
+    if _HAIKU_MODEL != "claude-sonnet-5":
+        kwargs["temperature"] = 0.0
+    return ChatAnthropic(**kwargs)
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────

@@ -75,10 +75,13 @@ def _get_llm() -> ChatAnthropic:
     if env_path.exists():
         load_dotenv(str(env_path), override=False)
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6").strip()
+    model = os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip()
     if not api_key:
         raise EnvironmentError("ANTHROPIC_API_KEY not set in .env")
-    return ChatAnthropic(api_key=api_key, model=model, temperature=0.0)
+    kwargs = {"api_key": api_key, "model": model}
+    if model != "claude-sonnet-5":
+        kwargs["temperature"] = 0.0
+    return ChatAnthropic(**kwargs)
 
 
 def _safe_query(sql: str) -> bool:
@@ -129,6 +132,16 @@ def _make_tools(
                 f"Invalid {field_name}: {value!r}. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
             ) from exc
 
+    def _normalize_explicit_bound(value: str, field_name: str) -> str:
+        raw = value.strip()
+        parsed = _parse_iso_datetime(raw, field_name)
+        if len(raw) == 10:
+            if field_name == "start_dt":
+                parsed = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=0)
+        return parsed.strftime("%Y-%m-%d %H:%M:%S")
+
     def _normalize_summary_window(
         start_dt: str,
         end_dt: str,
@@ -137,8 +150,8 @@ def _make_tools(
         if start_dt.strip() or end_dt.strip():
             if not (start_dt.strip() and end_dt.strip()):
                 raise ValueError("Both start_dt and end_dt are required for weekly summary tools.")
-            start_value = _parse_iso_datetime(start_dt, "start_dt")
-            end_value = _parse_iso_datetime(end_dt, "end_dt")
+            start_value = _parse_iso_datetime(_normalize_explicit_bound(start_dt, "start_dt"), "start_dt")
+            end_value = _parse_iso_datetime(_normalize_explicit_bound(end_dt, "end_dt"), "end_dt")
         else:
             safe_hours = max(1, min(hours, 24 * 90))
             end_value = datetime.utcnow()
@@ -155,6 +168,9 @@ def _make_tools(
 
     def _normalize_product_family(product_family: str) -> str:
         family = product_family.strip().lower()
+        if not family:
+            env_value = os.getenv("PRODUCT_LINES", "")
+            family = env_value.split(",", 1)[0].strip().lower()
         if not family:
             raise ValueError("product_family is required.")
         if family not in FAMILY_CONFIG:
@@ -329,19 +345,11 @@ def _make_tools(
 
         if start_dt.strip() or end_dt.strip():
             if start_dt.strip():
-                try:
-                    _dt.fromisoformat(start_dt.strip())
-                except ValueError:
-                    raise ValueError(f"Invalid start_dt: {start_dt!r}. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
                 where.append("start_time >= %s")
-                params.append(start_dt.strip())
+                params.append(_normalize_explicit_bound(start_dt, "start_dt"))
             if end_dt.strip():
-                try:
-                    _dt.fromisoformat(end_dt.strip())
-                except ValueError:
-                    raise ValueError(f"Invalid end_dt: {end_dt!r}. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
                 where.append("start_time <= %s")
-                params.append(end_dt.strip())
+                params.append(_normalize_explicit_bound(end_dt, "end_dt"))
         else:
             safe_hours = max(1, min(hours, 24 * 90))
             where.append("start_time >= NOW() - (%s * INTERVAL '1 hour')")
@@ -1630,6 +1638,25 @@ class ObservationsAgentState(TypedDict):
     iterations: int
 
 
+def _message_text(message: BaseMessage) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text = item.strip()
+            elif isinstance(item, dict):
+                text = str(item.get("text", "")).strip()
+            else:
+                text = str(getattr(item, "text", "")).strip()
+            if text:
+                parts.append(text)
+        return "\n".join(parts).strip()
+    return str(content).strip()
+
+
 def build_observations_graph(
     repo_root: Path,
     table_name: str = "public.extracteddata",
@@ -1695,7 +1722,7 @@ def run_observations_agent(
     }
     final_state = graph.invoke(initial_state)
     last = final_state["messages"][-1]
-    result = getattr(last, "content", str(last)).strip() or "No response."
+    result = _message_text(last) or "No response."
 
     # Tool execution may occur on worker threads, so don't rely only on thread-local
     # download collection. Also extract IDs from tool JSON outputs in final messages.
@@ -1713,6 +1740,21 @@ def run_observations_agent(
             payload = json.loads(text)
         except Exception:
             continue
+
+        payload_downloads = payload.get("downloads")
+        if isinstance(payload_downloads, list):
+            for item in payload_downloads:
+                if not isinstance(item, dict):
+                    continue
+                rid = item.get("id")
+                if not rid or rid in collected:
+                    continue
+                filename = item.get("filename")
+                if not filename:
+                    entry = result_store.get(rid)
+                    filename = entry[1] if entry else "download"
+                collected[rid] = {"id": rid, "filename": filename}
+
         rid = payload.get("_download_id")
         if not rid or rid in collected:
             continue
