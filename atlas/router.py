@@ -18,6 +18,8 @@ To add a new agent to the service: add a router module exposing
 
 from __future__ import annotations
 
+import mimetypes
+
 from fastapi import APIRouter, HTTPException
 
 from .config import (
@@ -173,9 +175,10 @@ def observations_download(result_id: str):
     if entry is None:
         raise HTTPException(status_code=404, detail="Result not found or expired")
     data, filename = entry
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     return Response(
         content=data,
-        media_type="text/csv",
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

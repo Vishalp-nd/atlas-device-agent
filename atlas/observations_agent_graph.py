@@ -10,10 +10,14 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
+from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated, TypedDict
+
+import pandas as pd
 
 
 def _setup_logger() -> logging.Logger:
@@ -54,6 +58,11 @@ if str(PIPELINE_ROOT) not in sys.path:
 
 from fetch_device_config import read_db_config
 from atlas.result_store import result_store, rows_to_csv_bytes
+from atlas.gps_oh_summary_generator import (
+    DEFAULT_OUTPUT_ROOT,
+    FAMILY_CONFIG,
+    _build_output_dir,
+)
 
 MAX_ITERATIONS = 12
 
@@ -110,6 +119,190 @@ def _make_tools(
 ) -> list:
     db_config_path = repo_root / "db_credentials.ini"
     table_ident = _quote_table_identifier(table_name)
+    summary_output_root = Path(DEFAULT_OUTPUT_ROOT)
+
+    def _parse_iso_datetime(value: str, field_name: str) -> datetime:
+        try:
+            return datetime.fromisoformat(value.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid {field_name}: {value!r}. Use YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
+            ) from exc
+
+    def _normalize_summary_window(
+        start_dt: str,
+        end_dt: str,
+        hours: int,
+    ) -> tuple[str, str, str]:
+        if start_dt.strip() or end_dt.strip():
+            if not (start_dt.strip() and end_dt.strip()):
+                raise ValueError("Both start_dt and end_dt are required for weekly summary tools.")
+            start_value = _parse_iso_datetime(start_dt, "start_dt")
+            end_value = _parse_iso_datetime(end_dt, "end_dt")
+        else:
+            safe_hours = max(1, min(hours, 24 * 90))
+            end_value = datetime.utcnow()
+            start_value = end_value - timedelta(hours=safe_hours)
+
+        if end_value < start_value:
+            raise ValueError("end_dt must be greater than or equal to start_dt.")
+
+        return (
+            start_value.strftime("%Y-%m-%d"),
+            end_value.strftime("%Y-%m-%d"),
+            f"{start_value.strftime('%Y-%m-%d')} to {end_value.strftime('%Y-%m-%d')}",
+        )
+
+    def _normalize_product_family(product_family: str) -> str:
+        family = product_family.strip().lower()
+        if not family:
+            raise ValueError("product_family is required.")
+        if family not in FAMILY_CONFIG:
+            valid = ", ".join(sorted(FAMILY_CONFIG.keys()))
+            raise ValueError(f"Invalid product_family: {product_family!r}. Allowed values: {valid}")
+        return family
+
+    def _normalize_group_by(group_by: str) -> str:
+        normalized = group_by.strip().lower() or "product_family"
+        allowed = {"product_family", "device_id", "ota", "product_family+device_id", "product_family+ota"}
+        if normalized not in allowed:
+            raise ValueError(
+                "Invalid group_by. Allowed values: product_family, device_id, ota, "
+                "product_family+device_id, product_family+ota"
+            )
+        return normalized
+
+    def _summary_metadata_suffix(device_id: str, ota: str, group_by: str) -> str:
+        parts: list[str] = []
+        if device_id.strip():
+            parts.append(f"device_{re.sub(r'[^A-Za-z0-9_.-]+', '-', device_id.strip())}")
+        if ota.strip():
+            parts.append(f"ota_{re.sub(r'[^A-Za-z0-9_.-]+', '-', ota.strip())}")
+        normalized_group = group_by.strip().lower()
+        if normalized_group and normalized_group != "product_family":
+            parts.append(f"group_{normalized_group.replace('+', '_')}")
+        return "__".join(parts)
+
+    def _find_summary_artifacts(
+        product_family: str,
+        start_date: str,
+        end_date: str,
+        device_id: str,
+        ota: str,
+        group_by: str,
+    ) -> list[Path]:
+        output_dir = Path(_build_output_dir(str(summary_output_root), product_family, start_date, end_date))
+        if not output_dir.is_dir():
+            return []
+
+        suffix = _summary_metadata_suffix(device_id, ota, group_by)
+        matches: list[Path] = []
+        for path in sorted(output_dir.glob("*.xlsx"), key=lambda item: item.stat().st_mtime, reverse=True):
+            if suffix and suffix not in path.stem:
+                continue
+            matches.append(path)
+        return matches
+
+    def _register_summary_downloads(paths: list[Path]) -> list[dict[str, str]]:
+        downloads: list[dict[str, str]] = []
+        for path in paths:
+            rid = result_store.put_file(path)
+            _collect_download(rid, path.name)
+            downloads.append({"id": rid, "filename": path.name})
+        return downloads
+
+    def _parse_csv_list(raw_value: str) -> list[str]:
+        return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+    def _load_cached_workbook_frames(path: Path) -> dict[str, pd.DataFrame]:
+        return pd.read_excel(path, sheet_name=None)
+
+    def _filter_sheet_frame(
+        frame: pd.DataFrame,
+        device_ids: list[str],
+        columns: list[str],
+    ) -> pd.DataFrame:
+        filtered = frame.copy()
+
+        if device_ids:
+            device_col = next(
+                (col for col in filtered.columns if str(col).strip().lower() in {"device id", "device_id", "deviceid"}),
+                None,
+            )
+            if device_col is not None:
+                normalized = {item.strip() for item in device_ids}
+                filtered = filtered[filtered[device_col].astype(str).isin(normalized)]
+
+        if columns:
+            missing = [col for col in columns if col not in filtered.columns]
+            if missing:
+                raise ValueError(f"Requested columns not found: {', '.join(missing)}")
+            filtered = filtered.loc[:, columns]
+
+        return filtered
+
+    def _rename_generated_artifacts(
+        output_dir: Path,
+        generated_paths: list[Path],
+        device_id: str,
+        ota: str,
+        group_by: str,
+    ) -> list[Path]:
+        suffix = _summary_metadata_suffix(device_id, ota, group_by)
+        if not suffix:
+            return generated_paths
+
+        renamed: list[Path] = []
+        for path in generated_paths:
+            target = output_dir / f"{path.stem}__{suffix}{path.suffix}"
+            if target != path:
+                path.rename(target)
+                renamed.append(target)
+            else:
+                renamed.append(path)
+        return renamed
+
+    def _generate_weekly_summary_files(
+        product_family: str,
+        start_date: str,
+        end_date: str,
+        device_id: str,
+        ota: str,
+        group_by: str,
+    ) -> list[Path]:
+        output_dir = Path(_build_output_dir(str(summary_output_root), product_family, start_date, end_date))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        before = {path.resolve() for path in output_dir.glob("*.xlsx")}
+
+        command = [
+            sys.executable,
+            str(repo_root / "atlas" / "gps_oh_summary_generator.py"),
+            "--start",
+            start_date,
+            "--end",
+            end_date,
+            "--product-family",
+            product_family,
+            "--output",
+            str(summary_output_root),
+        ]
+        completed = subprocess.run(command, cwd=repo_root, capture_output=True, text=True)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "weekly summary generation failed: "
+                f"{completed.stderr.strip() or completed.stdout.strip() or 'unknown error'}"
+            )
+
+        after = sorted(
+            (path.resolve() for path in output_dir.glob("*.xlsx") if path.resolve() not in before),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        if not after:
+            after = _find_summary_artifacts(product_family, start_date, end_date, "", "", "product_family")
+        if not after:
+            raise FileNotFoundError(f"No weekly summary files were generated in {output_dir}")
+        return _rename_generated_artifacts(output_dir, after, device_id, ota, group_by)
 
     def _connect_ro():
         if not db_config_path.exists():
@@ -316,6 +509,256 @@ def _make_tools(
         except Exception as exc:
             logger.error("[tool:query_observations] failed: %s", exc)
             return f"query_observations failed: {exc}"
+
+    @tool
+    def list_cached_weekly_summaries(
+        product_family: str,
+        start_dt: str = "",
+        end_dt: str = "",
+        hours: int = 24 * 7,
+        device_id: str = "",
+        ota: str = "",
+        group_by: str = "product_family",
+    ) -> str:
+        """List cached OH/GPS weekly Excel summaries for a date window and grouping/filter shape."""
+        logger.info(
+            "[tool:list_cached_weekly_summaries] called — family=%r start=%r end=%r device=%r ota=%r group_by=%r",
+            product_family,
+            start_dt,
+            end_dt,
+            device_id,
+            ota,
+            group_by,
+        )
+        try:
+            family = _normalize_product_family(product_family)
+            normalized_group = _normalize_group_by(group_by)
+            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
+            artifacts = _find_summary_artifacts(family, start_date, end_date, device_id, ota, normalized_group)
+            downloads = _register_summary_downloads(artifacts)
+            payload = {
+                "product_family": family,
+                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
+                "filters": {
+                    "device_id": device_id.strip() or None,
+                    "ota": ota.strip() or None,
+                    "group_by": normalized_group,
+                },
+                "cache_hit": bool(artifacts),
+                "artifact_count": len(artifacts),
+                "artifacts": [
+                    {
+                        "filename": path.name,
+                        "path": str(path.relative_to(repo_root)),
+                        "modified_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+                    }
+                    for path in artifacts
+                ],
+                "downloads": downloads,
+            }
+            return json.dumps(payload, indent=2)
+        except Exception as exc:
+            logger.error("[tool:list_cached_weekly_summaries] failed: %s", exc)
+            return f"list_cached_weekly_summaries failed: {exc}"
+
+    @tool
+    def get_or_create_weekly_summary(
+        product_family: str,
+        start_dt: str = "",
+        end_dt: str = "",
+        hours: int = 24 * 7,
+        device_id: str = "",
+        ota: str = "",
+        group_by: str = "product_family",
+        force_regenerate: bool = False,
+    ) -> str:
+        """Return cached weekly OH/GPS Excel summaries or generate them and register downloads."""
+        logger.info(
+            "[tool:get_or_create_weekly_summary] called — family=%r start=%r end=%r force=%s",
+            product_family,
+            start_dt,
+            end_dt,
+            force_regenerate,
+        )
+        try:
+            family = _normalize_product_family(product_family)
+            normalized_group = _normalize_group_by(group_by)
+            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
+
+            artifacts = [] if force_regenerate else _find_summary_artifacts(
+                family,
+                start_date,
+                end_date,
+                device_id,
+                ota,
+                normalized_group,
+            )
+            cache_hit = bool(artifacts)
+            if not artifacts:
+                artifacts = _generate_weekly_summary_files(
+                    family,
+                    start_date,
+                    end_date,
+                    device_id,
+                    ota,
+                    normalized_group,
+                )
+
+            downloads = _register_summary_downloads(artifacts)
+            payload = {
+                "product_family": family,
+                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
+                "filters": {
+                    "device_id": device_id.strip() or None,
+                    "ota": ota.strip() or None,
+                    "group_by": normalized_group,
+                },
+                "cache_hit": cache_hit,
+                "generated": not cache_hit,
+                "artifact_count": len(artifacts),
+                "artifacts": [path.name for path in artifacts],
+                "downloads": downloads,
+                "note": "Weekly OH/GPS summaries remain Excel workbooks; downloads are registered from disk-backed cache.",
+            }
+            return json.dumps(payload, indent=2)
+        except Exception as exc:
+            logger.error("[tool:get_or_create_weekly_summary] failed: %s", exc)
+            return f"get_or_create_weekly_summary failed: {exc}"
+
+    @tool
+    def inspect_cached_summary_schema(
+        product_family: str,
+        start_dt: str = "",
+        end_dt: str = "",
+        hours: int = 24 * 7,
+        device_id: str = "",
+        ota: str = "",
+        group_by: str = "product_family",
+    ) -> str:
+        """Inspect cached weekly workbook sheets and columns before requesting a subset extraction."""
+        logger.info(
+            "[tool:inspect_cached_summary_schema] called — family=%r start=%r end=%r",
+            product_family,
+            start_dt,
+            end_dt,
+        )
+        try:
+            family = _normalize_product_family(product_family)
+            normalized_group = _normalize_group_by(group_by)
+            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
+            artifacts = _find_summary_artifacts(family, start_date, end_date, device_id, ota, normalized_group)
+            if not artifacts:
+                return (
+                    "inspect_cached_summary_schema failed: no cached weekly summary found for the requested "
+                    "window and filters. Generate or fetch the workbook first."
+                )
+
+            workbook = artifacts[0]
+            frames = _load_cached_workbook_frames(workbook)
+            payload = {
+                "product_family": family,
+                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
+                "source_workbook": workbook.name,
+                "sheets": [
+                    {
+                        "sheet_name": sheet_name,
+                        "row_count": int(len(frame.index)),
+                        "columns": [str(col) for col in frame.columns],
+                    }
+                    for sheet_name, frame in frames.items()
+                ],
+            }
+            return json.dumps(payload, indent=2)
+        except Exception as exc:
+            logger.error("[tool:inspect_cached_summary_schema] failed: %s", exc)
+            return f"inspect_cached_summary_schema failed: {exc}"
+
+    @tool
+    def extract_cached_summary_subset(
+        product_family: str,
+        start_dt: str = "",
+        end_dt: str = "",
+        hours: int = 24 * 7,
+        sheet_names: str = "",
+        device_ids: str = "",
+        columns: str = "",
+        ota: str = "",
+        group_by: str = "product_family",
+    ) -> str:
+        """Extract selected sheets, devices, and columns from a cached weekly workbook into CSV downloads."""
+        logger.info(
+            "[tool:extract_cached_summary_subset] called — family=%r sheets=%r devices=%r columns=%r",
+            product_family,
+            sheet_names,
+            device_ids,
+            columns,
+        )
+        try:
+            family = _normalize_product_family(product_family)
+            normalized_group = _normalize_group_by(group_by)
+            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
+            requested_sheets = _parse_csv_list(sheet_names)
+            requested_devices = _parse_csv_list(device_ids)
+            requested_columns = _parse_csv_list(columns)
+
+            artifacts = _find_summary_artifacts(
+                family,
+                start_date,
+                end_date,
+                requested_devices[0] if len(requested_devices) == 1 else "",
+                ota,
+                normalized_group,
+            )
+            if not artifacts:
+                return (
+                    "extract_cached_summary_subset failed: no cached weekly summary found for the requested "
+                    "window and filters. Generate or fetch the workbook first."
+                )
+
+            workbook = artifacts[0]
+            frames = _load_cached_workbook_frames(workbook)
+            selected_sheet_names = requested_sheets or list(frames.keys())
+            missing_sheets = [sheet for sheet in selected_sheet_names if sheet not in frames]
+            if missing_sheets:
+                raise ValueError(f"Requested sheets not found: {', '.join(missing_sheets)}")
+
+            downloads: list[dict[str, str]] = []
+            sheet_summaries: list[dict[str, object]] = []
+            for sheet_name in selected_sheet_names:
+                filtered = _filter_sheet_frame(frames[sheet_name], requested_devices, requested_columns)
+                csv_bytes = filtered.to_csv(index=False).encode("utf-8")
+                safe_sheet = re.sub(r"[^A-Za-z0-9_.-]+", "_", sheet_name).strip("_") or "sheet"
+                filename = f"{workbook.stem}__{safe_sheet}.csv"
+                rid = result_store.put(csv_bytes, filename)
+                _collect_download(rid, filename)
+                downloads.append({"id": rid, "filename": filename})
+                sheet_summaries.append(
+                    {
+                        "sheet_name": sheet_name,
+                        "row_count": int(len(filtered.index)),
+                        "columns": [str(col) for col in filtered.columns],
+                        "download_id": rid,
+                        "filename": filename,
+                    }
+                )
+
+            payload = {
+                "product_family": family,
+                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
+                "source_workbook": workbook.name,
+                "filters": {
+                    "device_ids": requested_devices or None,
+                    "ota": ota.strip() or None,
+                    "group_by": normalized_group,
+                    "columns": requested_columns or None,
+                },
+                "sheets": sheet_summaries,
+                "downloads": downloads,
+            }
+            return json.dumps(payload, indent=2)
+        except Exception as exc:
+            logger.error("[tool:extract_cached_summary_subset] failed: %s", exc)
+            return f"extract_cached_summary_subset failed: {exc}"
 
     @tool
     def gps_kpi_summary(
@@ -1166,7 +1609,17 @@ def _make_tools(
             logger.error("[tool:session_health_summary] failed: %s", exc)
             return f"session_health_summary failed: {exc}"
 
-    tools = [query_observations, gps_kpi_summary, video_loss_summary, table_stats, session_health_summary]
+    tools = [
+        query_observations,
+        list_cached_weekly_summaries,
+        get_or_create_weekly_summary,
+        inspect_cached_summary_schema,
+        extract_cached_summary_subset,
+        gps_kpi_summary,
+        video_loss_summary,
+        table_stats,
+        session_health_summary,
+    ]
     if include_db_overview:
         tools.insert(0, db_overview)
     return tools
