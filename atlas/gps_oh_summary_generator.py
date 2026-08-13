@@ -784,6 +784,50 @@ def _build_gps_summary(device_df: pd.DataFrame, did: Any, acc_df: pd.DataFrame) 
     return d
 
 
+def _sanitize_sheet_name(name: Any, fallback: str = "Sheet") -> str:
+    text = str(name).strip() if name is not None else ""
+    if not text:
+        text = fallback
+    invalid = set('[]:*?/\\')
+    cleaned = "".join("_" if ch in invalid else ch for ch in text)
+    cleaned = cleaned.strip("'")
+    return cleaned[:31] or fallback
+
+
+def _build_gps_device_detail_sheet(device_df: pd.DataFrame) -> pd.DataFrame:
+    detail_df = device_df.copy()
+    detail_df["Start Time"] = detail_df["StartTime"].astype(str)
+    detail_df["Duration"] = _as_numeric(detail_df["Duration"]).fillna(0).astype(int)
+    detail_df["Uptime"] = detail_df["Uptime"]
+    detail_df["Ignition_Status"] = detail_df["ignition_status"]
+    detail_df["Nw_Recordedtime_Epoch"] = detail_df["NW_recordedTime"]
+    detail_df["Nw_Recordedtime"] = detail_df["NW_recordedTime_fmt"]
+    detail_df["Nwsource"] = detail_df["NWSource"]
+    detail_df["Rssi"] = detail_df["rssi"]
+    detail_df["Sinr"] = detail_df["sinr"]
+    detail_df["Videometadata_Accuracy_Count"] = _as_numeric(detail_df["VideoMetadata_accuracy_count"]).fillna(0).astype(int)
+    detail_df["Videometadata_Invalid_Accuracy_Count"] = _as_numeric(detail_df["VideoMetadata_invalid_accuracy_count"]).fillna(0).astype(int)
+    detail_df["Videometadata_Accuracy"] = detail_df["VideoMetadata_accuracy"]
+
+    columns = [
+        "file_name",
+        "Videometadata_Accuracy_Count",
+        "Videometadata_Invalid_Accuracy_Count",
+        "Start Time",
+        "Duration",
+        "Uptime",
+        "Ignition_Status",
+        "Nw_Recordedtime_Epoch",
+        "Nw_Recordedtime",
+        "Nwsource",
+        "Rssi",
+        "Sinr",
+        "Videometadata_Accuracy",
+    ]
+    result = detail_df[columns].rename(columns={"file_name": "File Name"})
+    return result.sort_values(by=["Start Time", "File Name"], kind="stable")
+
+
 # ---------------------------------------------------------------------------
 # Main entry: generate both summaries
 # ---------------------------------------------------------------------------
@@ -1086,6 +1130,12 @@ def generate_summaries(start_dt: str, end_dt: str, output_dir: str, product_fami
             if dev_df.empty:
                 continue
             gps_summary_rows.append(_build_gps_summary(dev_df, did, acc_df))
+            device_sheet_df = _build_gps_device_detail_sheet(dev_df)
+            sheet_name = _sanitize_sheet_name(did, fallback="Device")
+            device_sheet_df.to_excel(writer, sheet_name=sheet_name, index=False, engine="xlsxwriter")
+            ws = writer.sheets[sheet_name]
+            for col, width in enumerate(_get_col_widths(device_sheet_df)):
+                ws.set_column(col - 1, col - 1, width + 2)
 
         # GPS_Acc Summary sheet
         if gps_summary_rows:
