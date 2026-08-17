@@ -68,6 +68,25 @@ SNOWFLAKE_STAGING_SECTION = "SNOWFLAKE_STAG_DB"
 SNOWFLAKE_STAGING_TABLE = "STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT"
 
 
+def _message_text(message: BaseMessage) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text = item.strip()
+            elif isinstance(item, dict):
+                text = str(item.get("text", "")).strip()
+            else:
+                text = str(getattr(item, "text", "")).strip()
+            if text:
+                parts.append(text)
+        return "\n".join(parts).strip()
+    return str(content).strip()
+
+
 def _discover_skill_files(skills_root: Path) -> dict[str, Path]:
     """Return map of skill key -> SKILL.md path for nested skills layouts."""
     skills: dict[str, Path] = {}
@@ -438,6 +457,6 @@ def run_critical_events_agent(
     }
     final_state = graph.invoke(initial_state)
     last = final_state["messages"][-1]
-    result = getattr(last, "content", str(last)).strip() or "No response."
+    result = _message_text(last) or "No response."
     logger.info("[run] agent finished — total_iterations=%d result_length=%d", final_state["iterations"], len(result))
     return result

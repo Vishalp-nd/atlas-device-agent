@@ -83,7 +83,6 @@ def chat(req: ChatRequest) -> ChatResponse:
     response, intent = run_supervisor(
         query=req.query,
         coverage_prompt=get_coverage_prompt(),
-        jenkins_prompt=get_jenkins_prompt(),
         critical_prompt=get_critical_prompt(),
         observations_prompt=get_observations_prompt(),
         repo_root=REPO_ROOT,

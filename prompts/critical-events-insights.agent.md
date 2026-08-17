@@ -37,6 +37,14 @@ Rules:
 - Treat production and staging as sharing the same interpretation layer: skills, code meaning, and priority mapping are common; only the main event-data source differs.
 - For production, the main required table is `criticalinfo_snowflakes_data` and access should go through `query_critical_events`.
 - For staging, the main required table is `STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT` and access should go through `query_staging_critical_events`.
+- For staging drive-time requests, drive minutes can be fetched from `IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW`, for example:
+	```sql
+	SELECT DEVICE_ID, SUM(VALID_DRIVE_TIME_IN_MINUTES) AS total_drive_minutes
+	FROM IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW
+	WHERE DEVICE_ID IN (...)
+		AND RECORD_DATE BETWEEN start_date AND end_date
+	GROUP BY DEVICE_ID
+	```
 - For compare/both requests, run both tools with aligned filters and compare the results directly.
 - Do not block analysis if optional tables are missing.
 - Do not call `db_overview` by default. Start with a focused query that directly answers the user question.
@@ -92,6 +100,7 @@ Query guidance:
 - Use double quotes for the mixed-case column names, for example `"TIMESTAMP"`, `"PROCESS_NAME"`, `"CODE"`, `"DESCRIPTION"`, `"DEVICE_VERSION"`.
 - For production, the table name is `criticalinfo_snowflakes_data`.
 - For staging, the table name is `STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT`.
+- For staging drive-time questions, `IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW` can be used to aggregate `VALID_DRIVE_TIME_IN_MINUTES` by `DEVICE_ID` over a date range.
 - `type` is lowercase in the table and can be queried as `type` or `"type"`.
 - For time filters, prefer `"TIMESTAMP" >= ... AND "TIMESTAMP" < ...`.
 - For service/process analysis, group by `"PROCESS_NAME"`.

@@ -2,7 +2,7 @@
 supervisor_graph.py — Main LangGraph supervisor for the Atlas multi-agent system.
 
 Graph structure:
-    START → classify → (conditional edge on intent) → coverage | jenkins | critical_events | observations | unknown → END
+    START → classify → (conditional edge on intent) → coverage | critical_events | observations | unknown → END
 
 Adding a new agent:
   1. Create <agent>_graph.py with build_<agent>_graph() and run_<agent>_agent()
@@ -12,7 +12,6 @@ Adding a new agent:
 Nodes:
     classify        — Haiku LLM call; sets state["intent"]
     coverage        — invokes the coverage subgraph; sets state["response"]
-    jenkins         — invokes the Jenkins subgraph; sets state["response"]
     critical_events — invokes DB + skills critical-events subgraph
     observations    — invokes observations analytics subgraph
     unknown         — Haiku LLM call; generates a contextual help response
@@ -34,7 +33,6 @@ from langgraph.graph import END, START, StateGraph
 
 from .coverage_agent_graph import run_coverage_agent
 from .critical_events_agent_graph import run_critical_events_agent
-from .jenkins_agent_graph import run_jenkins_agent
 from .observations_agent_graph import run_observations_agent
 
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
@@ -69,14 +67,13 @@ _INTENT_SYSTEM = """\
 Given the conversation history (if any) and the latest user message, classify the
 LATEST message into exactly one of these intents:
 - "coverage": asking which testcases, skills, or flows cover a feature or service
-- "jenkins": asking to build, run, trigger, or check a Jenkins job
 - "critical_events": usually called cinfo, crit info etc. Asking about critical events data, code trends, error/info split,
   top processes, or analytics from local critical-events database
 - "observations": asking about observations analytics from extracteddata, including GPS quality,
   video-loss, metadata coverage, frame-loss, and observation health KPIs
 - "unknown": neither of the above
 
-If the history shows an ongoing Jenkins or coverage interaction and the latest message
+If the history shows an ongoing coverage interaction and the latest message
 looks like a follow-up (e.g. answering a question, providing a missing parameter value),
 classify it as the same intent as the ongoing conversation.
 
@@ -87,9 +84,8 @@ _UNKNOWN_SYSTEM = """\
 You are Atlas, an assistant with the below capabilities.
 You can help with exactly three things:
 1. Test coverage questions — e.g. "which testcases cover bagheera LPW?"
-2. Jenkins builds — e.g. "run the nightly integration job for device 12345"
-3. Critical events analytics — e.g. "top error codes for 6.15.rc.1 in last day"
-4. Observations analytics — e.g. "gps loss percentage in last 24h" or "video loss by device"
+2. Critical events analytics — e.g. "top error codes for 6.15.rc.1 in last day"
+3. Observations analytics — e.g. "gps loss percentage in last 24h" or "video loss by device"
 
 The user sent a message that doesn't clearly match these capabilities.
 Respond appropriately.
@@ -120,7 +116,6 @@ class SupervisorState(TypedDict):
     last_intent: str             # intent of the previous turn ("" on first turn)
     intent: str
     coverage_prompt: str
-    jenkins_prompt: str
     critical_prompt: str
     observations_prompt: str
     repo_root: Path
@@ -156,12 +151,12 @@ def _classify_node(state: SupervisorState) -> dict:
         )
         response = llm.invoke(messages, max_tokens=10)
         label = getattr(response, "content", "").strip().lower().strip("\"'")
-        intent = label if label in ("coverage", "jenkins", "critical_events", "observations") else "unknown"
+        intent = label if label in ("coverage", "critical_events", "observations") else "unknown"
     except Exception as exc:
         log.warning("Intent classification failed (%s) — defaulting to 'coverage'", exc)
         intent = "coverage"
 
-    if intent == "unknown" and state["last_intent"] in ("coverage", "jenkins", "critical_events", "observations"):
+    if intent == "unknown" and state["last_intent"] in ("coverage", "critical_events", "observations"):
         log.info(
             "INTENT | classified='unknown' — overriding to '%s' (continuation) last='%s' | query: %s",
             state["last_intent"], state["last_intent"], query_preview,
@@ -254,16 +249,6 @@ def _coverage_node(state: SupervisorState) -> dict:
     return {"response": response}
 
 
-def _jenkins_node(state: SupervisorState) -> dict:
-    """Invoke the Jenkins agent; passes history only on same-intent continuation."""
-    response = run_jenkins_agent(
-        state["query"],
-        state["jenkins_prompt"],
-        history=_relevant_history(state),
-    )
-    return {"response": response}
-
-
 def _critical_events_node(state: SupervisorState) -> dict:
     """Invoke the critical-events agent; passes history on same-intent continuation."""
     response = run_critical_events_agent(
@@ -307,7 +292,7 @@ def _unknown_node(state: SupervisorState) -> dict:
     except Exception:
         answer = (
             "I can help with test coverage questions (e.g. 'which testcases cover bagheera LPW?') "
-            "or Jenkins builds (e.g. 'run the nightly job for device 12345'), "
+            "or critical events / cinfo analytics (e.g. 'top error codes for 6.15.rc.1 in last day'), "
             "or observations analytics (e.g. 'gps loss percentage in the last day'). "
             "What would you like to do?"
         )
@@ -318,7 +303,7 @@ def _unknown_node(state: SupervisorState) -> dict:
 
 def _route_intent(state: SupervisorState) -> str:
     """Conditional edge: route to the node matching state['intent']."""
-    return state["intent"]  # "coverage" | "jenkins" | "critical_events" | "observations" | "unknown"
+    return state["intent"]  # "coverage" | "critical_events" | "observations" | "unknown"
 
 
 # ── Graph construction ────────────────────────────────────────────────────────
@@ -328,7 +313,6 @@ def build_supervisor_graph():
 
     graph.add_node("classify", _classify_node)
     graph.add_node("coverage", _coverage_node)
-    graph.add_node("jenkins", _jenkins_node)
     graph.add_node("critical_events", _critical_events_node)
     graph.add_node("observations", _observations_node)
     graph.add_node("unknown", _unknown_node)
@@ -339,14 +323,12 @@ def build_supervisor_graph():
         _route_intent,
         {
             "coverage": "coverage",
-            "jenkins": "jenkins",
             "critical_events": "critical_events",
             "observations": "observations",
             "unknown": "unknown",
         },
     )
     graph.add_edge("coverage", END)
-    graph.add_edge("jenkins", END)
     graph.add_edge("critical_events", END)
     graph.add_edge("observations", END)
     graph.add_edge("unknown", END)
@@ -359,7 +341,6 @@ def build_supervisor_graph():
 def run_supervisor(
     query: str,
     coverage_prompt: str,
-    jenkins_prompt: str,
     repo_root: Path,
     critical_prompt: str,
     observations_prompt: str,
@@ -374,10 +355,9 @@ def run_supervisor(
     final = graph.invoke({
         "query": query,
         "history": history or [],
-        "last_intent": last_intent,
+        "last_intent": last_intent if last_intent in ("coverage", "critical_events", "observations") else "",
         "intent": "",
         "coverage_prompt": coverage_prompt,
-        "jenkins_prompt": jenkins_prompt,
         "critical_prompt": critical_prompt,
         "observations_prompt": observations_prompt,
         "repo_root": repo_root,
