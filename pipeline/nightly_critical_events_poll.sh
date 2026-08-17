@@ -111,6 +111,22 @@ if [ $EXIT_CODE -eq 0 ]; then
   fi
 fi
 
+if [ $EXIT_CODE -eq 0 ]; then
+  echo "" | tee -a "${LOG_FILE}"
+  echo "=== Staging critical-info HTML report ===" | tee -a "${LOG_FILE}"
+  python3 staging_critical_info_report.py \
+    "${AWS_PROFILE_ARG[@]}" \
+    --output-dir "${SCRIPT_DIR}/../OUTPUT/staging_critical_info_reports" \
+    2>&1 | tee -a "${LOG_FILE}"
+  STAGING_REPORT_EXIT_CODE=${PIPESTATUS[0]}
+  if [ $STAGING_REPORT_EXIT_CODE -eq 0 ]; then
+    echo "✓ Staging critical-info report completed successfully" | tee -a "${LOG_FILE}"
+  else
+    echo "✗ Staging critical-info report failed with exit code $STAGING_REPORT_EXIT_CODE" | tee -a "${LOG_FILE}"
+    EXIT_CODE=$STAGING_REPORT_EXIT_CODE
+  fi
+fi
+
 # Step: daily device extraction + obs population (yesterday 01:00 -> now)
 echo "" | tee -a "${LOG_FILE}"
 echo "=== Data polling: device extraction ===" | tee -a "${LOG_FILE}"

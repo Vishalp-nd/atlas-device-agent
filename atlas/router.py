@@ -40,6 +40,7 @@ from .supervisor_graph import MAX_HISTORY, run_supervisor
 from .models import (
     AgentQueryRequest,
     AgentQueryResponse,
+    AgentQueryWithDownloadsResponse,
     ChatRequest,
     ChatResponse,
     CriticalEventsQueryRequest,
@@ -127,10 +128,10 @@ def jenkins_agent(req: AgentQueryRequest) -> AgentQueryResponse:
     return AgentQueryResponse(response=response)
 
 
-@router.post("/agents/critical-events", response_model=AgentQueryResponse)
-def critical_events_agent(req: CriticalEventsQueryRequest) -> AgentQueryResponse:
+@router.post("/agents/critical-events", response_model=AgentQueryWithDownloadsResponse)
+def critical_events_agent(req: CriticalEventsQueryRequest) -> AgentQueryWithDownloadsResponse:
     history = _load_session_history(req.session_id) if req.session_id else None
-    response = run_critical_events_agent(
+    response_text, downloads = run_critical_events_agent(
         req.query,
         get_critical_prompt(),
         REPO_ROOT,
@@ -139,8 +140,31 @@ def critical_events_agent(req: CriticalEventsQueryRequest) -> AgentQueryResponse
         history=history,
     )
     if req.session_id:
-        session_store.append_turn(req.session_id, req.query, response, "critical_events")
-    return AgentQueryResponse(response=response)
+        session_store.append_turn(req.session_id, req.query, response_text, "critical_events")
+    download_refs = [
+        DownloadRef(
+            id=d["id"],
+            filename=d["filename"],
+            url=f"/atlas/agents/critical-events/download/{d['id']}",
+        )
+        for d in downloads
+    ]
+    return AgentQueryWithDownloadsResponse(response=response_text, downloads=download_refs)
+
+
+@router.get("/agents/critical-events/download/{result_id}")
+def critical_events_download(result_id: str):
+    from fastapi.responses import Response
+    entry = result_store.get(result_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Result not found or expired")
+    data, filename = entry
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/agents/observations", response_model=ObservationsAgentQueryResponse)

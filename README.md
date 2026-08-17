@@ -176,6 +176,13 @@ The nightly poll expects the venv at `.venv/` in the repo root:
 0 1 * * * /path/to/atlas-device-agent/pipeline/nightly_critical_events_poll.sh
 ```
 
+That nightly entry now also generates staging critical-info HTML reports for the
+current day plus previous day window. It reads `CINFO_REPORT` from `.env` for one
+or more OTA substrings and optionally applies `CINFO_DEVICES` as an additional
+device-id filter. Reports are written per OTA, so multiple devices on the same OTA
+stay in one report while different OTAs produce separate files. Output files are
+written under `OUTPUT/staging_critical_info_reports/`.
+
 ## Sample questions
 
 **Coverage**

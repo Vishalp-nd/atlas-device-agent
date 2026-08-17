@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated, TypedDict
@@ -62,10 +63,13 @@ if str(PIPELINE_ROOT) not in sys.path:
     sys.path.insert(0, str(PIPELINE_ROOT))
 
 from fetch_device_config import connect_to_snowflake, read_db_config
+from atlas.result_store import result_store
+from staging_critical_info_report import generate_reports
 
 MAX_ITERATIONS = 12
 SNOWFLAKE_STAGING_SECTION = "SNOWFLAKE_STAG_DB"
 SNOWFLAKE_STAGING_TABLE = "STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT"
+_run_ctx = threading.local()
 
 
 def _message_text(message: BaseMessage) -> str:
@@ -118,6 +122,12 @@ def _safe_query(sql: str) -> bool:
         return False
     blocked = ["insert ", "update ", "delete ", "drop ", "alter ", "create ", "pragma ", ";"]
     return not any(token in text for token in blocked)
+
+
+def _collect_download(result_id: str, filename: str) -> None:
+    if not hasattr(_run_ctx, "downloads"):
+        _run_ctx.downloads = []
+    _run_ctx.downloads.append({"id": result_id, "filename": filename})
 
 
 def _make_tools(
@@ -290,6 +300,32 @@ def _make_tools(
                 conn.close()
 
     @tool
+    def generate_staging_critical_info_report() -> str:
+        """Generate OTA-specific staging critical-info HTML reports and register them as downloads.
+
+        Use this when the user asks for the staging critical-info report itself or wants a
+        downloadable HTML artifact. The report uses CINFO_REPORT and optional CINFO_DEVICES
+        from the repo-root .env and produces one file per OTA.
+        """
+        logger.info("[tool:generate_staging_critical_info_report] called")
+        try:
+            report_paths = generate_reports(repo_root)
+            if not report_paths:
+                return "No reports were generated. Check CINFO_REPORT in .env."
+
+            lines: list[str] = []
+            for path in report_paths:
+                result_id = result_store.put_file(path)
+                _collect_download(result_id, path.name)
+                lines.append(
+                    f"Generated {path.name}. Download: /atlas/agents/critical-events/download/{result_id}"
+                )
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.error("[tool:generate_staging_critical_info_report] failed: %s", exc)
+            return f"generate_staging_critical_info_report failed: {exc}"
+
+    @tool
     def list_skills() -> str:
         """List available SKILL.md names and one-line descriptions for insight mapping."""
         logger.info("[tool:list_skills] called — skills_root=%s", skills_root)
@@ -358,7 +394,13 @@ def _make_tools(
         logger.debug("[tool:read_skill] read %d chars from %s", len(content), skill_path)
         return content
 
-    tools = [query_critical_events, query_staging_critical_events, list_skills, read_skill]
+    tools = [
+        query_critical_events,
+        query_staging_critical_events,
+        generate_staging_critical_info_report,
+        list_skills,
+        read_skill,
+    ]
     if include_db_overview:
         tools.insert(0, db_overview)
     return tools
@@ -455,8 +497,19 @@ def run_critical_events_agent(
         ],
         "iterations": 0,
     }
-    final_state = graph.invoke(initial_state)
-    last = final_state["messages"][-1]
-    result = _message_text(last) or "No response."
-    logger.info("[run] agent finished — total_iterations=%d result_length=%d", final_state["iterations"], len(result))
-    return result
+    _run_ctx.downloads = []
+    try:
+        final_state = graph.invoke(initial_state)
+        last = final_state["messages"][-1]
+        result = _message_text(last) or "No response."
+        downloads = list(getattr(_run_ctx, "downloads", []))
+        logger.info(
+            "[run] agent finished — total_iterations=%d result_length=%d downloads=%d",
+            final_state["iterations"],
+            len(result),
+            len(downloads),
+        )
+        return result, downloads
+    finally:
+        if hasattr(_run_ctx, "downloads"):
+            delattr(_run_ctx, "downloads")

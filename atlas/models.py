@@ -31,6 +31,11 @@ class AgentQueryResponse(BaseModel):
     response: str
 
 
+class AgentQueryWithDownloadsResponse(BaseModel):
+    response: str
+    downloads: list[DownloadRef] = []
+
+
 class CriticalEventsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None
