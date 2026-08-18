@@ -363,4 +363,11 @@ def run_supervisor(
         "repo_root": repo_root,
         "response": "",
     })
-    return final["response"], final["intent"]
+    response = final["response"]
+    if isinstance(response, tuple) and response:
+        first = response[0]
+        if isinstance(first, str):
+            response = first
+    elif not isinstance(response, str):
+        response = str(response)
+    return response, final["intent"]

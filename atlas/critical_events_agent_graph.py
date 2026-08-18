@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import threading
+from datetime import date
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated, TypedDict
@@ -300,18 +301,41 @@ def _make_tools(
                 conn.close()
 
     @tool
-    def generate_staging_critical_info_report() -> str:
+    def generate_staging_critical_info_report(
+        start_date: str,
+        end_date: str,
+        deviceid: str = "",
+        ota: str = "",
+    ) -> str:
         """Generate OTA-specific staging critical-info HTML reports and register them as downloads.
 
-        Use this when the user asks for the staging critical-info report itself or wants a
-        downloadable HTML artifact. The report uses CINFO_REPORT and optional CINFO_DEVICES
-        from the repo-root .env and produces one file per OTA.
+        Required arguments:
+        - start_date: inclusive start date in YYYY-MM-DD format
+        - end_date: inclusive end date in YYYY-MM-DD format
+
+        Optional arguments:
+        - deviceid: comma-separated device IDs; falls back to CINFO_DEVICES from .env when empty
+        - ota: comma-separated OTA versions; falls back to CINFO_REPORT from .env when empty
         """
-        logger.info("[tool:generate_staging_critical_info_report] called")
+        logger.info(
+            "[tool:generate_staging_critical_info_report] called — start_date=%s end_date=%s deviceid=%s ota=%s",
+            start_date,
+            end_date,
+            deviceid,
+            ota,
+        )
         try:
-            report_paths = generate_reports(repo_root)
+            ota_versions = [item.strip() for item in ota.split(",") if item.strip()] or None
+            device_ids = [item.strip() for item in deviceid.split(",") if item.strip()] or None
+            report_paths = generate_reports(
+                repo_root,
+                start_date=date.fromisoformat(start_date),
+                end_date=date.fromisoformat(end_date),
+                ota_versions=ota_versions,
+                device_ids=device_ids,
+            )
             if not report_paths:
-                return "No reports were generated. Check CINFO_REPORT in .env."
+                return "No reports were generated. Check the provided filters or CINFO_REPORT in .env."
 
             lines: list[str] = []
             for path in report_paths:
@@ -502,7 +526,54 @@ def run_critical_events_agent(
         final_state = graph.invoke(initial_state)
         last = final_state["messages"][-1]
         result = _message_text(last) or "No response."
-        downloads = list(getattr(_run_ctx, "downloads", []))
+
+        # Tool execution may occur on worker threads, so don't rely only on thread-local
+        # download collection. Also extract IDs from tool outputs in final messages.
+        collected: dict[str, dict[str, str]] = {
+            d.get("id", ""): d for d in getattr(_run_ctx, "downloads", []) if d.get("id")
+        }
+        for msg in final_state.get("messages", []):
+            content = getattr(msg, "content", None)
+            if not isinstance(content, str):
+                continue
+            text = content.strip()
+
+            for match in re.finditer(r"/atlas/agents/critical-events/download/([0-9a-fA-F]+)", text):
+                rid = match.group(1)
+                if rid in collected:
+                    continue
+                entry = result_store.get(rid)
+                filename = entry[1] if entry else "download"
+                collected[rid] = {"id": rid, "filename": filename}
+
+            if not text.startswith("{"):
+                continue
+            try:
+                payload = json.loads(text)
+            except Exception:
+                continue
+
+            payload_downloads = payload.get("downloads")
+            if isinstance(payload_downloads, list):
+                for item in payload_downloads:
+                    if not isinstance(item, dict):
+                        continue
+                    rid = item.get("id")
+                    if not rid or rid in collected:
+                        continue
+                    filename = item.get("filename")
+                    if not filename:
+                        entry = result_store.get(rid)
+                        filename = entry[1] if entry else "download"
+                    collected[rid] = {"id": rid, "filename": filename}
+
+            rid = payload.get("_download_id")
+            if rid and rid not in collected:
+                entry = result_store.get(rid)
+                filename = entry[1] if entry else "download"
+                collected[rid] = {"id": rid, "filename": filename}
+
+        downloads = list(collected.values())
         logger.info(
             "[run] agent finished — total_iterations=%d result_length=%d downloads=%d",
             final_state["iterations"],

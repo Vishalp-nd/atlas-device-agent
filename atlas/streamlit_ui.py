@@ -48,9 +48,15 @@ def _normalize_download_links(text: str) -> str:
         return text
     api_base = API_BASE_URL.rstrip("/")
     text = text.replace("(/atlas/agents/observations/download/", f"({api_base}/atlas/agents/observations/download/")
+    text = text.replace("(/atlas/agents/critical-events/download/", f"({api_base}/atlas/agents/critical-events/download/")
     text = re.sub(
         r"\(https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/atlas/agents/observations/download/",
         f"({api_base}/atlas/agents/observations/download/",
+        text,
+    )
+    text = re.sub(
+        r"\(https?://(?:localhost|127\.0\.0\.1)(?::\d+)?/atlas/agents/critical-events/download/",
+        f"({api_base}/atlas/agents/critical-events/download/",
         text,
     )
     return text

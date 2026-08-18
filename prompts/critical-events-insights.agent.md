@@ -1,7 +1,7 @@
 ---
 name: "Critical Events Insights"
-description: "Use when: querying production or staging critical-event data, summarizing patterns, and connecting trends to relevant framework skills for deeper insights."
-tools: [query_critical_events, query_staging_critical_events, list_skills, read_skill]
+description: "Use when: querying production or staging critical-event data, generating staging HTML reports, summarizing patterns, and connecting trends to relevant framework skills for deeper insights."
+tools: [query_critical_events, query_staging_critical_events, generate_staging_critical_info_report, list_skills, read_skill]
 user-invocable: false
 ---
 
@@ -18,6 +18,9 @@ Your goals:
 4. Use `unique_cinfo_priority_map` as enrichment when pattern-level or priority mapping is needed.
 5. When asked why a specific critical-info (`cinfo`) event/CODE triggered, check the "Known Critical-Event Code -> Skill Index" below first via `read_skill`. Only if the code isn't indexed (or the skill doesn't cover the exact `CODE_AUX`/description combo) fall back to `/device-automation/.github/docs` graphs and service-specific call-tree docs.
 6. Treat skills, code interpretation, and priority mapping as shared across production and staging. Only the main critical-events data source changes by environment.
+7. When the user asks for the staging critical-info query, always call `generate_staging_critical_info_report` for the user given filters and provide the artifact as a downloadable along with answering the query.
+8. For report requests, pass the user's requested `start_date` and `end_date` in `YYYY-MM-DD` format and return the generated downloadable report link(s) from the tool output.
+9. Pass optional `deviceid` and `ota` only when the user explicitly provides them; otherwise leave them empty so the tool falls back to `CINFO_DEVICES` and `CINFO_REPORT` from `.env`.
 
 ## Known Critical-Event Code -> Skill Index
 
@@ -46,6 +49,9 @@ Rules:
 	GROUP BY DEVICE_ID
 	```
 - For compare/both requests, run both tools with aligned filters and compare the results directly.
+- For staging HTML report requests, always use `generate_staging_critical_info_report` and return the downloadable artifact link(s) it produces.
+- `generate_staging_critical_info_report` requires `start_date` and `end_date`; `deviceid` and `ota` are optional comma-separated filters with `.env` fallback.
+- If the user specifies a date range, device ID, or OTA for the report, pass those exact filters to the tool instead of substituting defaults.
 - Do not block analysis if optional tables are missing.
 - Do not call `db_overview` by default. Start with a focused query that directly answers the user question.
 - Prefer aggregations and focused filters over dumping raw rows.

@@ -55,6 +55,16 @@ from .session_store import session_store
 router = APIRouter(prefix="/atlas", tags=["atlas"])
 
 
+def _coerce_chat_response(response: object) -> str:
+    if isinstance(response, str):
+        return response
+    if isinstance(response, tuple) and response:
+        first = response[0]
+        if isinstance(first, str):
+            return first
+    return str(response)
+
+
 # ── Sessions ──────────────────────────────────────────────────────────────────
 
 @router.post("/sessions", response_model=SessionCreateResponse)
@@ -90,8 +100,9 @@ def chat(req: ChatRequest) -> ChatResponse:
         history=history,
         last_intent=state.last_intent,
     )
-    session_store.append_turn(req.session_id, req.query, response, intent)
-    return ChatResponse(response=response, intent=intent)
+    response_text = _coerce_chat_response(response)
+    session_store.append_turn(req.session_id, req.query, response_text, intent)
+    return ChatResponse(response=response_text, intent=intent)
 
 
 # ── Direct sub-agent access (bypasses the supervisor's classification) ───────
