@@ -11,6 +11,7 @@ venv/
 
 # Runtime output
 logs/
+*.html
 *.log
 *.csv
 *.lock

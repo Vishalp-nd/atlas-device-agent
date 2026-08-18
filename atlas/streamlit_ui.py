@@ -586,12 +586,23 @@ def _render_backend_warning(page_key: str, agent_name: str) -> None:
         st.warning(f"{agent_name} backend is currently unreachable at {API_BASE_URL}. You can still navigate the UI, but chat requests will fail until the service is back up. Last error: {error}")
 
 
-def _append_message(page_key: str, role: str, content: str) -> None:
+def _append_message(
+    page_key: str,
+    role: str,
+    content: str,
+    downloads: list[dict[str, str]] | None = None,
+) -> None:
     messages_key = _state_key(page_key, "messages")
-    messages: list[dict[str, str]] = st.session_state[messages_key]
-    if messages and messages[-1].get("role") == role and messages[-1].get("content") == content:
+    messages: list[dict[str, Any]] = st.session_state[messages_key]
+    normalized_downloads = downloads or []
+    if (
+        messages
+        and messages[-1].get("role") == role
+        and messages[-1].get("content") == content
+        and messages[-1].get("downloads", []) == normalized_downloads
+    ):
         return
-    messages.append({"role": role, "content": content})
+    messages.append({"role": role, "content": content, "downloads": normalized_downloads})
 
 
 def _render_header(title: str, subtitle: str, chips: list[str], title_link: tuple[str, str] | None = None) -> None:
@@ -618,7 +629,7 @@ def _render_header(title: str, subtitle: str, chips: list[str], title_link: tupl
 
 def _render_messages(page_key: str) -> None:
     messages_key = _state_key(page_key, "messages")
-    deduped_messages: list[dict[str, str]] = []
+    deduped_messages: list[dict[str, Any]] = []
     for msg in st.session_state[messages_key]:
         if deduped_messages and deduped_messages[-1] == msg:
             continue
@@ -627,6 +638,7 @@ def _render_messages(page_key: str) -> None:
     for msg in deduped_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            _render_download_refs(msg.get("downloads"))
 
 
 def _run_with_progress(request_fn: Any) -> str:
@@ -772,7 +784,7 @@ def render_atlas_page() -> None:
         st.markdown(answer)
         _render_download_refs(downloads)
 
-    _append_message(page_key, "assistant", answer)
+    _append_message(page_key, "assistant", answer, downloads)
 
 
 def render_cypher_page() -> None:
@@ -823,4 +835,4 @@ def render_cypher_page() -> None:
             answer = f"Could not reach the Cypher API at {API_BASE_URL}: {exc}"
         st.markdown(answer)
 
-    _append_message(page_key, "assistant", answer)
+    _append_message(page_key, "assistant", answer, downloads)
