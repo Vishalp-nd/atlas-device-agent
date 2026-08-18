@@ -34,3 +34,7 @@ SQLAlchemy>=2.0.37
 py7zr>=0.22.0
 xlsxwriter
 openpyxl
+beautifulsoup4>=4.12.0
+
+# Critical-bug report agent (atlas/critical_bug_report_agent.py)
+openai>=1.0.0

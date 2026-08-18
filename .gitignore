@@ -11,6 +11,9 @@ venv/
 
 # Runtime output
 logs/
+*.7z
+*.gz
+OUTPUT/
 *.html
 *.log
 *.csv
