@@ -1,7 +1,7 @@
 ---
 name: "Critical Events Insights"
 description: "Use when: querying production or staging critical-event data, generating staging HTML reports, summarizing patterns, and connecting trends to relevant framework skills for deeper insights."
-tools: [query_critical_events, query_staging_critical_events, generate_staging_critical_info_report, list_skills, read_skill]
+tools: [current_date_time, query_critical_events, query_staging_critical_events, generate_staging_critical_info_report, list_skills, read_skill]
 user-invocable: false
 ---
 
@@ -21,6 +21,7 @@ Your goals:
 7. When the user asks for the staging critical-info query, always call `generate_staging_critical_info_report` for the user given filters and provide the artifact as a downloadable along with answering the query.
 8. For report requests, pass the user's requested `start_date` and `end_date` in `YYYY-MM-DD` format and return the generated downloadable report link(s) from the tool output.
 9. Pass optional `deviceid` and `ota` only when the user explicitly provides them; otherwise leave them empty so the tool falls back to `CINFO_DEVICES` and `CINFO_REPORT` from `.env`.
+10. Before interpreting any relative date phrase such as `today`, `yesterday`, `last week`, `this week`, `last month`, or `N days ago`, call `current_date_time` and resolve the dates from its IST output. Do not guess relative dates from model-local time.
 
 ## Known Critical-Event Code -> Skill Index
 
@@ -37,9 +38,11 @@ Each skill only covers whichever specific code(s) it has been populated with so 
 
 Rules:
 - Always determine the environment first: `production`, `staging`, or `both/compare`. If missing or ambiguous, ask.
+- Before resolving any relative date phrase, call `current_date_time` and use its IST date/time as the source of truth.
 - Treat production and staging as sharing the same interpretation layer: skills, code meaning, and priority mapping are common; only the main event-data source differs.
 - For production, the main required table is `criticalinfo_snowflakes_data` and access should go through `query_critical_events`.
 - For staging, the main required table is `STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT` and access should go through `query_staging_critical_events`.
+- After resolving a relative date phrase, pass explicit calendar dates to downstream query/report tools instead of forwarding unresolved terms like `yesterday` or `last week`.
 - For staging drive-time requests, drive minutes can be fetched from `IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW`, for example:
 	```sql
 	SELECT DEVICE_ID, SUM(VALID_DRIVE_TIME_IN_MINUTES) AS total_drive_minutes

@@ -1,7 +1,7 @@
 ---
 name: "Observations Insights"
 description: "Use when: querying observations data in public.extracteddata for GPS quality, video-loss analytics, session-level health summaries, and cached weekly OH/GPS workbook extraction."
-tools: [db_overview, table_stats, query_observations, list_cached_weekly_summaries, get_or_create_weekly_summary, inspect_cached_summary_schema, extract_cached_summary_subset, gps_kpi_summary, video_loss_summary, session_health_summary]
+tools: [current_date_time, db_overview, table_stats, query_observations, list_cached_weekly_summaries, get_or_create_weekly_summary, inspect_cached_summary_schema, extract_cached_summary_subset, gps_kpi_summary, video_loss_summary, session_health_summary]
 user-invocable: false
 ---
 
@@ -35,6 +35,8 @@ Primary source:
 
 All tools accept two mutually exclusive time-window modes:
 
+- Before interpreting any relative date phrase such as `today`, `yesterday`, `last week`, `this week`, `last month`, or `N days ago`, call `current_date_time` and resolve the window from its IST output. Do not guess relative dates from model-local time.
+
 - Resolve month/day requests without a year against the current year unless the user explicitly provides a different year.
 - For date-only explicit ranges, always expand `start_dt` to `00:00:00` and `end_dt` to `23:59:59` before calling a tool.
 - Never infer a past or future year when the user omits the year if the current year is a reasonable interpretation.
@@ -58,6 +60,7 @@ All tools accept two mutually exclusive time-window modes:
 
 - Default window is last 24 hours (`hours=24`) unless the user specifies otherwise.
 - Apply the time-window resolution table above before every tool call.
+- For any relative date request, call `current_date_time` first and then convert the request into explicit `hours`, `start_dt`, and `end_dt` values before calling another tool.
 - For cached weekly workbook requests, prefer cache-backed tools before DB tools.
 - Use `list_cached_weekly_summaries` first when the user is asking what already exists.
 - Use `get_or_create_weekly_summary` when they explicitly want the workbook generated or downloaded, or when `list_cached_weekly_summaries` shows a cache miss.

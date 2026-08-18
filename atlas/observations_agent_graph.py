@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated, TypedDict
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -112,6 +113,20 @@ def _collect_download(result_id: str, filename: str) -> None:
     if not hasattr(_run_ctx, "downloads"):
         _run_ctx.downloads = []
     _run_ctx.downloads.append({"id": result_id, "filename": filename})
+
+
+def _current_ist_payload() -> str:
+    current_dt = datetime.now(ZoneInfo("Asia/Kolkata"))
+    payload = {
+        "timezone": "Asia/Kolkata",
+        "timezone_abbreviation": current_dt.tzname(),
+        "current_date": current_dt.strftime("%Y-%m-%d"),
+        "current_time": current_dt.strftime("%H:%M:%S"),
+        "current_datetime": current_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "iso_datetime": current_dt.isoformat(),
+        "weekday": current_dt.strftime("%A"),
+    }
+    return json.dumps(payload, indent=2)
 
 
 def _make_tools(
@@ -362,6 +377,20 @@ def _make_tools(
             where.append("ota = %s")
             params.append(ota.strip())
         return " AND ".join(where) if where else "TRUE", params
+
+    @tool
+    def current_date_time() -> str:
+        """Return the current date and time in IST (Asia/Kolkata).
+
+        Use this before resolving relative dates like today, yesterday, last week,
+        or this month from the user's request.
+        """
+        logger.info("[tool:current_date_time] called — timezone=Asia/Kolkata")
+        try:
+            return _current_ist_payload()
+        except Exception as exc:
+            logger.error("[tool:current_date_time] failed: %s", exc)
+            return f"current_date_time failed: {exc}"
 
     @tool
     def db_overview(
@@ -1618,6 +1647,7 @@ def _make_tools(
             return f"session_health_summary failed: {exc}"
 
     tools = [
+        current_date_time,
         query_observations,
         list_cached_weekly_summaries,
         get_or_create_weekly_summary,

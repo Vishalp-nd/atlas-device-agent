@@ -120,6 +120,7 @@ class SupervisorState(TypedDict):
     observations_prompt: str
     repo_root: Path
     response: str
+    downloads: list[dict[str, str]]
 
 
 # ── LLM factory (Haiku for routing only) ──────────────────────────────────────
@@ -251,13 +252,19 @@ def _coverage_node(state: SupervisorState) -> dict:
 
 def _critical_events_node(state: SupervisorState) -> dict:
     """Invoke the critical-events agent; passes history on same-intent continuation."""
-    response = run_critical_events_agent(
+    response_text, downloads = run_critical_events_agent(
         state["query"],
         state["critical_prompt"],
         state["repo_root"],
         history=_relevant_history(state),
     )
-    return {"response": response}
+    if downloads:
+        links = "\n".join(
+            f"- [⬇ {d['filename']}](/atlas/agents/critical-events/download/{d['id']})"
+            for d in downloads
+        )
+        response_text = response_text + f"\n\n**Downloads:**\n{links}"
+    return {"response": response_text, "downloads": downloads}
 
 
 def _observations_node(state: SupervisorState) -> dict:
@@ -274,7 +281,7 @@ def _observations_node(state: SupervisorState) -> dict:
             for d in downloads
         )
         response_text = response_text + f"\n\n**Downloads:**\n{links}"
-    return {"response": response_text}
+    return {"response": response_text, "downloads": downloads}
 
 
 def _unknown_node(state: SupervisorState) -> dict:
@@ -296,7 +303,7 @@ def _unknown_node(state: SupervisorState) -> dict:
             "or observations analytics (e.g. 'gps loss percentage in the last day'). "
             "What would you like to do?"
         )
-    return {"response": answer}
+    return {"response": answer, "downloads": []}
 
 
 # ── Routing ───────────────────────────────────────────────────────────────────
@@ -346,8 +353,8 @@ def run_supervisor(
     observations_prompt: str,
     history: list | None = None,
     last_intent: str = "",
-) -> tuple[str, str]:
-    """Run the supervisor graph. Returns (response, intent) so the caller can
+) -> tuple[str, str, list[dict[str, str]]]:
+    """Run the supervisor graph. Returns (response, intent, downloads) so the caller can
     persist the intent and pass it back on the next turn."""
     log.info("TURN | last_intent='%s' history_len=%d | query: %s",
              last_intent or "none", len(history or []), query[:120].replace("\n", " "))
@@ -362,12 +369,14 @@ def run_supervisor(
         "observations_prompt": observations_prompt,
         "repo_root": repo_root,
         "response": "",
+        "downloads": [],
     })
     response = final["response"]
+    downloads = final.get("downloads", [])
     if isinstance(response, tuple) and response:
         first = response[0]
         if isinstance(first, str):
             response = first
     elif not isinstance(response, str):
         response = str(response)
-    return response, final["intent"]
+    return response, final["intent"], downloads

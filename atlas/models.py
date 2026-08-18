@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     intent: str
+    downloads: list[DownloadRef] = []
 
 
 class AgentQueryRequest(BaseModel):

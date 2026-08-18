@@ -91,7 +91,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         )
 
     history = state.messages[-MAX_HISTORY:] if MAX_HISTORY > 0 else []
-    response, intent = run_supervisor(
+    response, intent, downloads = run_supervisor(
         query=req.query,
         coverage_prompt=get_coverage_prompt(),
         critical_prompt=get_critical_prompt(),
@@ -102,7 +102,19 @@ def chat(req: ChatRequest) -> ChatResponse:
     )
     response_text = _coerce_chat_response(response)
     session_store.append_turn(req.session_id, req.query, response_text, intent)
-    return ChatResponse(response=response_text, intent=intent)
+    download_refs = [
+        DownloadRef(
+            id=d["id"],
+            filename=d["filename"],
+            url=(
+                f"/atlas/agents/critical-events/download/{d['id']}"
+                if intent == "critical_events"
+                else f"/atlas/agents/observations/download/{d['id']}"
+            ),
+        )
+        for d in downloads
+    ]
+    return ChatResponse(response=response_text, intent=intent, downloads=download_refs)
 
 
 # ── Direct sub-agent access (bypasses the supervisor's classification) ───────
