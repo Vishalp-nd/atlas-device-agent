@@ -11,9 +11,13 @@ import argparse
 import json
 import os
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
+from difflib import SequenceMatcher
 
+import logfire
+import requests
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 
@@ -162,7 +166,7 @@ def _dispatch_tool(call, log_root: Path) -> str:
         return f"{call.function.name} failed: {exc}"
 
 
-def _build_user_prompt(entry: dict) -> str:
+def _build_user_prompt(entry: dict, ota_version: str) -> str:
     targets = "\n".join(
         f"  - device {t['device_id']}: dates {t['dates']}, most recent occurrence {t['reference_timestamp']}, downloaded={t['downloaded']}"
         for t in entry["download_targets"]
@@ -175,8 +179,102 @@ def _build_user_prompt(entry: dict) -> str:
         f"Sample description: {entry['sample_description']}\n"
         f"Total occurrences (report window): {entry['occurrences']}\n"
         f"Devices in report: {', '.join(entry['devices_in_report'])}\n"
+        f"OTA version: {ota_version or 'unknown'}\n"
         f"Download targets to investigate:\n{targets}"
     )
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _extract_ota_from_filename(report_name: str) -> str:
+    stem = Path(report_name).stem
+    match = re.search(r"staging_critical_info_(.+?)_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$", stem)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _extract_ota_from_report(report_name: str) -> str:
+    report_path = REPO_ROOT / "OUTPUT" / "staging_critical_info_reports" / report_name
+    if report_path.is_file():
+        report_text = report_path.read_text(encoding="utf-8", errors="replace")
+        match = re.search(r"<span><b>OTA:</b>\s*([^<]+)</span>", report_text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    ota_from_filename = _extract_ota_from_filename(report_name)
+    if ota_from_filename:
+        return ota_from_filename
+    return os.environ.get("CINFO_REPORT", "").strip()
+
+
+def _get_jira_config() -> tuple[str, str, str]:
+    server = os.environ.get("JIRA_SERVER", "").strip()
+    username = os.environ.get("USERNAME", "").strip()
+    api_token = os.environ.get("API_TOKEN", "").strip()
+    return server, username, api_token
+
+
+def _search_jira_issues_for_ota(ota_version: str) -> list[dict]:
+    server, username, api_token = _get_jira_config()
+    if not ota_version or not server or not username or not api_token:
+        return []
+
+    jql = f'project = BG4 AND "Identified In" = "{ota_version}" ORDER BY updated DESC'
+    response = requests.get(
+        f"{server.rstrip('/')}/rest/api/3/search/jql",
+        params={
+            "jql": jql,
+            "maxResults": 100,
+            "fields": "summary,description,issuetype,status",
+        },
+        auth=(username, api_token),
+        headers={"Accept": "application/json"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return payload.get("issues", [])
+
+
+def _issue_text(issue: dict) -> str:
+    fields = issue.get("fields", {})
+    summary = fields.get("summary") or ""
+    description = fields.get("description")
+    description_text = json.dumps(description, ensure_ascii=False) if description else ""
+    return _normalize_text(f"{summary} {description_text}")
+
+
+def _match_existing_bug(section: str, issues: list[dict]) -> str:
+    server, _, _ = _get_jira_config()
+    heading = _section_heading(section)
+    normalized_heading = _normalize_text(heading)
+    if not normalized_heading or not issues:
+        return "-"
+
+    best_issue = None
+    best_score = 0.0
+    for issue in issues:
+        issue_key = issue.get("key", "")
+        issue_text = _issue_text(issue)
+        if not issue_key or not issue_text:
+            continue
+
+        score = SequenceMatcher(None, normalized_heading, issue_text).ratio()
+        heading_tokens = set(normalized_heading.split())
+        issue_tokens = set(issue_text.split())
+        if heading_tokens:
+            overlap = len(heading_tokens & issue_tokens) / len(heading_tokens)
+            score = max(score, overlap)
+
+        if score > best_score:
+            best_score = score
+            best_issue = issue_key
+
+    if not best_issue or best_score < 0.3:
+        return "-"
+    return f"[link]({server.rstrip('/')}/browse/{best_issue})"
 
 
 def _get_client() -> tuple[AzureOpenAI, str]:
@@ -189,11 +287,34 @@ def _get_client() -> tuple[AzureOpenAI, str]:
     return client, deployment
 
 
-def analyze_entry(client: AzureOpenAI, deployment: str, entry: dict, log_root: Path,
+def _configure_logfire() -> None:
+    try:
+        logfire.configure()
+    except Exception as exc:
+        logging.getLogger("atlas.critical_bug_report_agent").warning(
+            "logfire.configure() failed: %s", exc
+        )
+        return
+
+    instrument_openai = getattr(logfire, "instrument_openai", None)
+    if callable(instrument_openai):
+        try:
+            instrument_openai()
+        except Exception as exc:
+            logging.getLogger("atlas.critical_bug_report_agent").warning(
+                "logfire.instrument_openai() failed: %s", exc
+            )
+    else:
+        logging.getLogger("atlas.critical_bug_report_agent").warning(
+            "logfire.instrument_openai() unavailable; Azure OpenAI calls will not be traced"
+        )
+
+
+def analyze_entry(client: AzureOpenAI, deployment: str, entry: dict, log_root: Path, ota_version: str,
                    max_iterations: int = MAX_ITERATIONS) -> str:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": _build_user_prompt(entry)},
+        {"role": "user", "content": _build_user_prompt(entry, ota_version)},
     ]
     for _ in range(max_iterations):
         response = client.chat.completions.create(
@@ -242,16 +363,17 @@ def _classify_section(section: str) -> str:
     return "Bug"
 
 
-def _build_index(sections: list[str]) -> str:
+def _build_index(sections: list[str], existing_bug_links: list[str]) -> str:
     rows = "\n".join(
-        f"| {i} | {_section_heading(section)} | {_classify_section(section)} |"
+        f"| {i} | {_section_heading(section)} | {_classify_section(section)} | {existing_bug_links[i - 1]} |"
         for i, section in enumerate(sections, start=1)
     )
-    return f"## Index\n\n| Sl No | Bug | Classification |\n|---|---|---|\n{rows}\n"
+    return f"## Index\n\n| Sl No | Bug | Classification | Existing Bug |\n|---|---|---|---|\n{rows}\n"
 
 
 def main() -> int:
     args = _parse_args()
+    _configure_logfire()
     data = json.loads(Path(args.map).read_text(encoding="utf-8"))
     entries = [e for e in data["entries"] if e["severity"] == "ERROR"]
     if args.only:
@@ -262,16 +384,27 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     client, deployment = _get_client()
+    ota_version = str(data.get("ota_version") or _extract_ota_from_report(data["report"])).strip()
 
     sections = []
     for entry in entries:
         try:
-            sections.append(analyze_entry(client, deployment, entry, log_root, args.max_iterations).strip())
+            sections.append(analyze_entry(client, deployment, entry, log_root, ota_version, args.max_iterations).strip())
         except Exception as exc:
             sections.append(f"## [{entry['process']}] ANALYSIS FAILED\n\nAgent error: {exc}")
 
+    try:
+        jira_issues = _search_jira_issues_for_ota(ota_version)
+    except Exception as exc:
+        logging.getLogger("atlas.critical_bug_report_agent").warning(
+            "Jira lookup failed for OTA %s: %s", ota_version, exc
+        )
+        jira_issues = []
+
+    existing_bug_links = [_match_existing_bug(section, jira_issues) for section in sections]
+
     header = f"# Critical Bug Report - {data['report']}\nGenerated: {datetime.now():%Y-%m-%d %H:%M:%S}\n"
-    index = _build_index(sections)
+    index = _build_index(sections, existing_bug_links)
     body = "\n\n---\n\n".join(sections)
     output_path.write_text(f"{header}\n{index}\n---\n\n{body}\n", encoding="utf-8")
     print(output_path)

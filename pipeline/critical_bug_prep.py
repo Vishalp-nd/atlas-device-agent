@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import date, datetime, timedelta
@@ -47,6 +48,28 @@ def _find_latest_report(report_dir: Path) -> Path:
     if not candidates:
         raise FileNotFoundError(f"No staging_critical_info_*.html files found under {report_dir}")
     return candidates[-1]
+
+
+def _extract_ota_from_filename(report_path: Path) -> str:
+    match = re.search(r"staging_critical_info_(.+?)_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$", report_path.stem)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _extract_ota_from_report(report_path: Path) -> str:
+    soup = BeautifulSoup(report_path.read_text(encoding="utf-8"), "html.parser")
+    meta = soup.find("div", class_="meta")
+    if meta is not None:
+        for span in meta.find_all("span"):
+            text = span.get_text(" ", strip=True)
+            match = re.match(r"OTA:\s*(.+)$", text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    ota_from_filename = _extract_ota_from_filename(report_path)
+    if ota_from_filename:
+        return ota_from_filename
+    return os.environ.get("CINFO_REPORT", "").strip()
 
 
 def _parse_report(report_path: Path) -> list[dict]:
@@ -175,6 +198,7 @@ def main() -> int:
     map_path = map_dir / f"{report_path.stem}_map.json"
     map_path.write_text(json.dumps({
         "report": report_path.name,
+        "ota_version": _extract_ota_from_report(report_path),
         "generated_at": datetime.now().strftime(TIMESTAMP_FMT),
         "entries": entries,
     }, indent=2), encoding="utf-8")
@@ -198,7 +222,7 @@ def main() -> int:
 
     mailer_command = [
         sys.executable, str(Path(args.mailer_script)),
-        "--attachment", str(bugs_path),
+        "--attachment", str(bugs_path), str(report_path),
         "--subject", f"Critical Bug Report: {report_path.stem}",
     ]
     completed = subprocess.run(mailer_command, cwd=REPO_ROOT)
