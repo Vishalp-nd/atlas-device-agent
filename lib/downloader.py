@@ -86,7 +86,7 @@ class Downloader:
     def __boto_download(self, s3file):
         destFile = None
         if self.filetype == 'log':
-            destFile = 'log/' + '/'.join(s3file.key.split('/')[1:])
+            destFile = os.path.join('OUTPUT', 'log', *s3file.key.split('/')[1:])
         else:
             destFile = '/'.join(s3file.key.split('/')[1:])
         
@@ -122,6 +122,12 @@ class Downloader:
             To download s3 files and folders
         """
         t = None
+        if self.filetype == 'log':
+            existing_dir = os.path.join('OUTPUT', 'log', device, date)
+            if os.path.isdir(existing_dir):
+                print(f"{device} : {date} ==> skipped (already exists)")
+                self.dest_dir = existing_dir
+                return existing_dir
         # device = devicedate[0]
         # date = devicedate[1]
         s3files = self.__get_content(device, date)
@@ -236,7 +242,7 @@ class ChronologicalAnalyzer():
         current_entry = None
         #time.sleep(20)
         print(f"Processing device: {device}")
-        log_dir = "log/" + device
+        log_dir = os.path.join('OUTPUT', 'log', device)
         for file_path in Path(log_dir).rglob("*.log"):
             relative_path = file_path.relative_to(log_dir)
             folder_name = relative_path.parts[0] if len(relative_path.parts) > 1 else "."

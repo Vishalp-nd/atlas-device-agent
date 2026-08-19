@@ -27,7 +27,7 @@ DEFAULT_LOG_ROOT = REPO_ROOT / "OUTPUT" / "log"
 DEFAULT_BUGS_DIR = REPO_ROOT / "OUTPUT" / "critical_bugs"
 MAX_ITERATIONS = 10
 
-load_dotenv(str(ENV_PATH), override=False)
+load_dotenv(str(ENV_PATH), override=True)
 
 SYSTEM_PROMPT = """You are a device-log bug analyst for Netradyne's Atlas platform.
 
@@ -221,7 +221,11 @@ def _search_jira_issues_for_ota(ota_version: str) -> list[dict]:
     if not ota_version or not server or not username or not api_token:
         return []
 
-    jql = f'project = BG4 AND "Identified In" = "{ota_version}" ORDER BY updated DESC'
+    jql = (
+        'type = Bug '
+        f'AND "identified in[version picker (single version)]" = {ota_version} '
+        'ORDER BY priority DESC'
+    )
     response = requests.get(
         f"{server.rstrip('/')}/rest/api/3/search/jql",
         params={
@@ -246,35 +250,84 @@ def _issue_text(issue: dict) -> str:
     return _normalize_text(f"{summary} {description_text}")
 
 
-def _match_existing_bug(section: str, issues: list[dict]) -> str:
-    server, _, _ = _get_jira_config()
+def _tokenize_for_match(value: str) -> set[str]:
+    return {token for token in _normalize_text(value).split() if len(token) > 2}
+
+
+def _score_issue_match(section: str, issue: dict) -> float:
     heading = _section_heading(section)
     normalized_heading = _normalize_text(heading)
-    if not normalized_heading or not issues:
-        return "-"
+    if not normalized_heading:
+        return 0.0
 
-    best_issue = None
-    best_score = 0.0
-    for issue in issues:
-        issue_key = issue.get("key", "")
-        issue_text = _issue_text(issue)
-        if not issue_key or not issue_text:
+    section_text = _normalize_text(section)
+    if not section_text:
+        return 0.0
+
+    heading_tokens = _tokenize_for_match(heading)
+    section_tokens = _tokenize_for_match(section)
+    heading_prefix_match = re.match(r"\[([^\]]+)\]", heading)
+    heading_prefix = _normalize_text(heading_prefix_match.group(1)) if heading_prefix_match else ""
+    fields = issue.get("fields", {})
+    summary = fields.get("summary") or ""
+    issue_text = _issue_text(issue)
+    if not issue_text:
+        return 0.0
+
+    issue_tokens = _tokenize_for_match(summary)
+    if not issue_tokens:
+        issue_tokens = _tokenize_for_match(issue_text)
+
+    heading_sequence_score = SequenceMatcher(None, normalized_heading, issue_text).ratio()
+    section_sequence_score = SequenceMatcher(None, section_text, issue_text).ratio()
+    overlap_score = 0.0
+    if heading_tokens:
+        overlap_score = len(heading_tokens & issue_tokens) / len(heading_tokens)
+
+    section_overlap_score = 0.0
+    if section_tokens:
+        section_overlap_score = len(section_tokens & issue_tokens) / len(section_tokens)
+
+    prefix_score = 0.0
+    if heading_prefix:
+        normalized_summary = _normalize_text(summary)
+        if heading_prefix in normalized_summary:
+            prefix_score = 1.0
+
+    score = max(heading_sequence_score, section_sequence_score, overlap_score, section_overlap_score)
+    if prefix_score:
+        score = max(score, 0.45 + (0.35 * overlap_score) + (0.20 * section_overlap_score))
+    return score
+
+
+def _assign_existing_bugs(sections: list[str], issues: list[dict]) -> list[str]:
+    server, _, _ = _get_jira_config()
+    if not sections or not issues:
+        return ["-"] * len(sections)
+
+    candidates: list[tuple[float, int, str]] = []
+    for section_index, section in enumerate(sections):
+        for issue in issues:
+            issue_key = issue.get("key", "")
+            if not issue_key:
+                continue
+            score = _score_issue_match(section, issue)
+            if score >= 0.35:
+                candidates.append((score, section_index, issue_key))
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+
+    assigned_sections: set[int] = set()
+    assigned_issues: set[str] = set()
+    links = ["-"] * len(sections)
+    for score, section_index, issue_key in candidates:
+        if section_index in assigned_sections or issue_key in assigned_issues:
             continue
+        assigned_sections.add(section_index)
+        assigned_issues.add(issue_key)
+        links[section_index] = f"[link]({server.rstrip('/')}/browse/{issue_key})"
 
-        score = SequenceMatcher(None, normalized_heading, issue_text).ratio()
-        heading_tokens = set(normalized_heading.split())
-        issue_tokens = set(issue_text.split())
-        if heading_tokens:
-            overlap = len(heading_tokens & issue_tokens) / len(heading_tokens)
-            score = max(score, overlap)
-
-        if score > best_score:
-            best_score = score
-            best_issue = issue_key
-
-    if not best_issue or best_score < 0.3:
-        return "-"
-    return f"[link]({server.rstrip('/')}/browse/{best_issue})"
+    return links
 
 
 def _get_client() -> tuple[AzureOpenAI, str]:
@@ -336,6 +389,37 @@ def analyze_entry(client: AzureOpenAI, deployment: str, entry: dict, log_root: P
     return final.choices[0].message.content or ""
 
 
+def _split_existing_report(markdown: str) -> tuple[str, list[str]]:
+    marker = "\n---\n\n"
+    if marker not in markdown:
+        raise ValueError("Existing markdown report is missing the expected index/body separator.")
+    prefix, body = markdown.split(marker, 1)
+    sections = [section.strip() for section in body.strip().split("\n\n---\n\n") if section.strip()]
+    if not sections:
+        raise ValueError("Existing markdown report does not contain any bug sections.")
+    header_lines = prefix.splitlines()
+    if len(header_lines) < 2:
+        raise ValueError("Existing markdown report header is incomplete.")
+    header = "\n".join(header_lines[:2])
+    return header, sections
+
+
+def _rewrite_index_only(output_path: Path, report_name: str, ota_version: str) -> None:
+    markdown = output_path.read_text(encoding="utf-8")
+    header, sections = _split_existing_report(markdown)
+    try:
+        jira_issues = _search_jira_issues_for_ota(ota_version)
+    except Exception as exc:
+        logging.getLogger("atlas.critical_bug_report_agent").warning(
+            "Jira lookup failed for OTA %s: %s", ota_version, exc
+        )
+        jira_issues = []
+    existing_bug_links = _assign_existing_bugs(sections, jira_issues)
+    index = _build_index(sections, existing_bug_links)
+    body = "\n\n---\n\n".join(sections)
+    output_path.write_text(f"{header}\n\n{index}\n---\n\n{body}\n", encoding="utf-8")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map", required=True, help="Path to the JSON map produced by pipeline/critical_bug_prep.py.")
@@ -343,6 +427,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--log-root", default=str(DEFAULT_LOG_ROOT), help="Root directory containing <device_id>/<date>/logs/ dirs.")
     parser.add_argument("--max-iterations", type=int, default=MAX_ITERATIONS, help="Max tool-calling iterations per entry.")
     parser.add_argument("--only", default=None, help="Limit analysis to entries whose code matches this value (for prompt iteration).")
+    parser.add_argument("--jira-index-only", action="store_true", help="Rebuild only the Existing Bug index column on an existing markdown report without regenerating bug sections.")
     return parser.parse_args()
 
 
@@ -382,9 +467,14 @@ def main() -> int:
     log_root = Path(args.log_root)
     output_path = Path(args.output) if args.output else DEFAULT_BUGS_DIR / f"{Path(data['report']).stem}_bugs.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    ota_version = str(data.get("ota_version") or _extract_ota_from_report(data["report"])).strip()
+
+    if args.jira_index_only:
+        _rewrite_index_only(output_path, data["report"], ota_version)
+        print(output_path)
+        return 0
 
     client, deployment = _get_client()
-    ota_version = str(data.get("ota_version") or _extract_ota_from_report(data["report"])).strip()
 
     sections = []
     for entry in entries:
@@ -401,7 +491,7 @@ def main() -> int:
         )
         jira_issues = []
 
-    existing_bug_links = [_match_existing_bug(section, jira_issues) for section in sections]
+    existing_bug_links = _assign_existing_bugs(sections, jira_issues)
 
     header = f"# Critical Bug Report - {data['report']}\nGenerated: {datetime.now():%Y-%m-%d %H:%M:%S}\n"
     index = _build_index(sections, existing_bug_links)
