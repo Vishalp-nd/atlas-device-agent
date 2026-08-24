@@ -13,9 +13,9 @@ class Extract:
     '''
 
     def __init__(self, path, temp: bool = False):
-        self.path = path
-        self.log_path = os.path.join(REPO_ROOT, 'OUTPUT', path, 'logs')
-        self.extract_path = os.path.join(path, 'extract')
+        self.path = os.path.join(REPO_ROOT, path)
+        self.log_path = os.path.join(self.path, 'logs')
+        self.extract_path = os.path.join(self.path, 'extract')
         self.temp = temp
         self.error = 0
         self.outputpath = []

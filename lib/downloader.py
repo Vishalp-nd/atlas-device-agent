@@ -35,7 +35,7 @@ class Downloader:
         self.filetype = filetype
         self.deviceid = None
         self.dates = None
-        self.bt3_client = boto3.resource("s3")
+        self.bt3_client = boto3.Session(profile_name="default").resource("s3")
         if server == 'prod':
             self.server = 'idms-production'
         else:
