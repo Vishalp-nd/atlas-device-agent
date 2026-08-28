@@ -682,6 +682,7 @@ def _render_sidebar_nav() -> None:
         st.markdown("### Agents")
         st.page_link("pages/1_Atlas.py", label="Atlas", icon=":material/precision_manufacturing:")
         st.page_link("pages/2_Cypher.py", label="Cypher", icon=":material/account_tree:")
+        st.page_link("pages/3_Critical_Events_Monitor.py", label="Critical Events Monitor", icon=":material/monitoring:")
 
 
 def render_dashboard() -> None:
@@ -722,6 +723,16 @@ def render_dashboard() -> None:
                     <span class="chip">knowledge graph</span>
                 </div>
                 <div class="dashboard-link"><a href="./Cypher" target="_self">Open Cypher</a></div>
+            </section>
+            <section class="agent-card">
+                <h3>Critical Events Monitor</h3>
+                <p>Production monitoring dashboard for OTA-level error and info trends from the local critical-events database.</p>
+                <div class="chip-row">
+                    <span class="chip">production</span>
+                    <span class="chip">ota trends</span>
+                    <span class="chip">priority split</span>
+                </div>
+                <div class="dashboard-link"><a href="./Critical_Events_Monitor" target="_self">Open Monitor</a></div>
             </section>
         </div>
         """,
