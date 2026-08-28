@@ -12,7 +12,7 @@
 # this repo checkout into the container at runtime (see ./Dockerfile).
 
 IMAGE_NAME := atlas-agent-api
-PORT       ?= 8000
+PORT       ?= 8501
 REPO_ROOT  := $(CURDIR)
 ENV_FILE   := .env
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
@@ -32,7 +32,7 @@ docker-run:
 	docker run --rm -it \
 		--name $(IMAGE_NAME) \
 		--add-host=host.docker.internal:host-gateway \
-		-p $(PORT):8000 \
+		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
 		$(IMAGE_NAME)
@@ -44,7 +44,7 @@ docker-run-detached:
 		--restart unless-stopped \
 		--name $(IMAGE_NAME) \
 		--add-host=host.docker.internal:host-gateway \
-		-p $(PORT):8000 \
+		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
 		$(IMAGE_NAME)
