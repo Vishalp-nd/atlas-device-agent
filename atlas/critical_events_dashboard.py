@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import pandas as pd
-import psycopg2
 import streamlit as st
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 PIPELINE_ROOT = Path(__file__).resolve().parents[1] / "pipeline"
 if str(PIPELINE_ROOT) not in os.sys.path:
@@ -47,17 +49,21 @@ def configured_ota_versions(repo_root: Path) -> list[str]:
 
 
 @st.cache_resource(show_spinner=False)
-def get_connection(repo_root: str, postgres_section: str):
+def get_engine(repo_root: str, postgres_section: str) -> Engine:
     db_config_path = Path(repo_root) / "db_credentials.ini"
     params = read_db_config(str(db_config_path), postgres_section)
-    conn = psycopg2.connect(**params)
-    conn.autocommit = True
-    return conn
+    user = quote_plus(str(params["user"]))
+    password = quote_plus(str(params["password"]))
+    host = params["host"]
+    port = params["port"]
+    database = quote_plus(str(params["database"]))
+    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+    return create_engine(url, pool_pre_ping=True)
 
 
 def _read_sql(repo_root: Path, postgres_section: str, sql: str, params: tuple | None = None) -> pd.DataFrame:
-    conn = get_connection(str(repo_root), postgres_section)
-    return pd.read_sql_query(sql, conn, params=params)
+    engine = get_engine(str(repo_root), postgres_section)
+    return pd.read_sql_query(sql, engine, params=params)
 
 
 def load_dashboard_frame(config: DashboardConfig) -> pd.DataFrame:
