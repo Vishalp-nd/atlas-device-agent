@@ -420,6 +420,16 @@ def _rewrite_index_only(output_path: Path, report_name: str, ota_version: str) -
     output_path.write_text(f"{header}\n\n{index}\n---\n\n{body}\n", encoding="utf-8")
 
 
+def _load_existing_sections(output_path: Path) -> list[str]:
+    if not output_path.is_file():
+        return []
+    try:
+        _, sections = _split_existing_report(output_path.read_text(encoding="utf-8"))
+        return sections
+    except Exception:
+        return []
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map", required=True, help="Path to the JSON map produced by pipeline/critical_bug_prep.py.")
@@ -427,6 +437,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--log-root", default=str(DEFAULT_LOG_ROOT), help="Root directory containing <device_id>/<date>/logs/ dirs.")
     parser.add_argument("--max-iterations", type=int, default=MAX_ITERATIONS, help="Max tool-calling iterations per entry.")
     parser.add_argument("--only", default=None, help="Limit analysis to entries whose code matches this value (for prompt iteration).")
+    parser.add_argument("--start-index", type=int, default=0, help="Zero-based index into the filtered ERROR entries list.")
+    parser.add_argument("--limit", type=int, default=None, help="Max number of filtered ERROR entries to analyze in this run.")
     parser.add_argument("--jira-index-only", action="store_true", help="Rebuild only the Existing Bug index column on an existing markdown report without regenerating bug sections.")
     return parser.parse_args()
 
@@ -456,6 +468,24 @@ def _build_index(sections: list[str], existing_bug_links: list[str]) -> str:
     return f"## Index\n\n| Sl No | Bug | Classification | Existing Bug |\n|---|---|---|---|\n{rows}\n"
 
 
+def _write_report(output_path: Path, report_name: str, sections: list[str], existing_bug_links: list[str]) -> None:
+    header = f"# Critical Bug Report - {report_name}\nGenerated: {datetime.now():%Y-%m-%d %H:%M:%S}\n"
+    index = _build_index(sections, existing_bug_links)
+    body = "\n\n---\n\n".join(sections)
+    output_path.write_text(f"{header}\n{index}\n---\n\n{body}\n", encoding="utf-8")
+
+
+def _slice_entries(entries: list[dict], start_index: int, limit: int | None) -> list[dict]:
+    if start_index < 0:
+        raise ValueError("--start-index must be >= 0")
+    if limit is not None and limit <= 0:
+        raise ValueError("--limit must be > 0 when provided")
+    sliced = entries[start_index:]
+    if limit is not None:
+        sliced = sliced[:limit]
+    return sliced
+
+
 def main() -> int:
     args = _parse_args()
     _configure_logfire()
@@ -463,6 +493,7 @@ def main() -> int:
     entries = [e for e in data["entries"] if e["severity"] == "ERROR"]
     if args.only:
         entries = [e for e in entries if str(e["code"]) == args.only]
+    entries = _slice_entries(entries, args.start_index, args.limit)
 
     log_root = Path(args.log_root)
     output_path = Path(args.output) if args.output else DEFAULT_BUGS_DIR / f"{Path(data['report']).stem}_bugs.md"
@@ -476,12 +507,13 @@ def main() -> int:
 
     client, deployment = _get_client()
 
-    sections = []
+    sections = _load_existing_sections(output_path) if args.start_index > 0 else []
     for entry in entries:
         try:
             sections.append(analyze_entry(client, deployment, entry, log_root, ota_version, args.max_iterations).strip())
         except Exception as exc:
             sections.append(f"## [{entry['process']}] ANALYSIS FAILED\n\nAgent error: {exc}")
+        _write_report(output_path, data["report"], sections, ["TBD"] * len(sections))
 
     try:
         jira_issues = _search_jira_issues_for_ota(ota_version)
@@ -493,10 +525,7 @@ def main() -> int:
 
     existing_bug_links = _assign_existing_bugs(sections, jira_issues)
 
-    header = f"# Critical Bug Report - {data['report']}\nGenerated: {datetime.now():%Y-%m-%d %H:%M:%S}\n"
-    index = _build_index(sections, existing_bug_links)
-    body = "\n\n---\n\n".join(sections)
-    output_path.write_text(f"{header}\n{index}\n---\n\n{body}\n", encoding="utf-8")
+    _write_report(output_path, data["report"], sections, existing_bug_links)
     print(output_path)
     return 0
 
