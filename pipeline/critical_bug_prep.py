@@ -28,6 +28,7 @@ DEFAULT_AGENT_SCRIPT = REPO_ROOT / "atlas" / "critical_bug_report_agent.py"
 DEFAULT_MAILER_SCRIPT = REPO_ROOT / "lib" / "mailer.py"
 DEFAULT_BUGS_DIR = REPO_ROOT / "OUTPUT" / "critical_bugs"
 MAX_DEVICES_PER_ROW = 2
+DEFAULT_AGENT_BATCH_SIZE = 10
 TIMESTAMP_FMT = "%Y-%m-%d %H:%M:%S"
 
 if str(LIB_ROOT) not in sys.path:
@@ -171,9 +172,23 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--count", action="store_true", help="List matching S3 objects without downloading (real S3 dry-run).")
     parser.add_argument("--skip-agent", action="store_true", help="Build the map (and download, unless --no-download/--count) but don't invoke the bug-report agent.")
     parser.add_argument("--agent-script", default=str(DEFAULT_AGENT_SCRIPT), help="Path to the bug-report agent script to invoke once downloads finish.")
+    parser.add_argument("--agent-batch-size", type=int, default=DEFAULT_AGENT_BATCH_SIZE, help="Number of ERROR entries to analyze per bug-agent run.")
     parser.add_argument("--skip-email", action="store_true", help="Don't email the generated bug report once the agent finishes.")
     parser.add_argument("--mailer-script", default=str(DEFAULT_MAILER_SCRIPT), help="Path to the mailer script to invoke once the bug report is generated.")
     return parser.parse_args()
+
+
+def _resolve_output_path(stdout: str, fallback: Path) -> Path:
+    for line in reversed(stdout.splitlines()):
+        candidate = line.strip()
+        if candidate.endswith(".md"):
+            return Path(candidate)
+    return fallback
+
+
+def _count_error_entries(map_path: Path) -> int:
+    data = json.loads(map_path.read_text(encoding="utf-8"))
+    return sum(1 for entry in data.get("entries", []) if entry.get("severity") == "ERROR")
 
 
 def main() -> int:
@@ -208,14 +223,46 @@ def main() -> int:
         return 0
 
     bugs_path = DEFAULT_BUGS_DIR / f"{report_path.stem}_bugs.md"
-    agent_command = [
+    total_entries = _count_error_entries(map_path)
+    batch_size = max(1, args.agent_batch_size)
+    for start_index in range(0, total_entries, batch_size):
+        agent_command = [
+            sys.executable, str(Path(args.agent_script)),
+            "--map", str(map_path),
+            "--output", str(bugs_path),
+            "--start-index", str(start_index),
+            "--limit", str(batch_size),
+        ]
+        completed = subprocess.run(agent_command, cwd=REPO_ROOT, capture_output=True, text=True)
+        if completed.stdout:
+            print(completed.stdout, end="" if completed.stdout.endswith("\n") else "\n")
+        if completed.stderr:
+            print(completed.stderr, file=sys.stderr, end="" if completed.stderr.endswith("\n") else "\n")
+        if completed.returncode != 0:
+            return completed.returncode
+        bugs_path = _resolve_output_path(completed.stdout, bugs_path)
+
+    index_command = [
         sys.executable, str(Path(args.agent_script)),
         "--map", str(map_path),
         "--output", str(bugs_path),
+        "--jira-index-only",
     ]
-    completed = subprocess.run(agent_command, cwd=REPO_ROOT)
+    completed = subprocess.run(index_command, cwd=REPO_ROOT, capture_output=True, text=True)
+    if completed.stdout:
+        print(completed.stdout, end="" if completed.stdout.endswith("\n") else "\n")
+    if completed.stderr:
+        print(completed.stderr, file=sys.stderr, end="" if completed.stderr.endswith("\n") else "\n")
     if completed.returncode != 0:
         return completed.returncode
+    bugs_path = _resolve_output_path(completed.stdout, bugs_path)
+
+    if not bugs_path.is_file():
+        print(
+            f"Bug report agent completed without creating markdown output. Expected {bugs_path}",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.skip_email:
         return 0
