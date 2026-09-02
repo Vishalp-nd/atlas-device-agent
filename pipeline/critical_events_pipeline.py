@@ -16,6 +16,7 @@ import configparser
 import io
 import os
 import pickle
+import re
 import time
 from pathlib import Path
 from typing import Iterable
@@ -25,6 +26,7 @@ import psycopg2.extras
 from dotenv import load_dotenv
 
 from fetch_device_config import connect_to_db, connect_to_snowflake, read_db_config
+from regex_map import REGEX_TYPE_MAP
 
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "svm_type_classifier.pkl"
 DEFAULT_TABLE_NAME = "criticalinfo_snowflakes_classified"
@@ -83,6 +85,48 @@ SOURCE_COLUMNS = [
     "LOADED_TO_SNOWFLAKE_ON",
 ]
 INT_LIKE_COLUMNS = ["CODE_AUX", "COUNT", "TENANT_ID"]
+COMPILED_REGEX_TYPE_MAP = [
+    (re.compile(pattern), event_type) for pattern, event_type in REGEX_TYPE_MAP.items()
+]
+
+
+def _predict_types(features: pd.Series, model) -> list[str]:
+    predicted_types: list[str | None] = [None] * len(features)
+    unmatched_indices: list[int] = []
+    unmatched_features: list[str] = []
+
+    for index, description in enumerate(features.tolist()):
+        matched_type = None
+        for pattern, event_type in COMPILED_REGEX_TYPE_MAP:
+            if pattern.match(description):
+                matched_type = event_type
+                break
+        if matched_type is None:
+            unmatched_indices.append(index)
+            unmatched_features.append(description)
+        predicted_types[index] = matched_type
+
+    if unmatched_features:
+        try:
+            fallback_predictions = model.predict(pd.Series(unmatched_features, dtype="string"))
+        except Exception as exc:
+            raise RuntimeError(
+                "Model prediction failed. The loaded model is likely incompatible with the current "
+                "description-only pipeline. Retrain the model with pipeline/svm_type_classifier.py "
+                "and rerun the pipeline."
+            ) from exc
+
+        if len(fallback_predictions) != len(unmatched_features):
+            raise RuntimeError(
+                f"Model returned {len(fallback_predictions)} predictions for {len(unmatched_features)} rows. "
+                "This usually means an old CODE+DESCRIPTION model is being used with the new "
+                "description-only pipeline. Retrain the model and rerun."
+            )
+
+        for index, predicted_type in zip(unmatched_indices, fallback_predictions):
+            predicted_types[index] = str(predicted_type)
+
+    return [predicted_type if predicted_type is not None else "" for predicted_type in predicted_types]
 
 
 def _read_clickhouse_config(config_file: str, section: str) -> dict[str, object]:
@@ -320,22 +364,7 @@ def _predict_batch(
     df = df.reindex(columns=SOURCE_COLUMNS)
 
     features = df["DESCRIPTION"].fillna("").astype(str)
-
-    try:
-        predicted = model.predict(features)
-    except Exception as exc:
-        raise RuntimeError(
-            "Model prediction failed. The loaded model is likely incompatible with the current "
-            "description-only pipeline. Retrain the model with pipeline/svm_type_classifier.py "
-            "and rerun the pipeline."
-        ) from exc
-
-    if len(predicted) != len(df):
-        raise RuntimeError(
-            f"Model returned {len(predicted)} predictions for {len(df)} rows. "
-            "This usually means an old CODE+DESCRIPTION model is being used with the new "
-            "description-only pipeline. Retrain the model and rerun."
-        )
+    predicted = _predict_types(features, model)
 
     # Snowflake numeric columns may arrive as floats when NULLs are present.
     # Coerce bigint-like columns back to true integers for PostgreSQL COPY.
