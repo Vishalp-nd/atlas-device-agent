@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import mimetypes
 
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 
 from .config import (
@@ -81,6 +82,15 @@ def _dashboard_or_503(loader):
         return loader()
     except DashboardDataAccessError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _parse_dashboard_ts(value: str | None):
+    if value is None:
+        return None
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        raise HTTPException(status_code=422, detail=f"Invalid dashboard timestamp: {value}")
+    return parsed
 
 
 def _frame_rows(frame):
@@ -249,12 +259,14 @@ def critical_events_dashboard_devices(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardDevicesResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     device_ids = _dashboard_or_503(
         lambda: load_ota_devices(
             _DASHBOARD_CONFIG,
             ota_version,
-            start_ts=req.start_ts,
-            end_ts=req.end_ts,
+            start_ts=start_ts,
+            end_ts=end_ts,
         )
     )
     return CriticalEventsDashboardDevicesResponse(device_ids=device_ids)
@@ -265,8 +277,10 @@ def critical_events_dashboard_type_counts(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_type_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_type_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -276,8 +290,10 @@ def critical_events_dashboard_priority_counts(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_priority_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_priority_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -287,8 +303,10 @@ def critical_events_dashboard_daily_counts(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_daily_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_daily_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -298,8 +316,10 @@ def critical_events_dashboard_top_processes(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_top_processes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_top_processes(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -309,8 +329,10 @@ def critical_events_dashboard_top_codes(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_top_codes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_top_codes(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -320,8 +342,10 @@ def critical_events_dashboard_top_code_details(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_top_code_details(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_top_code_details(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -331,8 +355,10 @@ def critical_events_dashboard_top_devices(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_top_devices(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+        lambda: load_ota_top_devices(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
@@ -342,8 +368,10 @@ def critical_events_dashboard_detail(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
-        lambda: load_ota_detail(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts, req.limit)
+        lambda: load_ota_detail(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts, req.limit)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
