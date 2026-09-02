@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import configparser
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import clickhouse_connect
 import pandas as pd
 
 DEFAULT_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_SECTION = "CLICKHOUSE_DB"
 PRIORITY_TABLE = "unique_cinfo_priority_map"
 DEFAULT_DETAIL_LIMIT = 5000
+
+
+class DashboardDataAccessError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -39,23 +43,9 @@ def get_clickhouse_params(repo_root: str, clickhouse_section: str) -> dict[str, 
     return _read_clickhouse_config(Path(repo_root), clickhouse_section)
 
 
-def _clickhouse_client_args(params: dict[str, str]) -> list[str]:
-    args = [
-        "clickhouse-client",
-        "--host",
-        params["host"],
-        "--port",
-        params["port"],
-        "--user",
-        params["user"],
-        "--database",
-        params["database"],
-        "--format",
-        "CSVWithNames",
-    ]
-    if params.get("password"):
-        args.extend(["--password", params["password"]])
-    return args
+def _clickhouse_http_port(raw_port: str) -> int:
+    port = int(raw_port)
+    return 8123 if port == 9000 else port
 
 
 def _quote_ch(value: str) -> str:
@@ -64,15 +54,18 @@ def _quote_ch(value: str) -> str:
 
 def _read_clickhouse_df(config: DashboardConfig, sql: str) -> pd.DataFrame:
     params = get_clickhouse_params(str(config.repo_root), config.clickhouse_section)
-    command = _clickhouse_client_args(params) + ["--query", sql]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "ClickHouse query failed")
-    if not result.stdout.strip():
-        return pd.DataFrame()
-    from io import StringIO
-
-    return pd.read_csv(StringIO(result.stdout))
+    try:
+        client = clickhouse_connect.get_client(
+            host=params["host"],
+            port=_clickhouse_http_port(params["port"]),
+            username=params["user"],
+            password=params.get("password") or "",
+            database=params["database"],
+        )
+        result = client.query_df(sql)
+    except Exception as exc:
+        raise DashboardDataAccessError(str(exc) or "ClickHouse query failed") from exc
+    return result if result is not None else pd.DataFrame()
 
 
 def load_priority_map(config: DashboardConfig) -> pd.DataFrame:

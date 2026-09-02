@@ -33,6 +33,7 @@ from .config import (
 )
 from .coverage_agent_graph import run_coverage_agent
 from .critical_events_dashboard_service import (
+    DashboardDataAccessError,
     DashboardConfig,
     load_ota_daily_counts,
     load_ota_date_bounds,
@@ -73,6 +74,13 @@ from .session_store import session_store
 
 router = APIRouter(prefix="/atlas", tags=["atlas"])
 _DASHBOARD_CONFIG = DashboardConfig(repo_root=REPO_ROOT)
+
+
+def _dashboard_or_503(loader):
+    try:
+        return loader()
+    except DashboardDataAccessError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _frame_rows(frame):
@@ -223,13 +231,13 @@ def critical_events_download(result_id: str):
 
 @router.post("/dashboard/critical-events/summary", response_model=CriticalEventsDashboardResponse)
 def critical_events_dashboard_summary(req: CriticalEventsDashboardSummaryRequest) -> CriticalEventsDashboardResponse:
-    frame = load_ota_summary(_DASHBOARD_CONFIG, req.ota_versions)
+    frame = _dashboard_or_503(lambda: load_ota_summary(_DASHBOARD_CONFIG, req.ota_versions))
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
 @router.get("/dashboard/critical-events/{ota_version}/date-bounds", response_model=CriticalEventsDashboardBoundsResponse)
 def critical_events_dashboard_date_bounds(ota_version: str) -> CriticalEventsDashboardBoundsResponse:
-    min_ts, max_ts = load_ota_date_bounds(_DASHBOARD_CONFIG, ota_version)
+    min_ts, max_ts = _dashboard_or_503(lambda: load_ota_date_bounds(_DASHBOARD_CONFIG, ota_version))
     return CriticalEventsDashboardBoundsResponse(
         min_timestamp=min_ts.isoformat() if min_ts is not None else None,
         max_timestamp=max_ts.isoformat() if max_ts is not None else None,
@@ -241,11 +249,13 @@ def critical_events_dashboard_devices(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardDevicesResponse:
-    device_ids = load_ota_devices(
-        _DASHBOARD_CONFIG,
-        ota_version,
-        start_ts=req.start_ts,
-        end_ts=req.end_ts,
+    device_ids = _dashboard_or_503(
+        lambda: load_ota_devices(
+            _DASHBOARD_CONFIG,
+            ota_version,
+            start_ts=req.start_ts,
+            end_ts=req.end_ts,
+        )
     )
     return CriticalEventsDashboardDevicesResponse(device_ids=device_ids)
 
@@ -255,7 +265,9 @@ def critical_events_dashboard_type_counts(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_type_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_type_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -264,7 +276,9 @@ def critical_events_dashboard_priority_counts(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_priority_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_priority_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -273,7 +287,9 @@ def critical_events_dashboard_daily_counts(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_daily_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_daily_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -282,7 +298,9 @@ def critical_events_dashboard_top_processes(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_top_processes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_top_processes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -291,7 +309,9 @@ def critical_events_dashboard_top_codes(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_top_codes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_top_codes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -300,7 +320,9 @@ def critical_events_dashboard_top_code_details(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_top_code_details(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_top_code_details(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -309,7 +331,9 @@ def critical_events_dashboard_top_devices(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_top_devices(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_top_devices(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
@@ -318,7 +342,9 @@ def critical_events_dashboard_detail(
     ota_version: str,
     req: CriticalEventsDashboardFilterRequest,
 ) -> CriticalEventsDashboardResponse:
-    frame = load_ota_detail(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts, req.limit)
+    frame = _dashboard_or_503(
+        lambda: load_ota_detail(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts, req.limit)
+    )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
