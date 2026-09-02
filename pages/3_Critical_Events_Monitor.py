@@ -206,8 +206,10 @@ def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_
     )
     frame = _frame_from_rows(payload.get("rows", []))
     if frame.empty:
-        return pd.DataFrame(columns=["CODE", "description_pattern", "events"])
+        return pd.DataFrame(columns=["CODE", "description_pattern", "current_type", "mapped_type", "events"])
     frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["current_type"] = frame["current_type"].fillna("UNKNOWN").astype(str).str.upper()
+    frame["mapped_type"] = frame["mapped_type"].fillna("UNMAPPED").astype(str).str.upper()
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame
 
@@ -383,8 +385,8 @@ def _render_ota_page(ota_version: str) -> None:
     if code_details.empty:
         st.info("No top error code detail rows found for this OTA selection.")
     else:
-        detail_frame = code_details[["CODE", "description_pattern", "events"]].reset_index(drop=True)
-        st.caption("Breakdown of the current Top Error Codes by code and description pattern.")
+        detail_frame = code_details[["CODE", "description_pattern", "current_type", "mapped_type", "events"]].reset_index(drop=True)
+        st.caption("Breakdown of the current Top Error Codes by code, description pattern, current DB type, and mapped CSV type.")
         st.table(detail_frame)
 
     st.markdown("### Filtered rows")

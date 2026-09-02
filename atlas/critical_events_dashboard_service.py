@@ -327,6 +327,8 @@ def load_ota_top_code_details(
         SELECT
             events."CODE",
             coalesce(map.description_pattern, {normalized_expr}) AS description_pattern,
+            upperUTF8(ifNull(events.type, '')) AS current_type,
+            upperUTF8(ifNull(map."TYPE", 'UNMAPPED')) AS mapped_type,
             sum(events."COUNT") AS events
         FROM {config.table_name} AS events
         INNER JOIN (
@@ -343,12 +345,12 @@ def load_ota_top_code_details(
            AND events.type = map."TYPE"
            AND {normalized_expr} = map.description_pattern
         WHERE {where_sql} AND events.type = 'ERROR'
-        GROUP BY events."CODE", description_pattern
-        ORDER BY events."CODE", events DESC, description_pattern
+        GROUP BY events."CODE", description_pattern, current_type, mapped_type
+        ORDER BY events."CODE", events DESC, description_pattern, current_type, mapped_type
     '''
     frame = _read_clickhouse_df(config, sql)
     if frame.empty:
-        return pd.DataFrame(columns=["CODE", "description_pattern", "events"])
+        return pd.DataFrame(columns=["CODE", "description_pattern", "current_type", "mapped_type", "events"])
     rename_map = {}
     for column in frame.columns:
         lowered = str(column).strip().lower()
@@ -356,13 +358,19 @@ def load_ota_top_code_details(
             rename_map[column] = "CODE"
         elif lowered == "description_pattern":
             rename_map[column] = "description_pattern"
+        elif lowered == "current_type":
+            rename_map[column] = "current_type"
+        elif lowered == "mapped_type":
+            rename_map[column] = "mapped_type"
         elif lowered == "events":
             rename_map[column] = "events"
     frame = frame.rename(columns=rename_map)
     frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
     frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED")
+    frame["current_type"] = frame["current_type"].fillna("UNKNOWN").astype(str).str.upper()
+    frame["mapped_type"] = frame["mapped_type"].fillna("UNMAPPED").astype(str).str.upper()
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame[["CODE", "description_pattern", "events"]]
+    return frame[["CODE", "description_pattern", "current_type", "mapped_type", "events"]]
 
 
 def load_ota_top_devices(
