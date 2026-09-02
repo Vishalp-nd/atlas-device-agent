@@ -32,6 +32,20 @@ from .config import (
     get_observations_prompt,
 )
 from .coverage_agent_graph import run_coverage_agent
+from .critical_events_dashboard_service import (
+    DashboardConfig,
+    load_ota_daily_counts,
+    load_ota_date_bounds,
+    load_ota_detail,
+    load_ota_devices,
+    load_ota_priority_counts,
+    load_ota_summary,
+    load_ota_top_code_details,
+    load_ota_top_codes,
+    load_ota_top_devices,
+    load_ota_top_processes,
+    load_ota_type_counts,
+)
 from .critical_events_agent_graph import run_critical_events_agent
 from .jenkins_agent_graph import run_jenkins_agent
 from .observations_agent_graph import run_observations_agent
@@ -43,6 +57,11 @@ from .models import (
     AgentQueryWithDownloadsResponse,
     ChatRequest,
     ChatResponse,
+    CriticalEventsDashboardBoundsResponse,
+    CriticalEventsDashboardDevicesResponse,
+    CriticalEventsDashboardFilterRequest,
+    CriticalEventsDashboardResponse,
+    CriticalEventsDashboardSummaryRequest,
     CriticalEventsQueryRequest,
     DownloadRef,
     IndexStatsResponse,
@@ -53,6 +72,18 @@ from .models import (
 from .session_store import session_store
 
 router = APIRouter(prefix="/atlas", tags=["atlas"])
+_DASHBOARD_CONFIG = DashboardConfig(repo_root=REPO_ROOT)
+
+
+def _frame_rows(frame):
+    if frame.empty:
+        return []
+    normalized = frame.copy()
+    normalized = normalized.where(normalized.notna(), None)
+    for column in normalized.columns:
+        if str(normalized[column].dtype).startswith("datetime64"):
+            normalized[column] = normalized[column].apply(lambda value: value.isoformat() if value is not None else None)
+    return normalized.to_dict(orient="records")
 
 
 def _coerce_chat_response(response: object) -> str:
@@ -188,6 +219,107 @@ def critical_events_download(result_id: str):
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/dashboard/critical-events/summary", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_summary(req: CriticalEventsDashboardSummaryRequest) -> CriticalEventsDashboardResponse:
+    frame = load_ota_summary(_DASHBOARD_CONFIG, req.ota_versions)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.get("/dashboard/critical-events/{ota_version}/date-bounds", response_model=CriticalEventsDashboardBoundsResponse)
+def critical_events_dashboard_date_bounds(ota_version: str) -> CriticalEventsDashboardBoundsResponse:
+    min_ts, max_ts = load_ota_date_bounds(_DASHBOARD_CONFIG, ota_version)
+    return CriticalEventsDashboardBoundsResponse(
+        min_timestamp=min_ts.isoformat() if min_ts is not None else None,
+        max_timestamp=max_ts.isoformat() if max_ts is not None else None,
+    )
+
+
+@router.post("/dashboard/critical-events/{ota_version}/devices", response_model=CriticalEventsDashboardDevicesResponse)
+def critical_events_dashboard_devices(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardDevicesResponse:
+    device_ids = load_ota_devices(
+        _DASHBOARD_CONFIG,
+        ota_version,
+        start_ts=req.start_ts,
+        end_ts=req.end_ts,
+    )
+    return CriticalEventsDashboardDevicesResponse(device_ids=device_ids)
+
+
+@router.post("/dashboard/critical-events/{ota_version}/type-counts", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_type_counts(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_type_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/priority-counts", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_priority_counts(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_priority_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/daily-counts", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_daily_counts(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_daily_counts(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/top-processes", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_top_processes(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_top_processes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/top-codes", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_top_codes(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_top_codes(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/top-code-details", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_top_code_details(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_top_code_details(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/top-devices", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_top_devices(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_top_devices(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/detail", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_detail(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    frame = load_ota_detail(_DASHBOARD_CONFIG, ota_version, req.device_ids, req.start_ts, req.end_ts, req.limit)
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
 
 @router.post("/agents/observations", response_model=ObservationsAgentQueryResponse)

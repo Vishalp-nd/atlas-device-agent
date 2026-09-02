@@ -44,6 +44,31 @@ class CriticalEventsQueryRequest(BaseModel):
     postgres_section: str = "IRAVATH_DB"
 
 
+class CriticalEventsDashboardFilterRequest(BaseModel):
+    ota_version: str
+    device_ids: list[str] = []
+    start_ts: str | None = None
+    end_ts: str | None = None
+    limit: int | None = None
+
+
+class CriticalEventsDashboardSummaryRequest(BaseModel):
+    ota_versions: list[str] = []
+
+
+class CriticalEventsDashboardResponse(BaseModel):
+    rows: list[dict[str, object]]
+
+
+class CriticalEventsDashboardBoundsResponse(BaseModel):
+    min_timestamp: str | None
+    max_timestamp: str | None
+
+
+class CriticalEventsDashboardDevicesResponse(BaseModel):
+    device_ids: list[str]
+
+
 class ObservationsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None

@@ -5,29 +5,49 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
+import requests
 import streamlit as st
 
-from atlas.critical_events_dashboard import (
-    DashboardConfig,
-    configured_ota_versions,
-    load_ota_date_bounds,
-    load_ota_daily_counts,
-    load_ota_detail,
-    load_ota_devices,
-    load_ota_priority_counts,
-    load_ota_summary,
-    load_ota_top_code_details,
-    load_ota_top_codes,
-    load_ota_top_devices,
-    load_ota_top_processes,
-    load_ota_type_counts,
-)
-from atlas.streamlit_ui import configure_app
+from atlas.critical_events_dashboard import configured_ota_versions
+from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, configure_app
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = DashboardConfig(repo_root=REPO_ROOT)
 DETAIL_TABLE_LIMIT = 10
+
+
+def _dashboard_api_get(path: str) -> dict[str, object]:
+    response = requests.get(f"{API_BASE_URL}{path}", timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    return response.json()
+
+
+def _dashboard_api_post(path: str, payload: dict[str, object]) -> dict[str, object]:
+    response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    return response.json()
+
+
+def _frame_from_rows(rows: list[dict[str, object]]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
+
+
+def _filter_payload(
+    ota_version: str,
+    device_ids: tuple[str, ...],
+    start_date: str | None,
+    end_date_exclusive: str | None,
+    limit: int | None = None,
+) -> dict[str, object]:
+    return {
+        "ota_version": ota_version,
+        "device_ids": list(device_ids),
+        "start_ts": start_date,
+        "end_ts": end_date_exclusive,
+        "limit": limit,
+    }
 
 
 def _render_sidebar() -> None:
@@ -41,7 +61,14 @@ def _render_sidebar() -> None:
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_summary(ota_versions: tuple[str, ...]) -> pd.DataFrame:
-    return load_ota_summary(CONFIG, list(ota_versions))
+    payload = _dashboard_api_post("/atlas/dashboard/critical-events/summary", {"ota_versions": list(ota_versions)})
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["DEVICE_VERSION", "type", "events"])
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    frame["DEVICE_VERSION"] = frame["DEVICE_VERSION"].fillna("UNKNOWN").astype(str)
+    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
@@ -51,70 +78,131 @@ def _load_detail(
     start_date: str | None,
     end_date_exclusive: str | None,
 ) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_detail(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts, limit=DETAIL_TABLE_LIMIT)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/detail",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive, DETAIL_TABLE_LIMIT),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return frame
+    frame["TIMESTAMP"] = pd.to_datetime(frame["TIMESTAMP"], errors="coerce")
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_date_bounds(ota_version: str) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
-    return load_ota_date_bounds(CONFIG, ota_version)
+    payload = _dashboard_api_get(f"/atlas/dashboard/critical-events/{ota_version}/date-bounds")
+    min_ts = pd.to_datetime(payload.get("min_timestamp"), errors="coerce")
+    max_ts = pd.to_datetime(payload.get("max_timestamp"), errors="coerce")
+    return (None if pd.isna(min_ts) else min_ts, None if pd.isna(max_ts) else max_ts)
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_devices(ota_version: str, start_date: str | None, end_date_exclusive: str | None) -> list[str]:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_devices(CONFIG, ota_version, start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/devices",
+        _filter_payload(ota_version, tuple(), start_date, end_date_exclusive),
+    )
+    return [str(device_id) for device_id in payload.get("device_ids", [])]
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_type_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_type_counts(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/type-counts",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["type", "events"])
+    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_priority_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_priority_counts(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/priority-counts",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["priority", "events"])
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_daily_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_daily_counts(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/daily-counts",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["day", "type", "events"])
+    frame["day"] = pd.to_datetime(frame["day"], errors="coerce")
+    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_top_processes(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_top_processes(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/top-processes",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["PROCESS_NAME", "events"])
+    frame["PROCESS_NAME"] = frame["PROCESS_NAME"].fillna("UNKNOWN").astype(str)
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_top_codes(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_top_codes(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/top-codes",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["CODE", "events"])
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_top_code_details(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/top-code-details",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["CODE", "description_pattern", "events"])
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
 def _load_top_devices(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    start_ts = pd.Timestamp(start_date) if start_date else None
-    end_ts = pd.Timestamp(end_date_exclusive) if end_date_exclusive else None
-    return load_ota_top_devices(CONFIG, ota_version, list(device_ids), start_ts=start_ts, end_ts=end_ts)
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/top-devices",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["DEVICE_ID", "events"])
+    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("").astype(str)
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
 
 
 @st.cache_data(show_spinner=True, ttl=300)
