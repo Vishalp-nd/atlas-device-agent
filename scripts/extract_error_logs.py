@@ -1,4 +1,22 @@
-"""
+ALTER TABLE unique_cinfo_priority_map
+UPDATE "TYPE" = 'INFO'
+WHERE "CODE" = 41014
+  AND description_pattern IS NOT NULL
+  AND description_pattern NOT IN (
+    'A_IMU: Data Outage Count: <N>',
+    'A_GPS: Data Outage Count: <N>',
+    'A_ENG_STAT: Data Outage Count: <N>',
+    'A_PWR_VOLT: Data Outage Count: <N>',
+    'WOIGN: FAIL : E : FAIL, WOMOT: FAIL : D : FAIL, WOSMS: FAIL : D : FAIL, LUMIA: FAIL : E : FAIL',
+    'A_ENG_STAT: Data Outage Clear',
+    'A_GPS: Data Outage Clear',
+    'A_IGNS: D: (IGN: ON Prev: ERR <N> OFF V: <N>',
+    'A_IMU: Data Outage Clear',
+    'A_PWR_VOLT: Data Outage Clear',
+    'A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true) ',
+    'Glitch Detected: <N> <N>',
+    'Glitch Detected: <N> <N> V: <N> <N>'
+  );"""
 Extract ERROR-tagged log lines for a device over a date range.
 
 Scans OUTPUT/log/<device>/<date>/logs/*.log for every date in the given

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-Fetch critical-event rows from Snowflake, classify with SVM, and store in PostgreSQL.
+Fetch critical-event rows from Snowflake, classify with SVM, and store in PostgreSQL or ClickHouse.
 
 Flow:
 1) Pull rows from `device_critical_event` in batches
 2) Predict TYPE (INFO/ERROR) from CODE + DESCRIPTION
-3) Insert into a local PostgreSQL table with all source columns plus TYPE
+3) Insert into a local PostgreSQL or ClickHouse table with all source columns plus TYPE
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import configparser
 import io
 import os
 import pickle
@@ -76,12 +77,61 @@ SOURCE_COLUMNS = [
     "DESCRIPTION",
     "DEVICE_VERSION",
     "SYS_UPTIME",
-    "S3_PATH",
     "TENANT_ID",
+    "S3_PATH",
     "UPSERT_TIME",
     "LOADED_TO_SNOWFLAKE_ON",
 ]
 INT_LIKE_COLUMNS = ["CODE_AUX", "COUNT", "TENANT_ID"]
+
+
+def _read_clickhouse_config(config_file: str, section: str) -> dict[str, object]:
+    parser = configparser.ConfigParser()
+    parser.read(config_file)
+    if not parser.has_section(section):
+        raise ValueError(f"Section '{section}' not found in {config_file}")
+
+    return {
+        "host": parser.get(section, "host", fallback="127.0.0.1"),
+        "port": parser.getint(section, "port", fallback=9000),
+        "user": parser.get(section, "user", fallback="default"),
+        "password": parser.get(section, "password", fallback=""),
+        "database": parser.get(section, "database", fallback="default"),
+    }
+
+
+def _clickhouse_client_args(params: dict[str, object]) -> list[str]:
+    args = [
+        "clickhouse-client",
+        "--host",
+        str(params["host"]),
+        "--port",
+        str(params["port"]),
+        "--user",
+        str(params["user"]),
+        "--database",
+        str(params["database"]),
+    ]
+    password = str(params.get("password", ""))
+    if password:
+        args.extend(["--password", password])
+    return args
+
+
+def _run_clickhouse_query(params: dict[str, object], query: str, input_text: str | None = None) -> str:
+    import subprocess
+
+    command = _clickhouse_client_args(params) + ["--query", query]
+    result = subprocess.run(
+        command,
+        input=input_text,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "ClickHouse query failed")
+    return result.stdout
 
 
 def _init_postgres(conn, table_name: str) -> None:
@@ -144,6 +194,32 @@ def _init_postgres(conn, table_name: str) -> None:
                         f"Continuing without ON CONFLICT support: {exc}"
                     )
     conn.commit()
+
+
+def _init_clickhouse(params: dict[str, object], table_name: str) -> None:
+    _run_clickhouse_query(
+        params,
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            \"DEVICE_ID\" String,
+            \"TIMESTAMP\" DateTime,
+            \"PROCESS_NAME\" String,
+            \"CODE\" Float64,
+            \"CODE_AUX\" Int64,
+            \"COUNT\" UInt64,
+            \"DESCRIPTION\" String,
+            \"DEVICE_VERSION\" String,
+            \"SYS_UPTIME\" Float64,
+            \"S3_PATH\" String,
+            \"TENANT_ID\" UInt64,
+            \"UPSERT_TIME\" DateTime,
+            \"LOADED_TO_SNOWFLAKE_ON\" DateTime,
+            type String
+        ) ENGINE = ReplacingMergeTree
+        PARTITION BY toYYYYMM(\"TIMESTAMP\")
+        ORDER BY (\"DEVICE_ID\", \"TIMESTAMP\", \"PROCESS_NAME\", \"CODE\", \"DESCRIPTION\")
+        """,
+    )
 
 
 def _has_dedup_constraint(conn, table_name: str) -> bool:
@@ -413,9 +489,39 @@ def _upsert_rows(conn, table_name: str, rows: list[tuple], page_size: int, has_c
     return inserted
 
 
+def _normalise_clickhouse_value(column_name: str, value: object) -> object:
+    if value is None:
+        return ""
+    if column_name in {"TIMESTAMP", "UPSERT_TIME", "LOADED_TO_SNOWFLAKE_ON"}:
+        return str(value).replace("T", " ")[:19]
+    return value
+
+
+def _insert_clickhouse_rows(params: dict[str, object], table_name: str, rows: list[tuple]) -> int:
+    if not rows:
+        return 0
+
+    copy_buffer = io.StringIO()
+    writer = csv.writer(copy_buffer, lineterminator="\n")
+    writer.writerow(SOURCE_COLUMNS + ["type"])
+    for row in rows:
+        writer.writerow(
+            [_normalise_clickhouse_value(column_name, value) for column_name, value in zip(SOURCE_COLUMNS + ["type"], row)]
+        )
+    copy_buffer.seek(0)
+
+    _run_clickhouse_query(
+        params,
+        f"INSERT INTO {table_name} FORMAT CSVWithNames",
+        input_text=copy_buffer.getvalue(),
+    )
+    return len(rows)
+
+
 def run_pipeline(args: argparse.Namespace) -> None:
     model_path = Path(args.model)
     table_name = args.table_name
+    target = args.target
 
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
@@ -431,14 +537,22 @@ def run_pipeline(args: argparse.Namespace) -> None:
     if sf_conn is None:
         raise RuntimeError("Failed to connect to Snowflake")
 
-    pg_params = read_db_config(args.db_config, args.postgres_section)
-    pg_conn = connect_to_db(pg_params)
-    if pg_conn is None:
-        raise RuntimeError("Failed to connect to PostgreSQL")
+    pg_conn = None
+    ch_params = None
+    has_constraint = False
+    if target == "postgres":
+        pg_params = read_db_config(args.db_config, args.postgres_section)
+        pg_conn = connect_to_db(pg_params)
+        if pg_conn is None:
+            raise RuntimeError("Failed to connect to PostgreSQL")
 
-    _init_postgres(pg_conn, table_name)
-    has_constraint = _has_dedup_constraint(pg_conn, table_name)  # checked once, not per batch
-    pg_conn.commit()  # close open transaction so PG doesn't kill the connection during Snowflake calls
+        _init_postgres(pg_conn, table_name)
+        has_constraint = _has_dedup_constraint(pg_conn, table_name)
+        pg_conn.commit()
+    else:
+        ch_params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
+        _init_clickhouse(ch_params, table_name)
+
     available_columns = _get_available_source_columns(sf_conn)
     selected_columns = [col for col in SOURCE_COLUMNS if col in available_columns]
     missing_columns = [col for col in SOURCE_COLUMNS if col not in selected_columns]
@@ -479,7 +593,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
             attempted = len(classified_rows)
 
             insert_started = time.perf_counter()
-            inserted = _upsert_rows(pg_conn, table_name, classified_rows, args.insert_page_size, has_constraint)
+            if target == "postgres":
+                inserted = _upsert_rows(pg_conn, table_name, classified_rows, args.insert_page_size, has_constraint)
+            else:
+                inserted = _insert_clickhouse_rows(ch_params, table_name, classified_rows)
             insert_seconds = time.perf_counter() - insert_started
 
             total_fetched += fetched
@@ -487,7 +604,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
             batches += 1
             total_predict_seconds += predict_seconds
             total_insert_seconds += insert_seconds
-            if batches % args.commit_every == 0:
+            if target == "postgres" and batches % args.commit_every == 0:
                 commit_started = time.perf_counter()
                 pg_conn.commit()
                 commit_seconds = time.perf_counter() - commit_started
@@ -503,18 +620,22 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 f"total_fetched={total_fetched}, total_inserted={total_inserted}"
             )
         final_commit_started = time.perf_counter()
-        pg_conn.commit()
-        final_commit_seconds = time.perf_counter() - final_commit_started
+        if target == "postgres":
+            pg_conn.commit()
+            final_commit_seconds = time.perf_counter() - final_commit_started
+        else:
+            final_commit_seconds = 0.0
 
     finally:
         sf_conn.close()
-        pg_conn.close()
+        if pg_conn is not None:
+            pg_conn.close()
 
     total_seconds = time.perf_counter() - run_started
     print("Done.")
-    print(f"PostgreSQL table: {table_name}")
+    print(f"Target {target} table: {table_name}")
     print(f"Total fetched from Snowflake: {total_fetched}")
-    print(f"Total inserted into PostgreSQL: {total_inserted}")
+    print(f"Total inserted into {target}: {total_inserted}")
     print(f"Total predict time: {total_predict_seconds:.2f}s")
     print(f"Total insert time: {total_insert_seconds:.2f}s")
     print(f"Final commit time: {final_commit_seconds:.2f}s")
@@ -585,9 +706,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Section in db_credentials.ini for local PostgreSQL",
     )
     parser.add_argument(
+        "--clickhouse-section",
+        default="CLICKHOUSE_DB",
+        help="Section in db_credentials.ini for ClickHouse",
+    )
+    parser.add_argument(
+        "--target",
+        choices=["postgres", "clickhouse"],
+        default="postgres",
+        help="Storage target for classified critical events",
+    )
+    parser.add_argument(
         "--table-name",
         default=DEFAULT_TABLE_NAME,
-        help="Target PostgreSQL table for classified critical events",
+        help="Target table for classified critical events",
     )
     return parser
 

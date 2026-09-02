@@ -261,6 +261,20 @@ def _inject_css() -> None:
             box-shadow: 0 10px 24px rgba(0, 166, 81, 0.18);
         }
 
+        .stTable table,
+        .stTable thead tr,
+        .stTable tbody tr,
+        .stTable th,
+        .stTable td {
+            background: #ffffff !important;
+            color: #111111 !important;
+            border: 1px solid #111111 !important;
+        }
+
+        .stTable th {
+            font-weight: 700 !important;
+        }
+
         .hero {
             border: 2px solid rgba(126, 232, 170, 0.95);
             background: var(--panel);
