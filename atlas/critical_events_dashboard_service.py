@@ -9,7 +9,6 @@ import pandas as pd
 
 DEFAULT_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_SECTION = "CLICKHOUSE_DB"
-PRIORITY_TABLE = "unique_cinfo_priority_map"
 DEFAULT_DETAIL_LIMIT = 5000
 
 
@@ -66,28 +65,6 @@ def _read_clickhouse_df(config: DashboardConfig, sql: str) -> pd.DataFrame:
     except Exception as exc:
         raise DashboardDataAccessError(str(exc) or "ClickHouse query failed") from exc
     return result if result is not None else pd.DataFrame()
-
-
-def load_priority_map(config: DashboardConfig) -> pd.DataFrame:
-    sql = f'''
-        SELECT
-            "CODE",
-            sample_description,
-            description_pattern,
-            "TYPE",
-            priority
-        FROM {PRIORITY_TABLE}
-    '''
-    try:
-        frame = _read_clickhouse_df(config, sql)
-    except Exception:
-        return pd.DataFrame(columns=["CODE", "sample_description", "description_pattern", "TYPE", "priority"])
-    if frame.empty:
-        return frame
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
-    frame["TYPE"] = frame["TYPE"].fillna("").astype(str).str.upper()
-    return frame
 
 
 def load_ota_summary(config: DashboardConfig, ota_versions: list[str]) -> pd.DataFrame:
@@ -206,30 +183,18 @@ def load_ota_priority_counts(
     where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
     sql = f'''
         SELECT
-            "CODE",
-            type,
+            priority,
             sum("COUNT") AS events
         FROM {config.table_name}
         WHERE {where_sql} AND type = 'ERROR'
-        GROUP BY "CODE", type
+        GROUP BY priority
     '''
     frame = _read_clickhouse_df(config, sql)
     if frame.empty:
         return pd.DataFrame(columns=["priority", "events"])
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
-    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    priority_map = load_priority_map(config)
-    if priority_map.empty:
-        return pd.DataFrame({"priority": ["UNMAPPED"], "events": [frame["events"].sum()]})
-    merged = frame.merge(
-        priority_map[["CODE", "TYPE", "priority"]].drop_duplicates(),
-        how="left",
-        left_on=["CODE", "type"],
-        right_on=["CODE", "TYPE"],
-    )
-    merged["priority"] = merged["priority"].fillna("UNMAPPED")
-    return merged.groupby("priority", as_index=False)["events"].sum().sort_values("priority")
+    return frame.sort_values("priority")
 
 
 def load_ota_daily_counts(
@@ -322,13 +287,12 @@ def load_ota_top_code_details(
     limit: int = 10,
 ) -> pd.DataFrame:
     where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    normalized_expr = "replaceRegexpAll(ifNull(events.\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>')"
     sql = f'''
         SELECT
-            events."CODE",
-            coalesce(map.description_pattern, {normalized_expr}) AS description_pattern,
-            sum(events."COUNT") AS events
-        FROM {config.table_name} AS events
+            "CODE",
+            replaceRegexpAll(ifNull("DESCRIPTION", ''), '\\S*\\d\\S*', '<N>') AS description_pattern,
+            sum("COUNT") AS events
+        FROM {config.table_name}
         INNER JOIN (
             SELECT
                 "CODE"
@@ -337,14 +301,10 @@ def load_ota_top_code_details(
             GROUP BY "CODE"
             ORDER BY sum("COUNT") DESC
             LIMIT {int(limit)}
-        ) AS top_codes ON events."CODE" = top_codes."CODE"
-        LEFT JOIN {PRIORITY_TABLE} AS map
-            ON events."CODE" = map."CODE"
-           AND events.type = map."TYPE"
-           AND {normalized_expr} = map.description_pattern
-        WHERE {where_sql} AND events.type = 'ERROR'
-        GROUP BY events."CODE", description_pattern
-        ORDER BY events."CODE", events DESC, description_pattern
+        ) AS top_codes USING ("CODE")
+        WHERE {where_sql} AND type = 'ERROR'
+        GROUP BY "CODE", description_pattern
+        ORDER BY "CODE", events DESC, description_pattern
     '''
     frame = _read_clickhouse_df(config, sql)
     if frame.empty:
@@ -412,6 +372,7 @@ def load_ota_detail(
             "COUNT",
             "DESCRIPTION",
             "DEVICE_VERSION",
+            priority,
             type
         FROM {config.table_name}
         WHERE {where_sql}
@@ -426,17 +387,6 @@ def load_ota_detail(
     frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
     frame["DEVICE_VERSION"] = frame["DEVICE_VERSION"].fillna("UNKNOWN").astype(str)
     frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("").astype(str)
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
     frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    priority_map = load_priority_map(config)
-    if priority_map.empty:
-        frame["priority"] = "UNMAPPED"
-        return frame
-
-    merged = frame.merge(
-        priority_map[["CODE", "TYPE", "priority"]].drop_duplicates(),
-        how="left",
-        left_on=["CODE", "type"],
-        right_on=["CODE", "TYPE"],
-    )
-    merged["priority"] = merged["priority"].fillna("UNMAPPED")
-    return merged
+    return frame
