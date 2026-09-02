@@ -16,15 +16,36 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DETAIL_TABLE_LIMIT = 10
 
 
+class DashboardApiError(RuntimeError):
+    pass
+
+
+def _raise_dashboard_api_error(response: requests.Response) -> None:
+    detail = ""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        raw_detail = payload.get("detail")
+        if isinstance(raw_detail, str):
+            detail = raw_detail.strip()
+    if not detail:
+        detail = response.text.strip() or response.reason or "Dashboard API request failed"
+    raise DashboardApiError(f"Dashboard backend returned {response.status_code}: {detail}")
+
+
 def _dashboard_api_get(path: str) -> dict[str, object]:
     response = requests.get(f"{API_BASE_URL}{path}", timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
+    if not response.ok:
+        _raise_dashboard_api_error(response)
     return response.json()
 
 
 def _dashboard_api_post(path: str, payload: dict[str, object]) -> dict[str, object]:
     response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
+    if not response.ok:
+        _raise_dashboard_api_error(response)
     return response.json()
 
 
@@ -385,14 +406,18 @@ def main() -> None:
     st.title("Critical Events Monitor")
     st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
 
-    ota_versions = configured_ota_versions(REPO_ROOT)
-    summary = _load_summary(tuple(ota_versions))
-    selected_ota = st.query_params.get("ota")
+    try:
+        ota_versions = configured_ota_versions(REPO_ROOT)
+        summary = _load_summary(tuple(ota_versions))
+        selected_ota = st.query_params.get("ota")
 
-    if selected_ota:
-        _render_ota_page(selected_ota)
-    else:
-        _render_home(summary, ota_versions)
+        if selected_ota:
+            _render_ota_page(selected_ota)
+        else:
+            _render_home(summary, ota_versions)
+    except DashboardApiError as exc:
+        st.error(str(exc))
+        st.stop()
 
 
 if __name__ == "__main__":
