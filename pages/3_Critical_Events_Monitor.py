@@ -127,6 +127,7 @@ def _render_allowed_ota_versions_manager() -> None:
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 249, 252, 0.92));
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
             margin-bottom: 0.75rem;
+            min-height: 100%;
         }
         .ota-manager-meta {
             font-size: 0.9rem;
@@ -166,13 +167,38 @@ def _render_allowed_ota_versions_manager() -> None:
             padding: 1rem 1rem 0.4rem 1rem;
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 249, 252, 0.92));
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+            min-height: 100%;
+        }
+        div[data-testid="stForm"] [data-testid="stTextInputRootElement"] {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid rgba(49, 51, 63, 0.16);
+            border-radius: 14px;
+            box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        div[data-testid="stForm"] input {
+            background: transparent !important;
+            color: rgb(49, 51, 63) !important;
+        }
+        div[data-testid="stForm"] input::placeholder {
+            color: rgba(49, 51, 63, 0.45) !important;
+        }
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
+            background: rgba(255, 255, 255, 0.96);
+            color: rgb(49, 51, 63);
+            border: 1px solid rgba(49, 51, 63, 0.16);
+            border-radius: 14px;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05);
+        }
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover {
+            border-color: rgba(49, 51, 63, 0.28);
+            background: rgba(248, 249, 252, 0.98);
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    summary_col, input_col = st.columns([2.4, 1.2])
+    summary_col, input_col = st.columns(2)
     with summary_col:
         chip_markup = "".join(f"<span class='ota-chip'>{ota}</span>" for ota in ota_versions)
         content_markup = chip_markup or "<div class='ota-empty'>No OTA versions configured yet.</div>"
