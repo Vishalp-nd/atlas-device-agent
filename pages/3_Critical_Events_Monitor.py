@@ -117,22 +117,78 @@ def _render_allowed_ota_versions_manager() -> None:
     ota_versions = [str(value) for value in payload.get("ota_versions", [])]
     limit = int(payload.get("limit", 30))
 
+    st.markdown(
+        """
+        <style>
+        .ota-manager-card {
+            border: 1px solid rgba(49, 51, 63, 0.18);
+            border-radius: 18px;
+            padding: 1rem 1.1rem;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 249, 252, 0.92));
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+            margin-bottom: 0.75rem;
+        }
+        .ota-manager-meta {
+            font-size: 0.9rem;
+            color: rgba(49, 51, 63, 0.72);
+            margin-bottom: 0.85rem;
+        }
+        .ota-chip-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            align-items: flex-start;
+        }
+        .ota-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.45rem 0.8rem;
+            border-radius: 999px;
+            border: 1px solid rgba(49, 51, 63, 0.16);
+            background: rgba(255, 255, 255, 0.92);
+            color: rgb(49, 51, 63);
+            font-size: 0.88rem;
+            line-height: 1.2;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05);
+            white-space: nowrap;
+        }
+        .ota-empty {
+            padding: 0.8rem 0.9rem;
+            border-radius: 14px;
+            border: 1px dashed rgba(49, 51, 63, 0.22);
+            color: rgba(49, 51, 63, 0.72);
+            background: rgba(255, 255, 255, 0.7);
+            font-size: 0.92rem;
+        }
+        div[data-testid="stForm"] {
+            border: 1px solid rgba(49, 51, 63, 0.18);
+            border-radius: 18px;
+            padding: 1rem 1rem 0.4rem 1rem;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 249, 252, 0.92));
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     summary_col, input_col = st.columns([2.4, 1.2])
     with summary_col:
-        if ota_versions:
-            st.caption(f"Configured OTAs ({len(ota_versions)}/{limit})")
-            st.markdown(
-                "<div style='max-height: 120px; overflow-y: auto; padding: 0.5rem 0.75rem; border: 1px solid rgba(49, 51, 63, 0.2); border-radius: 0.5rem;'>"
-                + "<br>".join(ota_versions)
-                + "</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption(f"Configured OTAs (0/{limit})")
-            st.info("No OTA versions configured yet.")
+        chip_markup = "".join(f"<span class='ota-chip'>{ota}</span>" for ota in ota_versions)
+        content_markup = chip_markup or "<div class='ota-empty'>No OTA versions configured yet.</div>"
+        st.markdown(
+            (
+                "<div class='ota-manager-card'>"
+                f"<div class='ota-manager-meta'>Configured OTAs ({len(ota_versions)}/{limit})</div>"
+                f"<div class='ota-chip-wrap'>{content_markup}</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
 
     with input_col:
         with st.form("add_allowed_ota_version", clear_on_submit=True):
+            st.caption("Add a new OTA to ALLOWED_OTA_VERSIONS")
             new_ota_version = st.text_input("Add OTA version", placeholder="9.6.14.rc.1")
             submitted = st.form_submit_button("Add OTA", use_container_width=True)
         if submitted:
