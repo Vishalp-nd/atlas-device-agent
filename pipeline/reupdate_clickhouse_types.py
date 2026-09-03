@@ -20,10 +20,12 @@ DEFAULT_SOURCE_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.json"
 NORMALIZED_DESCRIPTION_EXPR = (
-    # trim(x) with no second argument only strips the space character, not
-    # newlines/tabs, so the trim characters must be listed explicitly to match
-    # Python's str.strip() on the JSON side.
-    "trimBoth(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'), ' \\t\\n\\r')"
+    # trim(x) only strips the space character on this server version, and the
+    # 2-argument custom-trim-characters overload of trimBoth isn't available
+    # either (NUMBER_OF_ARGUMENTS_DOESNT_MATCH on 22.8.21), so leading/trailing
+    # whitespace (including newlines) is stripped with the same regex function
+    # already used for digit normalization, to match Python's str.strip().
+    "replaceRegexpAll(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'), '^\\s+|\\s+$', '')"
 )
 
 
