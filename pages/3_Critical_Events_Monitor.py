@@ -169,11 +169,18 @@ def _render_allowed_ota_versions_manager() -> None:
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
             min-height: 100%;
         }
-        div[data-testid="stForm"] [data-testid="stTextInputRootElement"] {
+        div[data-testid="stForm"] [data-testid="stTextInputRootElement"],
+        div[data-testid="stForm"] [data-baseweb="input"],
+        div[data-testid="stForm"] [data-baseweb="base-input"] {
             background: rgba(255, 255, 255, 0.96);
             border: 1px solid rgba(49, 51, 63, 0.16);
             border-radius: 14px;
             box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        div[data-testid="stForm"] [data-baseweb="input"] > div,
+        div[data-testid="stForm"] [data-baseweb="base-input"] > div {
+            background: transparent !important;
+            border-radius: 14px;
         }
         div[data-testid="stForm"] input {
             background: transparent !important;
@@ -181,6 +188,12 @@ def _render_allowed_ota_versions_manager() -> None:
         }
         div[data-testid="stForm"] input::placeholder {
             color: rgba(49, 51, 63, 0.45) !important;
+        }
+        div[data-testid="stForm"] [data-baseweb="input"]:focus-within,
+        div[data-testid="stForm"] [data-baseweb="base-input"]:focus-within,
+        div[data-testid="stForm"] [data-testid="stTextInputRootElement"]:focus-within {
+            border-color: rgba(49, 51, 63, 0.28);
+            box-shadow: 0 0 0 1px rgba(49, 51, 63, 0.08), inset 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
             background: rgba(255, 255, 255, 0.96);
