@@ -32,7 +32,7 @@ def _load_normalized_type_priority_map_from_csv(csv_path: Path) -> list[tuple[st
     with csv_path.open(newline="") as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
-            pattern = _decode_csv_pattern((row.get("description_pattern") or "").strip())
+            pattern = _decode_csv_pattern(row.get("description_pattern") or "")
             event_type = (row.get("TYPE") or "").strip().upper()
             priority = (row.get("priority") or "").strip().upper()
             if row.get("description_pattern") is None or not event_type or not priority:
@@ -50,7 +50,7 @@ def _load_normalized_type_priority_map_from_json(json_path: Path) -> list[tuple[
         rows = json.load(json_file)
 
     for row in rows:
-        pattern = _decode_csv_pattern((row.get("description_pattern") or "").strip())
+        pattern = _decode_csv_pattern(row.get("description_pattern") or "")
         event_type = (row.get("TYPE") or "").strip().upper()
         priority = (row.get("priority") or "").strip().upper()
         if row.get("description_pattern") is None or not event_type or not priority:
@@ -79,7 +79,10 @@ def _decode_csv_pattern(value: str) -> str:
 
     # CSV exports may preserve escape sequences literally; decode them so the
     # in-memory pattern matches ClickHouse normalized DESCRIPTION values.
-    decoded = codecs.decode(value, "unicode_escape")
+    # unicode_escape round-trips bytes through latin-1, which mangles any
+    # non-ASCII character (an em dash becomes mojibake), so only decode escape
+    # sequences when there is nothing non-ASCII to corrupt.
+    decoded = codecs.decode(value, "unicode_escape") if value.isascii() else value
     return decoded.replace("\r\n", "\n")
 
 
@@ -124,6 +127,7 @@ def _build_update_query(source_table: str, regex_items: list[tuple[str, str, str
                 {priority_multi_if_expr}
             )
         WHERE {where_expr}
+        SETTINGS mutations_sync = 2
     '''
 
 
@@ -198,8 +202,29 @@ def _build_priority_breakdown_query(source_table: str) -> str:
     '''
 
 
+def _build_mutations_query(source_table: str) -> str:
+    return f'''
+        SELECT
+            mutation_id,
+            is_done,
+            parts_to_do,
+            create_time,
+            latest_fail_reason
+        FROM system.mutations
+        WHERE table = '{_escape_clickhouse_literal(source_table)}'
+        ORDER BY create_time DESC
+        LIMIT 20
+    '''
+
+
 def run(args: argparse.Namespace) -> None:
     params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
+
+    if args.check_mutations:
+        print("=== Recent mutations (is_done=0 means still running) ===")
+        print(_run_clickhouse_query(params, _build_mutations_query(args.source_table)).strip())
+        return
+
     normalized_type_priority_map = _load_normalized_type_priority_map(Path(args.mapping_path))
 
     if args.priority_summary:
@@ -288,6 +313,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-only",
         action="store_true",
         help="Only report rows whose current type still differs from the CSV-mapped type",
+    )
+    parser.add_argument(
+        "--check-mutations",
+        action="store_true",
+        help="Print recent ClickHouse mutations for the source table and exit; "
+             "is_done=0 means an ALTER UPDATE is still applying",
     )
     parser.add_argument(
         "--priority-summary",
