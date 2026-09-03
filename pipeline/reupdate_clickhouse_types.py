@@ -10,11 +10,16 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import subprocess
 from datetime import datetime
 from pathlib import Path
 import codecs
 
-from critical_events_pipeline import _read_clickhouse_config, _run_clickhouse_query
+from critical_events_pipeline import (
+    _clickhouse_client_args,
+    _read_clickhouse_config,
+    _run_clickhouse_query,
+)
 
 
 DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
@@ -67,6 +72,22 @@ def _load_normalized_type_priority_map(mapping_path: Path) -> list[tuple[str, st
     if mapping_path.suffix.lower() == ".json":
         return _load_normalized_type_priority_map_from_json(mapping_path)
     return _load_normalized_type_priority_map_from_csv(mapping_path)
+
+
+def _run_clickhouse_mutation(params: dict[str, object], query: str) -> str:
+    """Run an ALTER ... UPDATE and wait for the mutation to finish.
+
+    Mutations are asynchronous by default, so the script would otherwise report
+    success while rows were still being rewritten. ALTER does not accept a
+    trailing SETTINGS clause here, so mutations_sync is passed to the client.
+    """
+    command = _clickhouse_client_args(params) + ["--mutations_sync=2", "--query", query]
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.strip() or result.stdout.strip() or "ClickHouse mutation failed"
+        )
+    return result.stdout
 
 
 def _escape_clickhouse_literal(value: str) -> str:
@@ -127,7 +148,6 @@ def _build_update_query(source_table: str, regex_items: list[tuple[str, str, str
                 {priority_multi_if_expr}
             )
         WHERE {where_expr}
-        SETTINGS mutations_sync = 2
     '''
 
 
@@ -256,7 +276,7 @@ def run(args: argparse.Namespace) -> None:
     )
     for batch_number, regex_batch in enumerate(regex_batches, start=1):
         query = _build_update_query(args.source_table, regex_batch)
-        _run_clickhouse_query(params, query)
+        _run_clickhouse_mutation(params, query)
         print(f"Applied batch {batch_number}/{len(regex_batches)} with {len(regex_batch)} regex mappings")
 
     print("Done.")
