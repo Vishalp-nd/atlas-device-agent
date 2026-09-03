@@ -5585,7 +5585,7 @@
     "priority": "P101"
   },
   {
-    "description_pattern": "UART register conf <N> <N>\n<N> <N>",
+    "description_pattern": "UART register conf <N> <N>\n<N> <N>\n",
     "TYPE": "INFO",
     "priority": "P101"
   },
@@ -5600,12 +5600,12 @@
     "priority": "P104"
   },
   {
-    "description_pattern": "Sending set command to vbus <N>",
+    "description_pattern": "Sending set command to vbus <N>\n",
     "TYPE": "INFO",
     "priority": "P101"
   },
   {
-    "description_pattern": "Sending set command to vbus <N>",
+    "description_pattern": "Sending set command to vbus <N>\n",
     "TYPE": "INFO",
     "priority": "P101"
   },
@@ -6398,5 +6398,10 @@
     "description_pattern": "pattern=\"Unhandled context fault\" message=\"Dec  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
     "TYPE": "ERROR",
     "priority": "P4"
+  },
+  {
+    "description_pattern": "",
+    "TYPE": "ERROR",
+    "priority": "P2"
   }
 ]

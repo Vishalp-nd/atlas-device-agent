@@ -35,7 +35,7 @@ def _load_normalized_type_priority_map_from_csv(csv_path: Path) -> list[tuple[st
             pattern = _decode_csv_pattern((row.get("description_pattern") or "").strip())
             event_type = (row.get("TYPE") or "").strip().upper()
             priority = (row.get("priority") or "").strip().upper()
-            if not pattern or not event_type or not priority:
+            if row.get("description_pattern") is None or not event_type or not priority:
                 continue
             normalized_map[pattern] = (event_type, priority)
     return [
@@ -53,7 +53,7 @@ def _load_normalized_type_priority_map_from_json(json_path: Path) -> list[tuple[
         pattern = _decode_csv_pattern((row.get("description_pattern") or "").strip())
         event_type = (row.get("TYPE") or "").strip().upper()
         priority = (row.get("priority") or "").strip().upper()
-        if not pattern or not event_type or not priority:
+        if row.get("description_pattern") is None or not event_type or not priority:
             continue
         normalized_map[pattern] = (event_type, priority)
 
