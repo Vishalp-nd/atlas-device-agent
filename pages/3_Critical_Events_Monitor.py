@@ -14,6 +14,13 @@ from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, configure_app
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DETAIL_TABLE_LIMIT = 10
+ERROR_PRIORITIES = {
+    "P0": "direct video/data loss",
+    "P1": "major telemetry/safety signal loss",
+    "P2": "moderate functional impact",
+    "P3": "connectivity/auxiliary impact",
+    "P4": "minor/no immediate loss",
+}
 
 
 class DashboardApiError(RuntimeError):
@@ -250,6 +257,13 @@ def _pie(data: pd.DataFrame, names: str, values: str, title: str, hole: float = 
     return fig
 
 
+def _priority_label(priority: str) -> str:
+    description = ERROR_PRIORITIES.get(priority)
+    if not description:
+        return priority
+    return f"{priority} - {description}"
+
+
 def _bar(data: pd.DataFrame, x: str, y: str, color: str | None, title: str):
     fig = px.bar(data, x=x, y=y, color=color, title=title)
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), xaxis_title="", yaxis_title="Events")
@@ -358,7 +372,9 @@ def _render_ota_page(ota_version: str) -> None:
         if priority_counts.empty:
             st.info("No mapped error priorities found for this OTA.")
         else:
-            st.plotly_chart(_pie(priority_counts, "priority", "events", "Error priority split"), use_container_width=True)
+            priority_plot = priority_counts.copy()
+            priority_plot["priority_label"] = priority_plot["priority"].map(_priority_label)
+            st.plotly_chart(_pie(priority_plot, "priority_label", "events", "Error priority split"), use_container_width=True)
     with top_row[1]:
         st.plotly_chart(_pie(type_counts, "type", "events", "Errors vs Info"), use_container_width=True)
 
