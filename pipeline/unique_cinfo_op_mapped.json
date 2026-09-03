@@ -2615,12 +2615,12 @@
     "priority": "P0"
   },
   {
-    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to \\'No USB device found\\'\" message=\"Aug <N> <N> tegra-ubunt",
+    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to 'No USB device found'\" message=\"Aug <N> <N> tegra-ubunt",
     "TYPE": "ERROR",
     "priority": "P2"
   },
   {
-    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to \\'No USB device found\\'\" message=\"Nov <N> <N> tegra-ubunt",
+    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to 'No USB device found'\" message=\"Nov <N> <N> tegra-ubunt",
     "TYPE": "ERROR",
     "priority": "P2"
   },
