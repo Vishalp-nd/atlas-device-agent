@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Back up a ClickHouse critical info table and re-update type and priority using the CSV map.
+"""Back up a ClickHouse critical info table and re-update type and priority using the JSON map.
 
 Rows are normalized in ClickHouse the same way the CSV patterns were generated.
 Unmatched rows are ignored and left unchanged.
@@ -8,12 +8,9 @@ Unmatched rows are ignored and left unchanged.
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import time
 from datetime import datetime
 from pathlib import Path
-import codecs
 
 from critical_events_pipeline import _read_clickhouse_config, _run_clickhouse_query
 
@@ -21,72 +18,60 @@ from critical_events_pipeline import _read_clickhouse_config, _run_clickhouse_qu
 DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
 DEFAULT_SOURCE_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_BATCH_SIZE = 100
-DEFAULT_MUTATION_POLL_SECONDS = 5
-DEFAULT_MUTATION_TIMEOUT_SECONDS = 1800
-DEFAULT_CSV_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.csv"
 DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.json"
 NORMALIZED_DESCRIPTION_EXPR = (
-    "replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>')"
+    "trim(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'))"
 )
 
 
-def _load_normalized_type_priority_map_from_csv(csv_path: Path) -> list[tuple[str, str, str]]:
-    normalized_map: dict[str, tuple[str, str]] = {}
-    with csv_path.open(newline="") as csv_file:
-        reader = csv.DictReader(csv_file)
-        for row in reader:
-            pattern = _decode_csv_pattern(row.get("description_pattern") or "")
-            event_type = (row.get("TYPE") or "").strip().upper()
-            priority = (row.get("priority") or "").strip().upper()
-            if row.get("description_pattern") is None or not event_type or not priority:
-                continue
-            normalized_map[pattern] = (event_type, priority)
-    return [
-        (pattern, event_type, priority)
-        for pattern, (event_type, priority) in normalized_map.items()
-    ]
-
-
-def _load_normalized_type_priority_map_from_json(json_path: Path) -> list[tuple[str, str, str]]:
-    normalized_map: dict[str, tuple[str, str]] = {}
+def _load_normalized_type_priority_map(json_path: Path) -> list[tuple[str, str, str]]:
+    normalized_items: list[tuple[str, str, str]] = []
+    seen_patterns: set[str] = set()
     with json_path.open() as json_file:
         rows = json.load(json_file)
 
-    for row in rows:
-        pattern = _decode_csv_pattern(row.get("description_pattern") or "")
+    for index, row in enumerate(rows, start=1):
+        pattern = (row.get("description_pattern") or "").strip()
         event_type = (row.get("TYPE") or "").strip().upper()
         priority = (row.get("priority") or "").strip().upper()
-        if row.get("description_pattern") is None or not event_type or not priority:
+        if not event_type:
+            raise ValueError(f"Row {index} in {json_path} has an empty TYPE")
+        if not priority:
+            raise ValueError(f"Row {index} in {json_path} has an empty priority")
+        if pattern in seen_patterns:
             continue
-        normalized_map[pattern] = (event_type, priority)
+        seen_patterns.add(pattern)
+        normalized_items.append((pattern, event_type, priority))
+    return normalized_items
 
-    return [
-        (pattern, event_type, priority)
-        for pattern, (event_type, priority) in normalized_map.items()
+
+def _filter_mappings_by_pattern(
+    normalized_items: list[tuple[str, str, str]],
+    description_pattern: str | None,
+) -> list[tuple[str, str, str]]:
+    if not description_pattern:
+        return normalized_items
+
+    def _canonicalize_pattern(value: str) -> str:
+        canonical = value.replace("\\\\'", "'").replace("\\'", "'")
+        if canonical.endswith('"'):
+            canonical = canonical[:-1]
+        return canonical
+
+    normalized_input = _canonicalize_pattern(description_pattern)
+    filtered_items = [
+        item for item in normalized_items
+        if item[0] == description_pattern or _canonicalize_pattern(item[0]) == normalized_input
     ]
-
-
-def _load_normalized_type_priority_map(mapping_path: Path) -> list[tuple[str, str, str]]:
-    if mapping_path.suffix.lower() == ".json":
-        return _load_normalized_type_priority_map_from_json(mapping_path)
-    return _load_normalized_type_priority_map_from_csv(mapping_path)
+    if not filtered_items:
+        raise ValueError(
+            f"No mapping found for description pattern: {description_pattern}"
+        )
+    return filtered_items
 
 
 def _escape_clickhouse_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
-
-
-def _decode_csv_pattern(value: str) -> str:
-    if not value:
-        return value
-
-    # CSV exports may preserve escape sequences literally; decode them so the
-    # in-memory pattern matches ClickHouse normalized DESCRIPTION values.
-    # unicode_escape round-trips bytes through latin-1, which mangles any
-    # non-ASCII character (an em dash becomes mojibake), so only decode escape
-    # sequences when there is nothing non-ASCII to corrupt.
-    decoded = codecs.decode(value, "unicode_escape") if value.isascii() else value
-    return decoded.replace("\r\n", "\n")
 
 
 def _build_backup_table_name(source_table: str) -> str:
@@ -204,100 +189,12 @@ def _build_priority_breakdown_query(source_table: str) -> str:
     '''
 
 
-def _build_mutations_query(source_table: str) -> str:
-    return f'''
-        SELECT
-            mutation_id,
-            is_done,
-            parts_to_do,
-            create_time,
-            latest_fail_reason
-        FROM system.mutations
-        WHERE table = '{_escape_clickhouse_literal(source_table)}'
-        ORDER BY create_time DESC
-        LIMIT 20
-    '''
-
-
-def _build_pending_mutations_query(source_table: str) -> str:
-    return f'''
-        SELECT
-            count() AS pending,
-            countIf(latest_fail_reason != '') AS failing,
-            sum(parts_to_do) AS parts_remaining,
-            anyIf(latest_fail_reason, latest_fail_reason != '') AS fail_reason
-        FROM system.mutations
-        WHERE table = '{_escape_clickhouse_literal(source_table)}'
-          AND is_done = 0
-    '''
-
-
-def _build_kill_mutations_query(source_table: str) -> str:
-    return f'''
-        KILL MUTATION
-        WHERE table = '{_escape_clickhouse_literal(source_table)}'
-          AND is_done = 0
-    '''
-
-
-def _wait_for_mutations(
-    params: dict[str, object],
-    source_table: str,
-    poll_seconds: int = DEFAULT_MUTATION_POLL_SECONDS,
-    timeout_seconds: int = DEFAULT_MUTATION_TIMEOUT_SECONDS,
-) -> None:
-    """Block until the table has no unfinished mutations.
-
-    ALTER ... UPDATE is asynchronous, so without this the script exits while
-    rows are still being rewritten and a follow-up query reports stale values.
-    """
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        output = _run_clickhouse_query(
-            params, _build_pending_mutations_query(source_table)
-        ).strip()
-        if not output:
-            return
-
-        fields = output.split("\t")
-        pending = int(fields[0])
-        failing = int(fields[1]) if len(fields) > 1 else 0
-        parts_remaining = int(fields[2]) if len(fields) > 2 and fields[2] else 0
-        fail_reason = fields[3] if len(fields) > 3 else ""
-
-        if failing:
-            raise RuntimeError(
-                f"ClickHouse mutation on {source_table} is failing and will keep "
-                f"retrying, blocking the ones behind it: {fail_reason}"
-            )
-        if pending == 0:
-            print("All mutations finished")
-            return
-        if time.monotonic() >= deadline:
-            raise RuntimeError(
-                f"Timed out after {timeout_seconds}s with {pending} unfinished "
-                f"mutation(s) on {source_table}; re-run with --check-mutations to inspect, "
-                "or --kill-pending-mutations to drop the backlog and start clean"
-            )
-
-        print(f"Waiting for {pending} unfinished mutation(s), {parts_remaining} parts remaining...")
-        time.sleep(poll_seconds)
-
-
 def run(args: argparse.Namespace) -> None:
     params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
-
-    if args.check_mutations:
-        print("=== Recent mutations (is_done=0 means still running) ===")
-        print(_run_clickhouse_query(params, _build_mutations_query(args.source_table)).strip())
-        return
-
-    if args.kill_pending_mutations:
-        _run_clickhouse_query(params, _build_kill_mutations_query(args.source_table))
-        print(f"Killed all pending mutations on {args.source_table}")
-        return
-
-    normalized_type_priority_map = _load_normalized_type_priority_map(Path(args.mapping_path))
+    normalized_type_priority_map = _filter_mappings_by_pattern(
+        _load_normalized_type_priority_map(Path(args.json_path)),
+        args.description_pattern,
+    )
 
     if args.priority_summary:
         print("=== Priority Summary ===")
@@ -329,19 +226,7 @@ def run(args: argparse.Namespace) -> None:
     for batch_number, regex_batch in enumerate(regex_batches, start=1):
         query = _build_update_query(args.source_table, regex_batch)
         _run_clickhouse_query(params, query)
-        print(f"Queued batch {batch_number}/{len(regex_batches)} with {len(regex_batch)} regex mappings")
-
-    if args.no_wait:
-        print(
-            "Not waiting for mutations; rows are still being rewritten in the "
-            "background, so verification queries may report stale values"
-        )
-    else:
-        _wait_for_mutations(
-            params,
-            args.source_table,
-            timeout_seconds=args.mutation_timeout,
-        )
+        print(f"Applied batch {batch_number}/{len(regex_batches)} with {len(regex_batch)} regex mappings")
 
     print("Done.")
     if backup_table is not None:
@@ -353,14 +238,9 @@ def build_parser() -> argparse.ArgumentParser:
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--mapping-path",
+        "--json-path",
         default=str(DEFAULT_JSON_PATH),
-        help="JSON or CSV file containing description_pattern, TYPE, and priority mappings",
-    )
-    parser.add_argument(
-        "--csv-path",
-        dest="mapping_path",
-        help="Deprecated alias for --mapping-path",
+        help="JSON file containing description_pattern, TYPE, and priority mappings",
     )
     parser.add_argument(
         "--db-config",
@@ -394,33 +274,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of regex mappings per ClickHouse ALTER UPDATE batch",
     )
     parser.add_argument(
+        "--description-pattern",
+        default=None,
+        help="Run only the exact description_pattern from the CSV mapping",
+    )
+    parser.add_argument(
         "--verify-only",
         action="store_true",
         help="Only report rows whose current type still differs from the CSV-mapped type",
-    )
-    parser.add_argument(
-        "--no-wait",
-        action="store_true",
-        help="Queue the mutations without waiting for them to finish",
-    )
-    parser.add_argument(
-        "--mutation-timeout",
-        type=int,
-        default=DEFAULT_MUTATION_TIMEOUT_SECONDS,
-        help=f"Seconds to wait for mutations to finish (default: {DEFAULT_MUTATION_TIMEOUT_SECONDS})",
-    )
-    parser.add_argument(
-        "--check-mutations",
-        action="store_true",
-        help="Print recent ClickHouse mutations for the source table and exit; "
-             "is_done=0 means an ALTER UPDATE is still applying",
-    )
-    parser.add_argument(
-        "--kill-pending-mutations",
-        action="store_true",
-        help="Cancel all unfinished mutations on the source table and exit, without "
-             "queuing new ones. Use this to clear a backlog before a fresh run; "
-             "killing is safe since these updates are idempotent and can be re-queued",
     )
     parser.add_argument(
         "--priority-summary",

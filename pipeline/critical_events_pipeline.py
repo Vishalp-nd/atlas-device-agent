@@ -145,18 +145,43 @@ def _read_clickhouse_config(config_file: str, section: str) -> dict[str, object]
 
 
 def _clickhouse_client_args(params: dict[str, object]) -> list[str]:
+    host = str(params["host"])
+    port = str(params["port"])
+    user = str(params["user"])
+    database = str(params["database"])
+    password = str(params.get("password", ""))
+
+    # The repo's local ClickHouse runs in Docker, while the host may still have
+    # an older clickhouse-client installed. Route localhost:9000 traffic through
+    # the container so client/server syntax stays aligned.
+    if host in {"localhost", "127.0.0.1"} and port == "9000":
+        args = [
+            "sudo",
+            "docker",
+            "exec",
+            "-i",
+            "clickhouse",
+            "clickhouse-client",
+            "--user",
+            user,
+            "--database",
+            database,
+        ]
+        if password:
+            args.extend(["--password", password])
+        return args
+
     args = [
         "clickhouse-client",
         "--host",
-        str(params["host"]),
+        host,
         "--port",
-        str(params["port"]),
+        port,
         "--user",
-        str(params["user"]),
+        user,
         "--database",
-        str(params["database"]),
+        database,
     ]
-    password = str(params.get("password", ""))
     if password:
         args.extend(["--password", password])
     return args

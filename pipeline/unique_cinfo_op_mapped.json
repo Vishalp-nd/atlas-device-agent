@@ -55,12 +55,12 @@
     "priority": "P2"
   },
   {
-    "description_pattern": "Cloud fail although internet <N> : <N> : Couldn\\'t connect to server",
+    "description_pattern": "Cloud fail although internet <N> : <N> : Couldn't connect to server",
     "TYPE": "ERROR",
     "priority": "P3"
   },
   {
-    "description_pattern": "Cloud fail although internet <N> : <N> : Couldn\\'t resolve host name",
+    "description_pattern": "Cloud fail although internet <N> : <N> : Couldn't resolve host name",
     "TYPE": "ERROR",
     "priority": "P3"
   },
@@ -95,7 +95,7 @@
     "priority": "P3"
   },
   {
-    "description_pattern": "<N> couldn\\'t be mounted. mount -a failed",
+    "description_pattern": "<N> couldn't be mounted. mount -a failed",
     "TYPE": "ERROR",
     "priority": "P4"
   },
