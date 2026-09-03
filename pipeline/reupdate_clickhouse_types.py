@@ -10,21 +10,19 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 import codecs
 
-from critical_events_pipeline import (
-    _clickhouse_client_args,
-    _read_clickhouse_config,
-    _run_clickhouse_query,
-)
+from critical_events_pipeline import _read_clickhouse_config, _run_clickhouse_query
 
 
 DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
 DEFAULT_SOURCE_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_BATCH_SIZE = 100
+DEFAULT_MUTATION_POLL_SECONDS = 5
+DEFAULT_MUTATION_TIMEOUT_SECONDS = 1800
 DEFAULT_CSV_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.csv"
 DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.json"
 NORMALIZED_DESCRIPTION_EXPR = (
@@ -72,22 +70,6 @@ def _load_normalized_type_priority_map(mapping_path: Path) -> list[tuple[str, st
     if mapping_path.suffix.lower() == ".json":
         return _load_normalized_type_priority_map_from_json(mapping_path)
     return _load_normalized_type_priority_map_from_csv(mapping_path)
-
-
-def _run_clickhouse_mutation(params: dict[str, object], query: str) -> str:
-    """Run an ALTER ... UPDATE and wait for the mutation to finish.
-
-    Mutations are asynchronous by default, so the script would otherwise report
-    success while rows were still being rewritten. ALTER does not accept a
-    trailing SETTINGS clause here, so mutations_sync is passed to the client.
-    """
-    command = _clickhouse_client_args(params) + ["--mutations_sync=2", "--query", query]
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
-    if result.returncode != 0:
-        raise RuntimeError(
-            result.stderr.strip() or result.stdout.strip() or "ClickHouse mutation failed"
-        )
-    return result.stdout
 
 
 def _escape_clickhouse_literal(value: str) -> str:
@@ -237,6 +219,60 @@ def _build_mutations_query(source_table: str) -> str:
     '''
 
 
+def _build_pending_mutations_query(source_table: str) -> str:
+    return f'''
+        SELECT
+            count() AS pending,
+            countIf(latest_fail_reason != '') AS failing,
+            anyIf(latest_fail_reason, latest_fail_reason != '') AS fail_reason
+        FROM system.mutations
+        WHERE table = '{_escape_clickhouse_literal(source_table)}'
+          AND is_done = 0
+    '''
+
+
+def _wait_for_mutations(
+    params: dict[str, object],
+    source_table: str,
+    poll_seconds: int = DEFAULT_MUTATION_POLL_SECONDS,
+    timeout_seconds: int = DEFAULT_MUTATION_TIMEOUT_SECONDS,
+) -> None:
+    """Block until the table has no unfinished mutations.
+
+    ALTER ... UPDATE is asynchronous, so without this the script exits while
+    rows are still being rewritten and a follow-up query reports stale values.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        output = _run_clickhouse_query(
+            params, _build_pending_mutations_query(source_table)
+        ).strip()
+        if not output:
+            return
+
+        fields = output.split("\t")
+        pending = int(fields[0])
+        failing = int(fields[1]) if len(fields) > 1 else 0
+        fail_reason = fields[2] if len(fields) > 2 else ""
+
+        if failing:
+            raise RuntimeError(
+                f"ClickHouse mutation on {source_table} is failing and will keep "
+                f"retrying, blocking the ones behind it: {fail_reason}"
+            )
+        if pending == 0:
+            print("All mutations finished")
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Timed out after {timeout_seconds}s with {pending} unfinished "
+                f"mutation(s) on {source_table}; re-run with --check-mutations to inspect"
+            )
+
+        print(f"Waiting for {pending} unfinished mutation(s)...")
+        time.sleep(poll_seconds)
+
+
 def run(args: argparse.Namespace) -> None:
     params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
 
@@ -276,8 +312,20 @@ def run(args: argparse.Namespace) -> None:
     )
     for batch_number, regex_batch in enumerate(regex_batches, start=1):
         query = _build_update_query(args.source_table, regex_batch)
-        _run_clickhouse_mutation(params, query)
-        print(f"Applied batch {batch_number}/{len(regex_batches)} with {len(regex_batch)} regex mappings")
+        _run_clickhouse_query(params, query)
+        print(f"Queued batch {batch_number}/{len(regex_batches)} with {len(regex_batch)} regex mappings")
+
+    if args.no_wait:
+        print(
+            "Not waiting for mutations; rows are still being rewritten in the "
+            "background, so verification queries may report stale values"
+        )
+    else:
+        _wait_for_mutations(
+            params,
+            args.source_table,
+            timeout_seconds=args.mutation_timeout,
+        )
 
     print("Done.")
     if backup_table is not None:
@@ -333,6 +381,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-only",
         action="store_true",
         help="Only report rows whose current type still differs from the CSV-mapped type",
+    )
+    parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Queue the mutations without waiting for them to finish",
+    )
+    parser.add_argument(
+        "--mutation-timeout",
+        type=int,
+        default=DEFAULT_MUTATION_TIMEOUT_SECONDS,
+        help=f"Seconds to wait for mutations to finish (default: {DEFAULT_MUTATION_TIMEOUT_SECONDS})",
     )
     parser.add_argument(
         "--check-mutations",
