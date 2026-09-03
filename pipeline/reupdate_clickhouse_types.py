@@ -20,7 +20,10 @@ DEFAULT_SOURCE_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.json"
 NORMALIZED_DESCRIPTION_EXPR = (
-    "trim(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'))"
+    # trim(x) with no second argument only strips the space character, not
+    # newlines/tabs, so the trim characters must be listed explicitly to match
+    # Python's str.strip() on the JSON side.
+    "trimBoth(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'), ' \\t\\n\\r')"
 )
 
 
