@@ -192,7 +192,8 @@ def load_ota_priority_counts(
     frame = _read_clickhouse_df(config, sql)
     if frame.empty:
         return pd.DataFrame(columns=["priority", "events"])
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+    frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
+    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame.sort_values("priority")
 

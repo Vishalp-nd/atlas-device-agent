@@ -1,0 +1,6392 @@
+[
+  {
+    "description_pattern": "Linux signal, TID: <N> PID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Linux signal, TID: uptime <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Returning from main() after crash",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "BT module failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "BT scan failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Config Read failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "BLE Button for: driver with mac: <N> has not sent keep alive since <N> secs",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "BT module enable failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "DBUS BT module enable failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "DBUS BT module reset failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "DBUS BT module scan failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Cloud fail although internet <N> : <N> : Couldn\\'t connect to server",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cloud fail although internet <N> : <N> : Couldn\\'t resolve host name",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cloud fail although internet <N> : <N> : Failure when receiving data from the peer",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cloud fail although internet <N> : <N> : SSL connect error",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cloud fail although internet <N> : <N> : Timeout was reached",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Bluetooth reset due to SOC failure",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "ADSM File Data write failed",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Cloud notify failed, response code <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "<N> couldn\\'t be mounted. mount -a failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "sdcard_get_mount_status returns NOT SDCARD_MOUNTED",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "get_details failed inside card_stats",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "SdCard is in Read only mode",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "/data/nd_files/db//circular_buffer.db deleting because of corrupted DB error",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Free inodes count wrong <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "No space in generic_queue",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "No space in generic_queue_priority",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "sdcard_get_mount_status returned SDCARD_REMOVED",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Received Timestamp is Invalid : <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Found more than one entries with NAME = <N> ,count = <N> in DB.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Insertion in CB DB failed.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Select query failed to execute. Inserting the file regardless to avoid data loss.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Error: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Invalid filename format, deleting file <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Root filesystem is RO",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Corrupt filename detected, not adding to DB",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Camera crash",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "analog camera crash",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "init_camera_record_session Fail",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Move to circular buffer failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:DrvLoginAl <N> Please_stop_and_log_in.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:IgnAl <N> Reminder_Circle_of_Safety_Female.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:IgnAl <N> Seatbelt_alert.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:IgnAl <N> seatbelt_alert.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:IgnIdleAl <N> Reminder_Circle_of_Safety_Female.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Audio recording recovered",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Mic is crashed",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Silent capture unrecoverable, restarting",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "set_property_DB failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "set_property_DB failed for camera crash count",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "set_privacy_mode_led timedout",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Camera disabled",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "get_inward_boot_status_tt timedout",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "get_isp_boot_status_tt timedout",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "get_left_cam_boot_status_tt timedout",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "get_mipi_retimer_status_tt timedout",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "get_right_cams_boot_status_tt timedout",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "RESET Fail",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "ISP Fail",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Inward cam Fail",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Left cam Fail",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Right cam Fail",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Camera LPM crash",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Error initing IMU",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Failed to publish GPS data",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GPS Port Error",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "No New Gps Data",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Poor GPS Accuracy from <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GPS rollover detected, header: $GNRMC, gps_ts: <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Failed to create recording path. Exiting",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Low EMMC, exiting",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "gst pipeline state change to NULL TIMEDOUT",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DMS camera disconnected",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "partial zip deleted",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Track Creation failed for track_id <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Start Camera failed for camera_id <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Create Session failed for camera_id <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Start Session failed for camera_id <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Connect failed/timed-out for camera_id <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "IMU data outage for partial file <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "ReturnTrackBuffer failed for track_id <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "IMU data outage for partial file <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IMU data outage for partial session <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IMU data outage for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GPS data outage for partial file <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GPS data outage for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IMU data outage for partial file <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IMU data outage for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Error generating observation file for partial session <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "GPS data outage for partial file <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GPS data outage for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Obs file create err: partial <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Error copying file for partial session",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Error copying file for partial session <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Error generating observation file for partial session <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "move_other_cam_partial_files: <N> for <N> Fallback",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "move_other_cam_partial_files: <N> for <N> Fallback -",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Error copying file for partial session <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Partial file copying err <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Partial EA image not available but corresponding video available <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Partial EA image available but corresponding video not available <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "GPS Lock Lost",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS camera connected back",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Partial EA image not available but corresponding video available <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Audio pcm file has <N> size for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Audio pcm file has <N> size: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Audio aac file has <N> size for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Audio aac file has <N> size: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Audio recording failed",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Video is flipped/mirrored for file <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "DMS camera is enabled in nd_config.ini but disconnected",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Error reading video flip/mirror register for file <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "DMS camera is enabled in nd_config.ini but disconnected",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS camera is enabled in nd_config.ini but disconnected",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Force IDR failed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Failed to create SHM pool",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "IMU disconnected",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "appsink_audio_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_ea_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "appsink_ld_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_nrt_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_tc_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "<N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "<N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS Initialization Fail: DMS SN Read Error.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS Initialization Fail: dmsInit camera failed on disconnect-reconnect case",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS Initialization Fail: dmsInit camera failed on first time DMS connection after bootup",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS Initialization Fail: dmsInit camera failed when DMS already connected at bootup",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS Initialization Warning: Failed to get/set DMS camera GOP/Flip configs.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS IRLED API Failure: dmsIRLEDStatus. <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS IRLED API Failure: dmsIRLEDStatusClear. <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DMS IRLED API Failure: dmsIrledDriverSetup: Enable driver. <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "DMS IRLED API Failure: dmsSetLedColor. <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "dms_camera: Could not read from resource.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "json_dump_file failed. result: <N> session: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Display enabled but not connected to main board",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "display disconnected",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DMS camera disconnected",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "acam <N> disconnected, current: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "outcam dis-connected",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "incam dis-connected",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "InCam recovery failed in init",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "OutCam recovery failed in init",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "acam <N> recovery failed at boot, current: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "acam <N> recovery failed, attempt: <N> current: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "acam <N> recovery failed, current: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "acam recovery failed in init",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "incam recovery failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "outcam recovery failed",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Aux camera disabled but connected",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Display connected but disabled in config",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Speaker Init Failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "GPS Fix Quality Invalid",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GNSS power GPIO reset failed",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GNSS power GPIO reset successful",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "No last known valid GPS data",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GNSS data GPIO reset successful",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GPS Lock Lost",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GNSS GPIOs both OK but no data, resetting both",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "GNSS power and data both not OK, resetting both",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Lumia full reset successful (GPIOs OK but <N> not enumerated)",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Lumia reset failed after <N> attempts. <N> not enumerated during port open. GPS thread stopping.",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Lumia reset failed after <N> attempts. <N> not enumerated during runtime. GPS port recovery stopped.",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Shutdown - Bad Voltage (LPW: <N> Speed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Valid Voltage: <N> V, Cancelling Bad Battery shutdown",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "failed in open /sys/kernel/krait/pfi_stat",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "System reboot did not occur, not expected to be here reboot_status <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "System reboot didnot occur, not expected to be here reboot_status <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Failed to execute command in  shutdown_poling_thread_fn ::shutdown --no-wall -c::",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Battery Voltage: <N> eBatteryWarning",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Battery Voltage Thresholds Crossed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Battery Voltage Read Failed:: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "OBD_NDMB_FAIL: <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - MISC LPW (Speed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - MISC LPW (Speed: <N> FLPW Enabled, RTC_JUMP: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - MISC LPW (Speed: <N> RTC_JUMP: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - Misc LPW (Speed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - Misc Wakeup(POWER_ON_TRIGGER) LPW (Speed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "failed to execute exec_cmd_db",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_MISC_LOWPOWER:SHUTDOWN (Speed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATS_EMPTY (Speed: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Booted up in MISC Low power wakeup mode, RTC_JUMP: <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "sysfs file read failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "APM WOM Enable Failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Failed to Configure WOM on AON",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Failed to Enable IGN_WAKE_UP",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "IMU Access Failed",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "aon read power on_off/wakeup reason failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "read curr ign status failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "APM MSP INTR Enable Failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "IGN read failure. Reading GPIO value.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_ENG_STAT: Data Outage Count: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_GPS: Data Outage Count: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_IMU: Data Outage Count: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true)",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> true, BadBattery: true, FusionActive: true)",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: Data Outage Count: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "WOIGN: FAIL : E : FAIL, WOMOT: FAIL : D : FAIL, WOSMS: FAIL : D : FAIL, LUMIA: FAIL : E : FAIL",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_ENG_STAT: Data Outage Clear",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_GPS: Data Outage Clear",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ERR Prev: OFF <N> OFF V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ERR Prev: ON <N> OFF V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ERR Prev: ON <N> ON V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: ERR <N> OFF V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: ON <N> ERR V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IMU: Data Outage Clear",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true)",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> true, BadBattery: true, FusionActive: true)",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: Data Outage Clear",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Glitch Detected: <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Glitch Detected: <N> <N> V: <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Error reading MSP QCS Alive current configuration",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Error reading MSP QCS Alive current timer value",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  analytics diff: <N> Restarting Service",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  analyticsService diff: <N> Restarting Service",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  analyticsService diff: <N> Triggering system_reboot",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  apm diff: <N> Triggering system_reboot",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  bagheera diff: <N> Triggering system_reboot",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  power_monitor diff: <N> Triggering system_reboot",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "AON WDT Enable Failed.",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "AON WDT Timeout Set Failed.",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Watchdog init failed, exiting from svc",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "trigger_kick_pmic_wdog timedout",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "AON WDT Kick Failed.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "PMIC WDT Kick Failed.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Data Recording Enabled <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Data Recording Disabled <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "User alert button disconnected",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "User alert button disconnected",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "\u0001",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Not a valid data in payload",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Cannot access alert file <N> Ignoring!!",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "not creating observations.zip as there are no observation files...",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "CANNOT MOUNT SDCARD. Observations folder is not created!!",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "video trimming failed. uploading complete video!!",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "EA images path read error. Possible case of internal bad blocks!!",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "<N> error",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Obs <N> not created",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "zip add failure for ea images",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Data recording is disabled <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Empty File Pulled <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Exhausted max retry - CB Failure <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Exhausted max retry <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "External video could not be fetched. Timed out <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Record privacy is enabled <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "VOD Expired error..!",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "VOD Not Available <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Video file decryption failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "<N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "mkv to <N> failed in VOD after retries also",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "No response from CB <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Q_NAME_TO_CB NA <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "CB broadcasted empty string for DRP",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Insert EA image in DB failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "EA images path not healthy. Skipping bootup sync!",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Deprioritizing VOD due to CB",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "AWS Connection Error, Certificate issue",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "AWS cert or key download failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Failed to publish ELD payloads, available rows in DB <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Auth key corruption detected",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Not retrying shadow sync as failing consecutively",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "PWM file does not exist or could not be opened",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "can detection error",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "stack detection failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "can adapter cable swapped",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "CAN error file present, try PD only once",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "obd error code <N> stack <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "ADC reading failed Boot mode <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "can adapter firmware mismatch",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "obd restart count is more than <N> sleeping till next boot",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "VIN read is not same as stored VIN",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Odometer <N> less than engine off odometer <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Odometer jump detected. Value changed from <N> to <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Engine hours <N> less than engine off engine hours <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Engine hours jump detected. Value changed from <N> to <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Engine is off but  GPS speed is > <N> for more than <N> seconds",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Engine hours jumped from <N> to <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Odometer jumped from <N> to <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "ELD enabled, exiting service as unable to connect to IOSiX",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Failed to execute ARP command",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "IOSiX Failed To Get IOSiX Host IP",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "No valid VBUS entry found in accessory db",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Buffer filled is more than the threshold value",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "VBUS time is not in sync with current time for <N> seconds",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Buffer record is empty Buffer: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Requested Record is not found Record: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "VBUS date or time is empty in live data packet",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "OBD proprietary Configuration loading failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Encryption status changed to <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Fast data delay instances count : <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Error in curl version checking",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Failed to locate IOSIX",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IOSiX is not reachable over Host IP",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "IOSiX is reachable over Host IP",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "VBUS not found,exiting",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "<N> not found",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Hotspot Creation Failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Unknown Wi-Fi Module Detected",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Misconfigured VBUS Detected: <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Misconfigured VBUS Detected: <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Misconfigured VBUS Detected: <N> <N> <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Wi-Fi hard reset triggered for hotspot recovery",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Hotspot client disconnected on <N> <N> <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cam <N> - Video Not Available <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Invalid Firmware Programmed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Time Setting Failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cam <N> - Quality Corrected",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Config <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Config Mismatch(MC:ftherDHUBX, <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Power Configuration Failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Cam <N> - Black Video <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "DHUB Wifi Scan: <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Cam <N> - Large file <N> FileSize - <N> MB",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "DB Limit <N> Reached",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DHUB-X Is Pulling Videos",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Paired DHUB <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Unpaired DHUB <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Disk Status Is <N> <N> Space: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Exiting Service As IP Is not Present",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Exiting Service As Internet Is not Present",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Initiating Modem reset - sdk error",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "modem power reset initiated due to sdk error",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "SIM detection error",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Unknown",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "SIM api error",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "SLQS SDK Error",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "LU Reject, reject causecode = <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Exiting timed task as timed out",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Internet and ip is not present - Restarting LTE Application",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Internet is not working - Restarting LTE Application",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "LTE modem USB missing detected by GPS service - conn_mgr exiting for systemd restart",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Service restart due to module disconnect",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "enumeration failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "module is disconnected",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "module is disconnected when ignition OFF",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "module is disconnected when ignition ON",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "qmi or api timeout",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "sdk error",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "service restart due to enumeration failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "<N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "<N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "DNS Resolution Failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "DNS failed, <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "DMS - Didn't receive header message from Bagheera for <N> secs.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Inward - Didn't receive header message from Bagheera for <N> secs.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Multicam - Didn't receive header message from Bagheera for <N> secs.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Outward - Didn't receive header message from Bagheera for <N> secs.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DMS - Slowdown, UID: <N> SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "MULTICAM - Slowdown, CAM --> <N> UID: <N> SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "MULTICAM - Slowdown, UID: <N> SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Outward - Slowdown, UID: <N> SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Inward - Slowdown, UID: <N> SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Inward - SMB_READ_FAILURE, SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "MULTICAM - SMB_READ_FAILURE, SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Outward - SMB_READ_FAILURE, SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : Driverhalf_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : OutImProc",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : OutKlt",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : best_face",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : best_face_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : blink",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : blink_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : blink_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : dist",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : dist_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : dist_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : dist_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : dist_yawn_bestface_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : driver_pose_wrapper",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : driverhalf",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : driverhalf_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : drowsy",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : drowsy_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : drowsy_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : esd",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : esd_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : esd_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : esd_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : image_proc",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : inward_component_group",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : inward_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : main_net",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : outward_auxnets",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : outward_dnn_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : outward_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : passenger_pose_wrapper",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : phones",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : phones_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : phones_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : phones_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : pose_bbox_gen",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : psoc_net",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : psoc_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : psoc_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : rmc_net",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : rmc_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : rmc_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : run_auxnets",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : run_dist_yawn",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb_passenger",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb_passenger_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb_passenger_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : sb_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tesseract",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tloc_net",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tloc_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tloc_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tsc_net",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tsc_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tsc_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : tycho_classifier_Yolo",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : usp",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : usp_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : usp_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : usp_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : yawn",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : yawn_pipeline",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : yawn_postprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Network - NET_HARD_TIMEOUT for : yawn_preprocess",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "deleteInwardPipeline didnt complete in <N> Maybe IPE hanged",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "deleteOutwardPipeline didnt complete in <N> Maybe IPE hanged",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue BTFV",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Cannot receive from queue EXT_CAM",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Cannot receive from queue OBD_PUB",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cannot receive from queue Q_GPS",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Cannot receive from queue Q_SVC",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "set_property_DB failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Apply fail: <N> g=schedutil <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC Health: Unsupported eMMC - VendorTypeMax",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Failure in retreiving WAF/Host_Write/Erase_Count",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC Health: Unsupported eMMC - KINGSTON",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC Health: Unsupported eMMC - MICRON",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC Health: Unsupported eMMC - VendorTypeMax",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC: P/E Cycles crossed <N> : <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC: WAF exceeded safe threshold (WAF: <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC: bad block count exceeded threshold <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC: bad_block manf count exceeded <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC: uecc_count exceeded threshold <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ext eMMC: warning_temp_cross_counter exceeded threshold <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC: P/E Cycles crossed <N> : <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC: WAF exceeded safe threshold (WAF: <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC: bad_block manf count exceeded <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC: uecc_count exceeded threshold <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC: warning_temp_cross_counter exceeded threshold <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Int eMMC: write_abort_failures exceeded threshold <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Password change failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Service disabled",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Invalid doop status format:",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "JWT: failed, IoT: failed, JWT backup: failed.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "JWT: failed, IoT: success, JWT backup: failed.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "API failed atleast once",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "JWT: failed, IoT: failed, JWT backup: failed.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "JWT: failed, IoT: success, JWT backup: failed.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "JWT: success, IoT: success, JWT backup: failed.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [    <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [    <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"IMU UDEV: Device <N> not ready after <N> attempts (WHO_AM_I register check failed), cannot bind\" message=\"Aug <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"IMU UDEV: Device <N> not ready after <N> attempts (WHO_AM_I register check failed), cannot bind\" message=\"Nov <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep  <N> <N> tegra-ubuntu kernel: <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [   <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [  <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [ <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Aug <N> <N> tegra-ubuntu bagheera: <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Aug <N> <N> tegra-ubuntu peripheral_status: <N> ISP boot status read",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Nov <N> <N> tegra-ubuntu peripheral_status: <N> ISP boot status read",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Sep  <N> <N> tegra-ubuntu peripheral_status: <N> ISP boot status read",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP Boot Status fail\" message=\"Aug <N> <N> tegra-ubuntu bagheera: <N> ISP Boot Status fail <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP Boot Status fail\" message=\"Aug <N> <N> tegra-ubuntu peripheral_status: <N> ISP Boot Status fail <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP Boot Status fail\" message=\"Nov <N> <N> tegra-ubuntu peripheral_status: <N> ISP Boot Status fail <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP Boot Status fail\" message=\"Sep  <N> <N> tegra-ubuntu peripheral_status: <N> ISP Boot Status fail <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP Boot Status fail\" message=\"Aug <N> <N> tegra-ubuntu peripheral_status: <N> ISP Boot Status fail <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Aug <N> <N> tegra-ubuntu <N> Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Aug <N> <N> tegra-ubuntu bagheera: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Aug <N> <N> tegra-ubuntu cam_rec: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Nov <N> <N> tegra-ubuntu <N> Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Nov <N> <N> tegra-ubuntu cam_rec: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Aug <N> <N> tegra-ubuntu bagheera: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Aug <N> <N> tegra-ubuntu peripheral_status: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Nov <N> <N> tegra-ubuntu peripheral_status: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Sep  <N> <N> tegra-ubuntu peripheral_status: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> ISP boot status\" message=\"Aug <N> <N> tegra-ubuntu <N> <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status\" message=\"Aug <N> <N> tegra-ubuntu bagheera: <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected, toggling GPIO <N> message=\"Aug <N> <N> tegra-ubuntu <N> C-Media",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected, toggling GPIO <N> message=\"Aug <N> <N> tegra-ubuntu <N> C-Media",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected, toggling GPIO <N> message=\"Nov <N> <N> tegra-ubuntu <N> C-Media",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected, toggling GPIO <N> message=\"Sep  <N> <N> tegra-ubuntu <N> C-Media",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected after\" message=\"Aug <N> <N> tegra-ubuntu <N> C-Media device not d",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected after\" message=\"Aug <N> <N> tegra-ubuntu <N> C-Media device not de",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected after\" message=\"Nov <N> <N> tegra-ubuntu <N> C-Media device not de",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"OutCam was not connected within\" message=\"Aug <N> <N> tegra-ubuntu <N> OutCam was not connecte",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"OutCam was not connected within\" message=\"Nov <N> <N> tegra-ubuntu <N> OutCam was not connecte",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to \\'No USB device found\\'\" message=\"Aug <N> <N> tegra-ubunt",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to \\'No USB device found\\'\" message=\"Nov <N> <N> tegra-ubunt",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> arm-smmu <N> Unhand",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> arm-smmu <N> Unhandle",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: [    <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> arm-smmu <N> Unhandle",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Nov <N> <N> tegra-ubuntu kernel: [    <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep  <N> <N> tegra-ubuntu kernel: <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> nvme <N> I/O <N> QID <N> timeout, abort",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> nvme <N> I/O <N> QID <N> timeout, aborti",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> nvme <N> I/O <N> QID <N> timeout, abortin",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> nvme <N> I/O <N> QID <N> timeout, reset",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> nvme <N> I/O <N> QID <N> timeout, reset",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> nvme <N> I/O <N> QID <N> timeout, reset c",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> nvme <N> I/O <N> QID <N> timeout, compl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> nvme <N> I/O <N> QID <N> timeout, comple",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> nvme <N> I/O <N> QID <N> timeout, complet",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> nvme <N> I/O <N> QID <N> timeout, aborti",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> nvme <N> I/O <N> QID <N> timeout, abortin",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> nvme <N> I/O <N> QID <N> timeout, reset",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> nvme <N> I/O <N> QID <N> timeout, reset c",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> tegra-mc",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Aug <N> <N> tegra-ubuntu kernel: <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Aug <N> <N> tegra-ubuntu kernel: [    <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Nov <N> <N> tegra-ubuntu kernel: [    <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Invalid JSON",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Renaming <N> log files with wrong TS",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Max KA commands recursive loops reached",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Renaming <N> log files with wrong TS",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "sdcard_in RO mode, Requesting power_mon for Reboot",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Alert Oldest UDID: <N> SC: <N> Latest UDID: <N> SC: <N> Cnt: <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Non-Alert Oldest UDID: <N> SC: <N> Latest UDID: <N> SC: <N> Cnt: <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Non-Alert Oldest UDID: <N> SC: <N> Latest UDID: <N> SC: <N> Cnt: <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Observation Oldest UDID: <N> SC: <N> Latest UDID: <N> SC: <N> Cnt: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Oldest UDID: <N> SC: <N> Latest UDID: <N> SC: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "RT shared memory recreated for DMS camera",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "RT shared memory recreated for inward camera",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "RT shared memory recreated for outward camera",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "RT shared memory recreated for dms camera",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "RT shared memory recreated for inward camera",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "RT shared memory recreated for outward camera",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "GPS Lock Acquired",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "DMS camera connected for the first time after cam_rec service has started.",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IRLED Ver: OPTO Level: <N> Read <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "IRLED Ver: <N> Val: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IRLED Ver: OSRAM Level: <N> Read <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "IMU connected",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DMS FW Update starting. Current FW: <N> Target: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "DMS FW Update succeeded. Pre: <N> Post: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Haptic health check skipped, source: alert_trigger, status: not_paired, uuid: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DMS camera connected back",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "DMS camera connected for the first time after cam_rec service has started.",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "acam <N> connected at boot, current: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "acam <N> connected, current: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "outcam connected",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "incam connected",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Incam Recovery succeeded after power cycle(s)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Outcam Recovery succeeded, after power cycle(s)",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Recovery succeeded, stream_status and line_count are proper",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "acam <N> recovery succeeded at boot, current: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "acam <N> recovery succeeded, attempt: <N> current: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "acam <N> recovery succeeded, current: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SR Main Board: <N> Spkr Ver : ENH",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SR Main Board: <N> Spkr Ver : REG",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Spkr Ver : ENH",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Spkr Ver : REG",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Spkr Ver: ENH, Vol: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Spkr Ver: REG, Vol: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> TTFF(excluding <N> <N> in sec",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "TTFF: <N> sec, TTFF(excluding enumeration): <N> sec",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "GPS Port Enumerate Time: <N> seconds",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "GPS Fix Quality Valid",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Using Retained GPS : Long + <N> Lat <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Using Retained GPS : Long + <N> Lat <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "GPS Lock Acquired",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Battery Voltage: <N> eBatteryCritical",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Battery Voltage: <N> eBatteryNormal",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Reboot - Cyclic",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - Ignition Off",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - Ignition Off FLPW Enabled",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> -  LPW (Speed: <N> FLPW Enabled, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> -  LPW (Speed: <N> RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - LPW (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - LPW (Speed: <N> FLPW Enabled",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - LPW (Speed: <N> RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Data Upload Complete - Initiating Shutdown",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Data Upload Pending Shutdown Maybe Delayed",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Device Shutdown Flow Started <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Device Shutdown Initiated",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Reboot Initiated - SVC",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Reboot Initiated - Installer App",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Reboot Initiated - Camera Crash",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Reboot Initiated - AWS IOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Frequent LPW Cycle Duration Overridden To <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Reboot Initiated - MSP Fail",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Current <N> Source <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DBSTATE_RTC_WAKEUP_TIME_DEVICE: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DBSTATE_RTC_WAKEUP_TIME_DHUB: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DBSTATE_RTC_WAKEUP_TIME_DHUB: <N> RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Exp DHUB <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "OTA/DB Event",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP <N> <N> RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "cfg <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "diff current & wakeup <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "MDVR Stat: <N> Uptime: <N> Ign: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Reboot Initiated - ANALYTICS",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "PMIC Register value: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Previous Shutdown:   <N> EXTERNAL_PMIC_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Previous Shutdown:   <N> POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:   <N> SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:   <N> TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  ALIVE_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  ALIVE_REBOOT: QCS_POWER_OFF (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  EXTERNAL_PMIC_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  POWER_DOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  POWER_ON_RESET (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  QCS_POWER_OFF (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:POWER_ON_RESET (",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SLEEP_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:POWER_ON_RESET (Spe",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SLEEP_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:TEGRA_BCCPLEX_WATCH",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:TEGRA_BCCPLEX_WATCHDOG (Spee",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:LANAI_PMIC_RESET: MAINSWRST (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :RESET_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :RESET_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SHUTDOWN:TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_ANALYTICS:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_AWSIOT:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_BADVOLTAGE:SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_BADVOLTAGE:SHUTDOWN (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CAM_CRASH:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CAM_CRASH:SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CRANKOFF:SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CRANKOFF:SHUTDOWN (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CYCLIC:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_INSTALLER_APP:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_LOWPOWER:SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_MSP_FAIL_REBOOT:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_SDCARD:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_SVC:REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_SVC:SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: N: IGNITION: WAKEonMOTION: ADB_OR_RTC -- RESET_REASON (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: N: WAKEonCRANK_VOLT: IGNITION: WAKEonMOTION: ADB_OR_RTC -- RESET_REASON (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  SW_REBOOT SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:   WAKEonCRANK_VOLT -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:   WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:   WAKEonIGNITION -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION WAKEonCRANK_VOLT -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION WAKEonCRANK_VOLT -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION WAKEonCRANK_VOLT -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION WAKEonCRANK_VOLT -- RESET_REASON:  <N> TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLT -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLT -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLT -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonIGNITION -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonIGNITION -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonIGNITION -- RESET_REASON:  <N> POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonIGNITION -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB  -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB  -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB WAKEonCRANK_VOLT -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB WAKEonIGNITION -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB WAKEonIGNITION -- RESET_REASON:  <N> SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: CAN -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: CAN -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: CAN: ADB_OR_RTC -- RESET_REASON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: CAN -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: CAN -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: CAN: WAKEonMOTION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: CAN: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: WAKEonMOTION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: WAKEonMOTION -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: WAKEonMOTION: ADB_OR_RTC -- RESET_REASON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: WAKEonMOTION: ADB_OR_RTC -- RESET_REASON, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: ALIVE_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: ALIVE_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP_ERROR -- RESET_REASON: POWER_DOWN_ERROR, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: ADB_OR_RTC -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: ADB_OR_RTC -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: ADB_OR_RTC -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: ADB_OR_RTC -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: CAN -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: CAN -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: ADB_OR_RTC -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: CAN -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: CAN -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: CAN: WAKEonMOTION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: WAKEonMOTION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: WAKEonMOTION: ADB_OR_RTC -- RESET_REASON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: POWER_UP -- RESET_REASON: ALIVE_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: POWER_UP -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: POWER_UP -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: WAKEonMOTION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTPOWER_UP -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTPOWER_UP -- RESET_REASON: POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTPOWER_UP -- RESET_REASON: SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTPOWER_UP -- RESET_REASON: TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON: POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON: SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON: TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITION -- RESET_REASON: TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonMOTION -- RESET_REASON: POWER_DOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonMOTION -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_RTC_WAKE_FROM_SLEEP:WAKE_ON_IGN_WOM_DISABLE:IGNITION:WAKEonMOTION_AON:AON_WATCHDO",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_RTC_WAKE_FROM_SLEEP:WAKE_ON_IGN_WOM_DISABLE:IGNITION:WAKEonMOTION_AON:WAKEonMOTIO",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_RTC_WAKE_FROM_SLEEP:WAKE_ON_IGN_WOM_DISABLE:IGNITION:WAKEonMOTION_IMU:LANAI_WAKE_",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_RTC_WAKE_FROM_SLEEP:WAKE_ON_IGN_WOM_DISABLE:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTIO",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_RTC_WAKE_FROM_SLEEP:WAKE_ON_IGN_WOM_DISABLE:WAKEonMOTION_AON:LANAI_WAKE_EVENT --",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:S",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET,",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG:LANAI_WAKE_EVENT -- RESET_REASON::RESET_STATE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:WAKEonMOTION_IMU:LANAI_WAKE_EVENT -- RESET_REASON::RESET_STATE:LANAI_SUSPEND",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:S",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHAR",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:L",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RES",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RES",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:POWER_UP -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RES",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_J",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_O",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON:LANAI_WAKE_EVENT -- RESET_REASON::RESET_STATE:SUPERCAP_DISCHARGE:POW",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:POWER_ON_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:LANAI_PMIC_RESET: MAINSWRST",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET,",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SU",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:LAN",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARG",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET,",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON:WAKEonMOTION_IMU:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:L",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_O",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON::POWER_DOWN:TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SU",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARG",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POW",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::DISCHARGE_STATE:RESET_STAT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_IMU -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_IMU:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHU",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUS",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOW",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SUPERCAP_DI",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDO",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:SUPERCAP_DIS",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_O",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:LANAI_PMIC_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHU",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JU",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:WAKEonMOTION_IMU:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Wakeup after abrupt shutdown, adding shutdown event to db",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Activating long low power wakeup after <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Booted up due to NON-RTC Event",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Booted up in Low power wakeup mode",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Booted up in Low power wakeup mode, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N>  <N>  <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_GPS: D: (GPS: Sp: <N> Lt: <N> Lg: <N> Accuracy: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IMU: D: (IMU: Velocity: <N> Distance: <N> A: <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> false, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> true, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup:",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SC_Thres[ BATTERY_ACTIVE: <N> ,SUPERCAP_ACTIVE: <N> ,Debounce(s): <N> ,Type: <N> ]",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_GPS: D: (GPS: Sp: <N> Lt: <N> Lg: <N> Accuracy: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: OFF Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: OFF Prev: OFF <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: OFF Prev: ON <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: OFF Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: OFF <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: ON <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_IGNS: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_IGNS: Toggle Count: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: Toggling Clear",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IMU: D: (IMU: Velocity: <N> Distance: <N> A: <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: falseOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> false, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: D: (VOLT: C: <N> <N> <N> true, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> O",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> O",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> I",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDL",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> IDLE: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backu",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup:",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: Toggle Count: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP: Toggling Clear",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "GPS_Thres[ Speed (on: <N> off: <N> Lat (on: <N> off: <N> Lon (on: <N> off: <N> <N> ]",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: D OFF, IMU: E OFF, GPS: E OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: D OFF, IMU: E OFF, GPS: E OFF, SCAP: E ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: D OFF, GPS: D OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: D OFF, GPS: D OFF, SCAP: E ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: E OFF, GPS: E OFF, SCAP: D ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: E OFF, GPS: E OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: E OFF, GPS: E OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: E OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: E OFF, GPS: E OFF, SCAP: E ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: D OFF, GPS: D OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: D OFF, GPS: D OFF, SCAP: E ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: E OFF, SCAP: D ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: E OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: E OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: E OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: E OFF, SCAP: E ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: OFF, GPS: OFF, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: OFF, GPS: ON, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: ON, GPS: OFF, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: ON, GPS: ON, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: OFF, GPS: OFF, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: OFF, GPS: OFF, SCAP: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: OFF, GPS: ON, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: ON, GPS: OFF, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: ON, GPS: OFF, SCAP: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: ON, GPS: ON, SCAP: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN_Thres[ ON: <N> OFF: <N> Debounce(s): <N> ]",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "IMU_Thres[ ax (on: <N> off: <N> ay (on: <N> off: <N> az (on: <N> off: <N> gx (on: <N> off: <N> gy (on:",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: OFF, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: ON, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: ON, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: ON, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: ON, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: ON, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: OFF, IMU: ON, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: OFF, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: OFF, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: OFF, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: OFF, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: ON, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: ON, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: ON, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: ON, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "OFF , IGN: ON, IMU: ON, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: OFF, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: OFF, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: OFF, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: ON, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: ON, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: ON, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: OFF, IMU: ON, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: OFF, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: OFF, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: OFF, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: ON, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: ON, GPS: OFF, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: ON, GPS: ON, SCAP: OFF, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: ON, GPS: ON, SCAP: ON, CAN: OFF, CRANK: OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "PWR_Thres[ Off: <N> On: <N> Idle: <N> Fusion_Off: <N> Fusion_On: <N> Type: <N> MinV: <N> ]",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "SC_Thres[ BATTERY_ACTIVE: <N> ,SUPERCAP_ACTIVE: <N> ,Debounce(s): <N> ,Type: <N> ]",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> WOM Thresholds <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "AON Ver: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Adaptive WOM Set Status: PASS Thresholds <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Class:UNKNOWN, WOM Thresholds <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MSP Ver: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WOM Status <N> Boot Thresholds <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Info::emmc_available_before: <N>  emmc_available_after: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "LOCALE: CA,MX,US ,DEFAULT: US ,STATUS: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "LOCALE: CA,resource_CA,MX,resource_MX,US,resource_US ,DEFAULT: US ,STATUS: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "LOCALE: IN ,DEFAULT: IN ,STATUS: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "LOCALE: JP ,DEFAULT: JP ,STATUS: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "LOCALE: UK ,DEFAULT: UK ,STATUS: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "User alert button connected",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Time sync Done",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Time sync Done",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "stack init state",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "UART register conf <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "UART register conf <N> <N>\n<N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Debug Mode Started",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Debug Mode Stopped",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Sending set command to vbus <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Sending set command to vbus <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Message sent to BTFV to reset iosix",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Changing crashes value in DB from <N> to <N> with seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Changing hardboots value in DB from <N> to <N> with seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Setting hardboots value in DB for first time to <N> with seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Changing new_unix_timestamp value in DB from <N> to <N> with seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Changing old_unix_timestamp value in DB from <N> to <N> with seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Setting old_unix_timestamp value in DB for first time to <N> with seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "NEWVIN record obtained with vin =  <N> <N> CAN with  seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "NEWVIN record obtained with vin = <N> with  seq_id : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "IOSIX connected in client mode",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Started to receive CAN data",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "<N> changed from <N> to <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "ehrs_sourcevalue changed from <N> to <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "odo_sourcevalue changed from <N> to <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "vin_sourcevalue changed from <N> to <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "ROP event duration is <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "OBD proprietary Configuration loaded successfully",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "DRIVERI is scanning for VBUS",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Script received signal <N> exiting gracefully.",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "VBUS_FW_FLASH object created",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "exiting because latest FW  is already present in IOSIX",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Present IOSIX FW  vesion <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "latest version is already available,so no need to flash: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "latest vesion is not available,so flashing: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "main function started",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "post finished",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "response.status_code == <N> post executed sucessfully",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "AP Mode - <N> Hotspot Enabled",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "AP Mode - <N> Hotspot Enabled on <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "AP Mode - Driveri:LabTestUnit Hotspot Enabled on <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "STA Mode - Trying To Connect To <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "STA Mode - Trying To Connect To ftherDHUBX",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "STA Mode - Trying To Connect To ftherNone",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Disconnected, Enabling STA Mode",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "STA Mode - Trying To Connect To default",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Azurewave Wi-Fi Module Detected",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Qualcomm Wi-Fi Module Detected",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Realtek Wi-Fi Module Detected",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Azurewave Wi-Fi Module Detected",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Realtek Wi-Fi Module Detected",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Installer active — ignored AWS_HOTSPOT_UPDATE",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "AWS_HOTSPOT_UPDATE dropped: previous hotspot update still in progress",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Hotspot client connected on <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> Found:None",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> Found:Tangooftheroses Tangooftheroses",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:Lordoftherings",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:Lordoftheringz",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:None",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:runthestopsoftheremainingplebs",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> Found:Lordoftheringz",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> Found:None",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, BC:ftherNone, <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, BC:ftherNone, Found:None",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:ftherDHUBX, <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:ftherDHUBX, <N> Found:None",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:ftherDHUBX, BC:, <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:ftherDHUBX, BC:, Found:None",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> <N> <N> <N> <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Endoftheroad Endoftheroad",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Hey?!Takeyourfingeroutofthere",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Lordoftherats",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:None",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:wifioftherohirrim",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:wolffthermostats",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Ext Cam Feature Disabled - Channels Enabled",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Time Setting Successful",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Ext Cam Feature Enabled - Channels Disabled",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Time Setting In Progress, Lag Time: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Reset Info: type: <N> source: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "internet.curiosity.sprint.com",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "jionet",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "lte.vodacom.za",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "teal",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "telstra.internet",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "vf.netradyne.com",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Softlink updated successfully: nd_config.ini->/home/ubuntu/.nddevice/latest/nd_config_CA.ini",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Softlink updated successfully: nd_config.ini->/home/ubuntu/.nddevice/latest/nd_config_MX.ini",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Softlink updated successfully: nd_config.ini->/home/ubuntu/.nddevice/latest/nd_config_US.ini",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "AWSIOT : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "MQ_SAM : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Q_GPS : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Q_SVC : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "SCH : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SM : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SPEED : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "installer_queue : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "q_apm : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Governor not schedutil,current governor: performance. Forcing power state apply.",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Successfully applied power state <N> with governor <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Ext eMMC - KINGSTON : Host Write Byte: <N> GB , Erase Count: <N> , WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Ext eMMC - VendorTypeMax : Host Write Byte: <N> GB , Erase Count: <N> , WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Ext eMMC - WesternDigital : Host Write Byte: <N> GB , Erase Count: <N> , WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Int eMMC - MICRON : Host Write Byte: <N> GB , Erase Count: <N> , WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Int eMMC - WesternDigital : Host Write Byte: <N> GB , Erase Count: <N> , WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N> , SLC TBW : <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , TLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , TLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , TLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N> ,",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC WAF : <N> , TLC WAF : <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Password changed successfully with counter: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "JWT: success, IoT: success, JWT backup: success.",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "API succeeded for all",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "JWT: success, IoT: success, JWT backup: success.",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "API succeeded for all",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "pattern=\"cpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"cpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"cpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"cpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [   <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [  <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: [ <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  }
+]

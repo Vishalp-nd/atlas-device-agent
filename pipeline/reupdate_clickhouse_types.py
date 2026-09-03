@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from datetime import datetime
 from pathlib import Path
+import codecs
 
 from critical_events_pipeline import _read_clickhouse_config, _run_clickhouse_query
 
@@ -19,29 +21,66 @@ DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
 DEFAULT_SOURCE_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_CSV_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.csv"
+DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.json"
 NORMALIZED_DESCRIPTION_EXPR = (
-    "trim(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'))"
+    "replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>')"
 )
 
 
-def _load_normalized_type_priority_map(csv_path: Path) -> list[tuple[str, str, str]]:
-    normalized_items: list[tuple[str, str, str]] = []
-    seen_patterns: set[str] = set()
+def _load_normalized_type_priority_map_from_csv(csv_path: Path) -> list[tuple[str, str, str]]:
+    normalized_map: dict[str, tuple[str, str]] = {}
     with csv_path.open(newline="") as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
-            pattern = (row.get("description_pattern") or "").strip()
+            pattern = _decode_csv_pattern((row.get("description_pattern") or "").strip())
             event_type = (row.get("TYPE") or "").strip().upper()
-            priority = (row.get("predicted_priority") or row.get("priority") or "").strip().upper()
-            if not pattern or not event_type or not priority or pattern in seen_patterns:
+            priority = (row.get("priority") or "").strip().upper()
+            if not pattern or not event_type or not priority:
                 continue
-            seen_patterns.add(pattern)
-            normalized_items.append((pattern, event_type, priority))
-    return normalized_items
+            normalized_map[pattern] = (event_type, priority)
+    return [
+        (pattern, event_type, priority)
+        for pattern, (event_type, priority) in normalized_map.items()
+    ]
+
+
+def _load_normalized_type_priority_map_from_json(json_path: Path) -> list[tuple[str, str, str]]:
+    normalized_map: dict[str, tuple[str, str]] = {}
+    with json_path.open() as json_file:
+        rows = json.load(json_file)
+
+    for row in rows:
+        pattern = _decode_csv_pattern((row.get("description_pattern") or "").strip())
+        event_type = (row.get("TYPE") or "").strip().upper()
+        priority = (row.get("priority") or "").strip().upper()
+        if not pattern or not event_type or not priority:
+            continue
+        normalized_map[pattern] = (event_type, priority)
+
+    return [
+        (pattern, event_type, priority)
+        for pattern, (event_type, priority) in normalized_map.items()
+    ]
+
+
+def _load_normalized_type_priority_map(mapping_path: Path) -> list[tuple[str, str, str]]:
+    if mapping_path.suffix.lower() == ".json":
+        return _load_normalized_type_priority_map_from_json(mapping_path)
+    return _load_normalized_type_priority_map_from_csv(mapping_path)
 
 
 def _escape_clickhouse_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _decode_csv_pattern(value: str) -> str:
+    if not value:
+        return value
+
+    # CSV exports may preserve escape sequences literally; decode them so the
+    # in-memory pattern matches ClickHouse normalized DESCRIPTION values.
+    decoded = codecs.decode(value, "unicode_escape")
+    return decoded.replace("\r\n", "\n")
 
 
 def _build_backup_table_name(source_table: str) -> str:
@@ -138,9 +177,37 @@ def _build_verify_query(source_table: str, regex_items: list[tuple[str, str, str
     '''
 
 
+def _build_priority_summary_query(source_table: str) -> str:
+    return f'''
+        SELECT
+            count() AS total_rows,
+            countIf(ifNull(priority, '') = '') AS empty_priority_rows,
+            countIf(ifNull(priority, '') != '') AS non_empty_priority_rows
+        FROM {source_table}
+    '''
+
+
+def _build_priority_breakdown_query(source_table: str) -> str:
+    return f'''
+        SELECT
+            upperUTF8(ifNull(priority, '')) AS priority_value,
+            count() AS row_count
+        FROM {source_table}
+        GROUP BY priority_value
+        ORDER BY row_count DESC, priority_value
+    '''
+
+
 def run(args: argparse.Namespace) -> None:
     params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
-    normalized_type_priority_map = _load_normalized_type_priority_map(Path(args.csv_path))
+    normalized_type_priority_map = _load_normalized_type_priority_map(Path(args.mapping_path))
+
+    if args.priority_summary:
+        print("=== Priority Summary ===")
+        print(_run_clickhouse_query(params, _build_priority_summary_query(args.source_table)).strip())
+        print("\n=== Priority Breakdown ===")
+        print(_run_clickhouse_query(params, _build_priority_breakdown_query(args.source_table)).strip())
+        return
 
     if args.verify_only:
         query = _build_verify_query(args.source_table, normalized_type_priority_map)
@@ -177,9 +244,14 @@ def build_parser() -> argparse.ArgumentParser:
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--mapping-path",
+        default=str(DEFAULT_JSON_PATH),
+        help="JSON or CSV file containing description_pattern, TYPE, and priority mappings",
+    )
+    parser.add_argument(
         "--csv-path",
-        default=str(DEFAULT_CSV_PATH),
-        help="CSV file containing description_pattern, TYPE, and predicted_priority mappings",
+        dest="mapping_path",
+        help="Deprecated alias for --mapping-path",
     )
     parser.add_argument(
         "--db-config",
@@ -216,6 +288,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--verify-only",
         action="store_true",
         help="Only report rows whose current type still differs from the CSV-mapped type",
+    )
+    parser.add_argument(
+        "--priority-summary",
+        action="store_true",
+        help="Print total rows, empty/non-empty priority counts, and priority distribution for the source table",
     )
     return parser
 
