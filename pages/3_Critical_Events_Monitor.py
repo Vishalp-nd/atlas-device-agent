@@ -220,6 +220,27 @@ def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_
 
 
 @st.cache_data(show_spinner=True, ttl=300)
+def _load_priority_code_breakdown(
+    ota_version: str,
+    device_ids: tuple[str, ...],
+    start_date: str | None,
+    end_date_exclusive: str | None,
+) -> pd.DataFrame:
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/priority-code-breakdown",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["priority", "CODE", "normalized_description", "events"])
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["normalized_description"] = frame["normalized_description"].fillna("UNMAPPED").astype(str)
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
+
+
+@st.cache_data(show_spinner=True, ttl=300)
 def _load_top_devices(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/top-devices",
@@ -238,6 +259,7 @@ def _load_ota_page_data(ota_version: str, device_ids: tuple[str, ...], start_dat
     loaders = {
         "type_counts": lambda: _load_type_counts(ota_version, device_ids, start_date, end_date_exclusive),
         "priority_counts": lambda: _load_priority_counts(ota_version, device_ids, start_date, end_date_exclusive),
+        "priority_breakdown": lambda: _load_priority_code_breakdown(ota_version, device_ids, start_date, end_date_exclusive),
         "daily_counts": lambda: _load_daily_counts(ota_version, device_ids, start_date, end_date_exclusive),
         "process_counts": lambda: _load_top_processes(ota_version, device_ids, start_date, end_date_exclusive),
         "code_counts": lambda: _load_top_codes(ota_version, device_ids, start_date, end_date_exclusive),
@@ -282,6 +304,51 @@ def _categorical_bar(data: pd.DataFrame, x: str, y: str, title: str):
     )
     fig.update_xaxes(tickmode="array", tickvals=plot_data[x].tolist(), ticktext=plot_data[x].tolist())
     return fig
+
+
+def _priority_breakdown_bar(data: pd.DataFrame, priority: str):
+    plot_data = data.copy()
+    plot_data["label"] = plot_data.apply(
+        lambda row: f"{int(row['CODE']) if pd.notna(row['CODE']) else 'NA'} | {row['normalized_description']}",
+        axis=1,
+    )
+    fig = px.bar(
+        plot_data,
+        x="label",
+        y="events",
+        hover_data={"CODE": True, "normalized_description": True, "label": False},
+        title=f"{priority} breakdown",
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=50, b=10),
+        xaxis_title="Code | Normalized description",
+        yaxis_title="Count",
+        xaxis={"type": "category", "categoryorder": "array", "categoryarray": plot_data["label"].tolist()},
+    )
+    fig.update_xaxes(tickangle=-35)
+    return fig
+
+
+def _set_priority_breakdown_query_params(ota_version: str, start_date: str, end_date_exclusive: str, device_ids: tuple[str, ...]) -> None:
+    st.query_params["ota"] = ota_version
+    st.query_params["view"] = "priority-breakdown"
+    st.query_params["start"] = start_date
+    st.query_params["end"] = end_date_exclusive
+    if device_ids:
+        st.query_params["devices"] = list(device_ids)
+    elif "devices" in st.query_params:
+        del st.query_params["devices"]
+
+
+def _clear_priority_breakdown_query_params() -> None:
+    if "view" in st.query_params:
+        del st.query_params["view"]
+    if "start" in st.query_params:
+        del st.query_params["start"]
+    if "end" in st.query_params:
+        del st.query_params["end"]
+    if "devices" in st.query_params:
+        del st.query_params["devices"]
 
 
 def _render_home(summary: pd.DataFrame, ota_versions: list[str]) -> None:
@@ -375,6 +442,9 @@ def _render_ota_page(ota_version: str) -> None:
             priority_plot = priority_counts.copy()
             priority_plot["priority_label"] = priority_plot["priority"].map(_priority_label)
             st.plotly_chart(_pie(priority_plot, "priority_label", "events", "Error priority split"), use_container_width=True)
+            if st.button("View priority breakdown details", key=f"priority_breakdown_{ota_version}", use_container_width=True):
+                _set_priority_breakdown_query_params(ota_version, start_date_str, end_date_exclusive_str, selected_device_ids)
+                st.rerun()
     with top_row[1]:
         st.plotly_chart(_pie(type_counts, "type", "events", "Errors vs Info"), use_container_width=True)
 
@@ -416,6 +486,53 @@ def _render_ota_page(ota_version: str) -> None:
     st.table(table_frame)
 
 
+def _render_priority_breakdown_page(ota_version: str) -> None:
+    start_date = st.query_params.get("start")
+    end_date_exclusive = st.query_params.get("end")
+    device_params = st.query_params.get_all("devices") if hasattr(st.query_params, "get_all") else []
+    selected_device_ids = tuple(device_params)
+
+    st.subheader(f"Priority breakdown: {ota_version}")
+    caption_parts = []
+    if start_date and end_date_exclusive:
+        end_inclusive = (pd.Timestamp(end_date_exclusive) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        caption_parts.append(f"Date range: {start_date} to {end_inclusive}")
+    if selected_device_ids:
+        caption_parts.append(f"Devices: {len(selected_device_ids)} selected")
+    if caption_parts:
+        st.caption(" | ".join(caption_parts))
+
+    if st.button("Back to OTA detail", use_container_width=False):
+        _clear_priority_breakdown_query_params()
+        st.rerun()
+
+    page_data = _load_ota_page_data(ota_version, selected_device_ids, start_date, end_date_exclusive)
+    breakdown = page_data["priority_breakdown"]
+    if breakdown.empty:
+        st.info("No priority breakdown rows found for this OTA selection.")
+        return
+
+    priorities = [f"P{level}" for level in range(5)]
+    chart_cols = st.columns(2)
+    for index, priority in enumerate(priorities):
+        priority_frame = breakdown[breakdown["priority"] == priority].copy()
+        target = chart_cols[index % 2]
+        with target:
+            if priority_frame.empty:
+                st.info(f"No rows found for {priority}.")
+            else:
+                st.plotly_chart(_priority_breakdown_bar(priority_frame, priority), use_container_width=True)
+
+    unmapped = breakdown[~breakdown["priority"].isin(priorities)].copy()
+    if not unmapped.empty:
+        st.markdown("### Unmapped priorities")
+        st.dataframe(
+            unmapped[["priority", "CODE", "normalized_description", "events"]].reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 def main() -> None:
     configure_app()
     _render_sidebar()
@@ -426,8 +543,11 @@ def main() -> None:
         ota_versions = configured_ota_versions(REPO_ROOT)
         summary = _load_summary(tuple(ota_versions))
         selected_ota = st.query_params.get("ota")
+        selected_view = st.query_params.get("view")
 
-        if selected_ota:
+        if selected_ota and selected_view == "priority-breakdown":
+            _render_priority_breakdown_page(selected_ota)
+        elif selected_ota:
             _render_ota_page(selected_ota)
         else:
             _render_home(summary, ota_versions)

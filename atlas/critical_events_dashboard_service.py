@@ -326,6 +326,36 @@ def load_ota_top_code_details(
     return frame[["CODE", "description_pattern", "events"]]
 
 
+def load_ota_priority_code_breakdown(
+    config: DashboardConfig,
+    ota_version: str,
+    device_ids: list[str] | None = None,
+    start_ts: pd.Timestamp | None = None,
+    end_ts: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
+    sql = f'''
+        SELECT
+            priority,
+            "CODE",
+            replaceRegexpAll(ifNull("DESCRIPTION", ''), '\\S*\\d\\S*', '<N>') AS normalized_description,
+            sum("COUNT") AS events
+        FROM {config.table_name}
+        WHERE {where_sql} AND type = 'ERROR'
+        GROUP BY priority, "CODE", normalized_description
+        ORDER BY priority, events DESC, "CODE", normalized_description
+    '''
+    frame = _read_clickhouse_df(config, sql)
+    if frame.empty:
+        return pd.DataFrame(columns=["priority", "CODE", "normalized_description", "events"])
+    frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
+    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["normalized_description"] = frame["normalized_description"].fillna("UNMAPPED").astype(str)
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame[["priority", "CODE", "normalized_description", "events"]]
+
+
 def load_ota_top_devices(
     config: DashboardConfig,
     ota_version: str,

@@ -41,6 +41,7 @@ from .critical_events_dashboard_service import (
     load_ota_detail,
     load_ota_devices,
     load_ota_priority_counts,
+    load_ota_priority_code_breakdown,
     load_ota_summary,
     load_ota_top_code_details,
     load_ota_top_codes,
@@ -346,6 +347,19 @@ def critical_events_dashboard_top_code_details(
     end_ts = _parse_dashboard_ts(req.end_ts)
     frame = _dashboard_or_503(
         lambda: load_ota_top_code_details(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
+    )
+    return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.post("/dashboard/critical-events/{ota_version}/priority-code-breakdown", response_model=CriticalEventsDashboardResponse)
+def critical_events_dashboard_priority_code_breakdown(
+    ota_version: str,
+    req: CriticalEventsDashboardFilterRequest,
+) -> CriticalEventsDashboardResponse:
+    start_ts = _parse_dashboard_ts(req.start_ts)
+    end_ts = _parse_dashboard_ts(req.end_ts)
+    frame = _dashboard_or_503(
+        lambda: load_ota_priority_code_breakdown(_DASHBOARD_CONFIG, ota_version, req.device_ids, start_ts, end_ts)
     )
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
 
