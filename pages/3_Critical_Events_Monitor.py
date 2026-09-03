@@ -21,6 +21,7 @@ ERROR_PRIORITIES = {
     "P3": "connectivity/auxiliary impact",
     "P4": "minor/no immediate loss",
 }
+PRIORITY_BREAKDOWN_LABEL_LIMIT = 24
 
 
 class DashboardApiError(RuntimeError):
@@ -306,17 +307,24 @@ def _categorical_bar(data: pd.DataFrame, x: str, y: str, title: str):
     return fig
 
 
+def _truncate_label(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return f"{value[: max(limit - 3, 0)].rstrip()}..."
+
+
 def _priority_breakdown_bar(data: pd.DataFrame, priority: str):
     plot_data = data.copy()
-    plot_data["label"] = plot_data.apply(
+    plot_data["full_label"] = plot_data.apply(
         lambda row: f"{int(row['CODE']) if pd.notna(row['CODE']) else 'NA'} | {row['normalized_description']}",
         axis=1,
     )
+    plot_data["label"] = plot_data["full_label"].map(lambda value: _truncate_label(value, PRIORITY_BREAKDOWN_LABEL_LIMIT))
     fig = px.bar(
         plot_data,
         x="label",
         y="events",
-        hover_data={"CODE": True, "normalized_description": True, "label": False},
+        hover_data={"CODE": True, "normalized_description": True, "full_label": True, "label": False},
         title=f"{priority} breakdown",
     )
     fig.update_layout(
@@ -326,6 +334,7 @@ def _priority_breakdown_bar(data: pd.DataFrame, priority: str):
         xaxis={"type": "category", "categoryorder": "array", "categoryarray": plot_data["label"].tolist()},
     )
     fig.update_xaxes(tickangle=-35)
+    fig.update_traces(hovertemplate="Code=%{customdata[0]}<br>Normalized description=%{customdata[1]}<br>Full label=%{customdata[2]}<br>Count=%{y}<extra></extra>")
     return fig
 
 
