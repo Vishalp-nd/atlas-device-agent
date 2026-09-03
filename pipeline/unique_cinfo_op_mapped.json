@@ -470,11 +470,6 @@
     "priority": "P0"
   },
   {
-    "description_pattern": "Error generating observation file for partial session <N>",
-    "TYPE": "ERROR",
-    "priority": "P4"
-  },
-  {
     "description_pattern": "move_other_cam_partial_files: <N> for <N> Fallback",
     "TYPE": "ERROR",
     "priority": "P0"
@@ -506,11 +501,6 @@
   },
   {
     "description_pattern": "GPS Lock Lost",
-    "TYPE": "ERROR",
-    "priority": "P1"
-  },
-  {
-    "description_pattern": "DMS camera connected back",
     "TYPE": "ERROR",
     "priority": "P1"
   },
@@ -613,16 +603,6 @@
     "description_pattern": "appsink_tc_cb: write took <N> size: <N> bytes.",
     "TYPE": "ERROR",
     "priority": "P0"
-  },
-  {
-    "description_pattern": "<N> <N>",
-    "TYPE": "ERROR",
-    "priority": "P0"
-  },
-  {
-    "description_pattern": "<N>",
-    "TYPE": "ERROR",
-    "priority": "P1"
   },
   {
     "description_pattern": "DMS Initialization Fail: DMS SN Read Error.",
@@ -1245,11 +1225,6 @@
     "priority": "P0"
   },
   {
-    "description_pattern": "<N>",
-    "TYPE": "ERROR",
-    "priority": "P0"
-  },
-  {
     "description_pattern": "mkv to <N> failed in VOD after retries also",
     "TYPE": "ERROR",
     "priority": "P0"
@@ -1323,11 +1298,6 @@
     "description_pattern": "stack detection failed",
     "TYPE": "ERROR",
     "priority": "P4"
-  },
-  {
-    "description_pattern": "<N>",
-    "TYPE": "ERROR",
-    "priority": "P2"
   },
   {
     "description_pattern": "can adapter cable swapped",
@@ -1718,16 +1688,6 @@
     "description_pattern": "service restart due to enumeration failed",
     "TYPE": "ERROR",
     "priority": "P2"
-  },
-  {
-    "description_pattern": "<N>",
-    "TYPE": "ERROR",
-    "priority": "P3"
-  },
-  {
-    "description_pattern": "<N>",
-    "TYPE": "ERROR",
-    "priority": "P3"
   },
   {
     "description_pattern": "DNS Resolution Failed",
@@ -2833,11 +2793,6 @@
     "description_pattern": "Max KA commands recursive loops reached",
     "TYPE": "ERROR",
     "priority": "P2"
-  },
-  {
-    "description_pattern": "Renaming <N> log files with wrong TS",
-    "TYPE": "ERROR",
-    "priority": "P0"
   },
   {
     "description_pattern": "sdcard_in RO mode, Requesting power_mon for Reboot",
@@ -5140,11 +5095,6 @@
     "priority": "P102"
   },
   {
-    "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> I",
-    "TYPE": "INFO",
-    "priority": "P102"
-  },
-  {
     "description_pattern": "A_PWR_VOLT: ON <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> ID",
     "TYPE": "INFO",
     "priority": "P104"
@@ -5176,11 +5126,6 @@
   },
   {
     "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup",
-    "TYPE": "INFO",
-    "priority": "P100"
-  },
-  {
-    "description_pattern": "A_SUPERCAP: D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup:",
     "TYPE": "INFO",
     "priority": "P100"
   },
@@ -6257,11 +6202,6 @@
   {
     "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , TLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N>",
     "TYPE": "INFO",
-    "priority": "P103"
-  },
-  {
-    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , TLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N>",
-    "TYPE": "INFO",
     "priority": "P100"
   },
   {
@@ -6335,11 +6275,6 @@
     "priority": "P104"
   },
   {
-    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
-    "TYPE": "INFO",
-    "priority": "P104"
-  },
-  {
     "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
     "TYPE": "INFO",
     "priority": "P104"
@@ -6388,5 +6323,80 @@
     "description_pattern": "<N> cooling state: <N> -> <N> message=\"Aug <N> <N> tegra-ubuntu kernel: <N> thermal coolin",
     "TYPE": "INFO",
     "priority": "P104"
+  },
+  {
+    "description_pattern": "Something went wrong with configure_rtc_time(safety_wakeup); TAKE ACTION HERE",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "gpio_por_assert failed; handle this",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Ign status changed during shutdown flow; skip shutdown. Prev ign_src_stat: <N> Curr ign_src_stat: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Shutdown reason got changed during shutdown flow; skip shutdown. Prev: <N> Curr: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Jan  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Feb  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Mar  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Apr  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"May  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Jun  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Jul  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Aug  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Oct  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Nov  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Dec  <N> <N> tegra-ubuntu kernel: [ <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
   }
 ]
