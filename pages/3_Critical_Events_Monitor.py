@@ -185,6 +185,7 @@ def _render_allowed_ota_versions_manager() -> None:
         div[data-testid="stForm"] input {
             background: transparent !important;
             color: rgb(49, 51, 63) !important;
+            caret-color: #000000 !important;
         }
         div[data-testid="stForm"] input::placeholder {
             color: rgba(49, 51, 63, 0.45) !important;
