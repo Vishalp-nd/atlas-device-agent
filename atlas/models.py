@@ -69,6 +69,15 @@ class CriticalEventsDashboardDevicesResponse(BaseModel):
     device_ids: list[str]
 
 
+class AllowedOtaVersionsResponse(BaseModel):
+    ota_versions: list[str]
+    limit: int
+
+
+class AllowedOtaVersionAddRequest(BaseModel):
+    ota_version: str
+
+
 class ObservationsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None

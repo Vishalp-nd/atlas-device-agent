@@ -19,6 +19,7 @@ To add a new agent to the service: add a router module exposing
 from __future__ import annotations
 
 import mimetypes
+from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException
@@ -58,6 +59,8 @@ from .models import (
     AgentQueryRequest,
     AgentQueryResponse,
     AgentQueryWithDownloadsResponse,
+    AllowedOtaVersionAddRequest,
+    AllowedOtaVersionsResponse,
     ChatRequest,
     ChatResponse,
     CriticalEventsDashboardBoundsResponse,
@@ -76,6 +79,8 @@ from .session_store import session_store
 
 router = APIRouter(prefix="/atlas", tags=["atlas"])
 _DASHBOARD_CONFIG = DashboardConfig(repo_root=REPO_ROOT)
+_ALLOWED_OTA_ENV_KEY = "ALLOWED_OTA_VERSIONS"
+_ALLOWED_OTA_LIMIT = 30
 
 
 def _dashboard_or_503(loader):
@@ -103,6 +108,42 @@ def _frame_rows(frame):
         if str(normalized[column].dtype).startswith("datetime64"):
             normalized[column] = normalized[column].apply(lambda value: value.isoformat() if value is not None else None)
     return normalized.to_dict(orient="records")
+
+
+def _parse_env_list(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _read_allowed_ota_versions(env_path: Path) -> list[str]:
+    if not env_path.exists():
+        return []
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        if key.strip() == _ALLOWED_OTA_ENV_KEY:
+            return _parse_env_list(value)
+    return []
+
+
+def _write_allowed_ota_versions(env_path: Path, ota_versions: list[str]) -> None:
+    new_line = f"{_ALLOWED_OTA_ENV_KEY}={','.join(ota_versions)}"
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    updated = False
+    rewritten: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key, _value = stripped.split("=", 1)
+            if key.strip() == _ALLOWED_OTA_ENV_KEY:
+                rewritten.append(new_line)
+                updated = True
+                continue
+        rewritten.append(line)
+    if not updated:
+        rewritten.append(new_line)
+    env_path.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
 
 
 def _coerce_chat_response(response: object) -> str:
@@ -244,6 +285,35 @@ def critical_events_download(result_id: str):
 def critical_events_dashboard_summary(req: CriticalEventsDashboardSummaryRequest) -> CriticalEventsDashboardResponse:
     frame = _dashboard_or_503(lambda: load_ota_summary(_DASHBOARD_CONFIG, req.ota_versions))
     return CriticalEventsDashboardResponse(rows=_frame_rows(frame))
+
+
+@router.get("/dashboard/critical-events/allowed-ota-versions", response_model=AllowedOtaVersionsResponse)
+def critical_events_dashboard_allowed_ota_versions() -> AllowedOtaVersionsResponse:
+    return AllowedOtaVersionsResponse(
+        ota_versions=_read_allowed_ota_versions(REPO_ROOT / ".env"),
+        limit=_ALLOWED_OTA_LIMIT,
+    )
+
+
+@router.post("/dashboard/critical-events/allowed-ota-versions", response_model=AllowedOtaVersionsResponse)
+def critical_events_dashboard_add_allowed_ota_version(req: AllowedOtaVersionAddRequest) -> AllowedOtaVersionsResponse:
+    ota_version = req.ota_version.strip()
+    if not ota_version:
+        raise HTTPException(status_code=422, detail="OTA version is required")
+
+    env_path = REPO_ROOT / ".env"
+    ota_versions = _read_allowed_ota_versions(env_path)
+    if ota_version in ota_versions:
+        raise HTTPException(status_code=409, detail=f"OTA version '{ota_version}' already exists.")
+    if len(ota_versions) >= _ALLOWED_OTA_LIMIT:
+        raise HTTPException(
+            status_code=409,
+            detail="Please contact Automation team to remove any OTA which is not necessary.",
+        )
+
+    updated_versions = ota_versions + [ota_version]
+    _write_allowed_ota_versions(env_path, updated_versions)
+    return AllowedOtaVersionsResponse(ota_versions=updated_versions, limit=_ALLOWED_OTA_LIMIT)
 
 
 @router.get("/dashboard/critical-events/{ota_version}/date-bounds", response_model=CriticalEventsDashboardBoundsResponse)

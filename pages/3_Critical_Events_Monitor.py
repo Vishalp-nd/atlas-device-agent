@@ -57,6 +57,24 @@ def _dashboard_api_post(path: str, payload: dict[str, object]) -> dict[str, obje
     return response.json()
 
 
+@st.cache_data(show_spinner=False, ttl=60)
+def _load_allowed_ota_versions() -> dict[str, object]:
+    return _dashboard_api_get("/atlas/dashboard/critical-events/allowed-ota-versions")
+
+
+def _add_allowed_ota_version(ota_version: str) -> dict[str, object]:
+    response = requests.post(
+        f"{API_BASE_URL}/atlas/dashboard/critical-events/allowed-ota-versions",
+        json={"ota_version": ota_version},
+        timeout=REQUEST_TIMEOUT,
+    )
+    if not response.ok:
+        _raise_dashboard_api_error(response)
+    _load_allowed_ota_versions.clear()
+    _load_summary.clear()
+    return response.json()
+
+
 def _frame_from_rows(rows: list[dict[str, object]]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
@@ -86,6 +104,48 @@ def _render_sidebar() -> None:
         st.page_link("pages/1_Atlas.py", label="Atlas", icon=":material/precision_manufacturing:")
         st.page_link("pages/2_Cypher.py", label="Cypher", icon=":material/account_tree:")
         st.page_link("pages/3_Critical_Events_Monitor.py", label="Critical Events Monitor", icon=":material/monitoring:")
+
+
+def _render_allowed_ota_versions_manager() -> None:
+    st.markdown("### Allowed OTA versions")
+    try:
+        payload = _load_allowed_ota_versions()
+    except DashboardApiError as exc:
+        st.error(str(exc))
+        return
+
+    ota_versions = [str(value) for value in payload.get("ota_versions", [])]
+    limit = int(payload.get("limit", 30))
+
+    summary_col, input_col = st.columns([2.4, 1.2])
+    with summary_col:
+        if ota_versions:
+            st.caption(f"Configured OTAs ({len(ota_versions)}/{limit})")
+            st.markdown(
+                "<div style='max-height: 120px; overflow-y: auto; padding: 0.5rem 0.75rem; border: 1px solid rgba(49, 51, 63, 0.2); border-radius: 0.5rem;'>"
+                + "<br>".join(ota_versions)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption(f"Configured OTAs (0/{limit})")
+            st.info("No OTA versions configured yet.")
+
+    with input_col:
+        with st.form("add_allowed_ota_version", clear_on_submit=True):
+            new_ota_version = st.text_input("Add OTA version", placeholder="9.6.14.rc.1")
+            submitted = st.form_submit_button("Add OTA", use_container_width=True)
+        if submitted:
+            try:
+                result = _add_allowed_ota_version(new_ota_version)
+            except DashboardApiError as exc:
+                st.error(str(exc))
+            else:
+                updated_versions = [str(value) for value in result.get("ota_versions", [])]
+                st.success(f"Added OTA version. Total configured: {len(updated_versions)}")
+                st.rerun()
+
+    st.divider()
 
 
 @st.cache_data(show_spinner=True, ttl=300)
@@ -547,6 +607,7 @@ def main() -> None:
     _render_sidebar()
     st.title("Critical Events Monitor")
     st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
+    _render_allowed_ota_versions_manager()
 
     try:
         ota_versions = configured_ota_versions(REPO_ROOT)
