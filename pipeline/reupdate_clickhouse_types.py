@@ -224,8 +224,17 @@ def _build_pending_mutations_query(source_table: str) -> str:
         SELECT
             count() AS pending,
             countIf(latest_fail_reason != '') AS failing,
+            sum(parts_to_do) AS parts_remaining,
             anyIf(latest_fail_reason, latest_fail_reason != '') AS fail_reason
         FROM system.mutations
+        WHERE table = '{_escape_clickhouse_literal(source_table)}'
+          AND is_done = 0
+    '''
+
+
+def _build_kill_mutations_query(source_table: str) -> str:
+    return f'''
+        KILL MUTATION
         WHERE table = '{_escape_clickhouse_literal(source_table)}'
           AND is_done = 0
     '''
@@ -253,7 +262,8 @@ def _wait_for_mutations(
         fields = output.split("\t")
         pending = int(fields[0])
         failing = int(fields[1]) if len(fields) > 1 else 0
-        fail_reason = fields[2] if len(fields) > 2 else ""
+        parts_remaining = int(fields[2]) if len(fields) > 2 and fields[2] else 0
+        fail_reason = fields[3] if len(fields) > 3 else ""
 
         if failing:
             raise RuntimeError(
@@ -266,10 +276,11 @@ def _wait_for_mutations(
         if time.monotonic() >= deadline:
             raise RuntimeError(
                 f"Timed out after {timeout_seconds}s with {pending} unfinished "
-                f"mutation(s) on {source_table}; re-run with --check-mutations to inspect"
+                f"mutation(s) on {source_table}; re-run with --check-mutations to inspect, "
+                "or --kill-pending-mutations to drop the backlog and start clean"
             )
 
-        print(f"Waiting for {pending} unfinished mutation(s)...")
+        print(f"Waiting for {pending} unfinished mutation(s), {parts_remaining} parts remaining...")
         time.sleep(poll_seconds)
 
 
@@ -279,6 +290,11 @@ def run(args: argparse.Namespace) -> None:
     if args.check_mutations:
         print("=== Recent mutations (is_done=0 means still running) ===")
         print(_run_clickhouse_query(params, _build_mutations_query(args.source_table)).strip())
+        return
+
+    if args.kill_pending_mutations:
+        _run_clickhouse_query(params, _build_kill_mutations_query(args.source_table))
+        print(f"Killed all pending mutations on {args.source_table}")
         return
 
     normalized_type_priority_map = _load_normalized_type_priority_map(Path(args.mapping_path))
@@ -398,6 +414,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print recent ClickHouse mutations for the source table and exit; "
              "is_done=0 means an ALTER UPDATE is still applying",
+    )
+    parser.add_argument(
+        "--kill-pending-mutations",
+        action="store_true",
+        help="Cancel all unfinished mutations on the source table and exit, without "
+             "queuing new ones. Use this to clear a backlog before a fresh run; "
+             "killing is safe since these updates are idempotent and can be re-queued",
     )
     parser.add_argument(
         "--priority-summary",
