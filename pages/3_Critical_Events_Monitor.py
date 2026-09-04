@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import html
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import plotly.express as px
 import requests
-import streamlit.components.v1 as components
 import streamlit as st
 
 from atlas.critical_events_dashboard import configured_ota_versions
@@ -237,7 +238,7 @@ def _render_sidebar() -> None:
 
 
 def _render_allowed_ota_versions_manager() -> None:
-    st.markdown("### Allowed OTA versions")
+    st.markdown("### OTA versions")
     try:
         payload = _load_allowed_ota_versions()
     except DashboardApiError as exc:
@@ -250,7 +251,8 @@ def _render_allowed_ota_versions_manager() -> None:
     st.markdown(
         """
         <style>
-        .ota-manager-card {
+        /* st.container(border=True) wrapper -- styled to match the add-OTA form card beside it. */
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.ota-manager-meta) {
             border: 1px solid rgba(49, 51, 63, 0.18);
             border-radius: 18px;
             padding: 1rem 1.1rem;
@@ -269,6 +271,8 @@ def _render_allowed_ota_versions_manager() -> None:
             flex-wrap: wrap;
             gap: 0.55rem;
             align-items: flex-start;
+            max-height: 15rem;
+            overflow-y: auto;
         }
         .ota-chip {
             position: relative;
@@ -289,7 +293,11 @@ def _render_allowed_ota_versions_manager() -> None:
         .ota-chip-label {
             display: inline-block;
         }
-        .ota-chip-remove {
+        /* The cross is an <a>, so Streamlit's default link styling (blue + underline) has to be
+           overridden explicitly or the chip shows a blue underlined "x". */
+        .ota-chip-remove,
+        .ota-chip-remove:link,
+        .ota-chip-remove:visited {
             position: absolute;
             top: 0.28rem;
             right: 0.42rem;
@@ -298,17 +306,20 @@ def _render_allowed_ota_versions_manager() -> None:
             border-radius: 999px;
             border: 1px solid rgba(49, 51, 63, 0.14);
             background: rgba(248, 249, 252, 0.98);
-            color: rgb(49, 51, 63);
+            color: rgb(49, 51, 63) !important;
             font-size: 0.72rem;
             font-weight: 700;
             line-height: 0.9rem;
             text-align: center;
             cursor: pointer;
             box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+            text-decoration: none !important;
         }
         .ota-chip-remove:hover {
             border-color: rgba(49, 51, 63, 0.28);
             background: rgba(255, 255, 255, 1);
+            color: rgb(17, 17, 17) !important;
+            text-decoration: none !important;
         }
         .ota-empty {
             padding: 0.8rem 0.9rem;
@@ -371,32 +382,39 @@ def _render_allowed_ota_versions_manager() -> None:
 
     summary_col, input_col = st.columns(2)
     with summary_col:
-        st.markdown("<div class='ota-manager-card'>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='ota-manager-meta'>Configured OTAs ({len(ota_versions)}/{limit})</div>",
-            unsafe_allow_html=True,
-        )
-        feedback = st.session_state.pop("allowed_ota_versions_feedback", None)
-        if isinstance(feedback, tuple) and len(feedback) == 2:
-            level, message = feedback
-            if level == "success":
-                st.success(message)
-            elif level == "error":
-                st.error(message)
-        if ota_versions:
-            chip_markup = "".join(
-                (
-                    "<span class='ota-chip'>"
-                    f"<span class='ota-chip-label'>{ota}</span>"
-                    f"<a class='ota-chip-remove' href='?remove_ota={ota}' target='_self'>x</a>"
-                    "</span>"
-                )
-                for ota in ota_versions
+        # A real bordered container -- an "<div class='ota-manager-card'>" opening tag passed to
+        # st.markdown on its own does not wrap what follows, it just renders an empty styled box.
+        with st.container(border=True):
+            st.markdown(
+                f"<div class='ota-manager-meta'>Configured OTAs ({len(ota_versions)}/{limit})</div>",
+                unsafe_allow_html=True,
             )
-            components.html(f"<div class='ota-chip-wrap'>{chip_markup}</div>", height=160, scrolling=True)
-        else:
-            st.markdown("<div class='ota-empty'>No OTA versions configured yet.</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            feedback = st.session_state.pop("allowed_ota_versions_feedback", None)
+            if isinstance(feedback, tuple) and len(feedback) == 2:
+                level, message = feedback
+                if level == "success":
+                    st.success(message)
+                elif level == "error":
+                    st.error(message)
+            if ota_versions:
+                chip_markup = "".join(
+                    (
+                        "<span class='ota-chip'>"
+                        f"<span class='ota-chip-label'>{html.escape(ota)}</span>"
+                        f"<a class='ota-chip-remove' href='?remove_ota={quote(ota, safe='')}' "
+                        "target='_self' title='Remove'>&times;</a>"
+                        "</span>"
+                    )
+                    for ota in ota_versions
+                )
+                # Rendered via st.markdown (not components.html) so the chips live in the parent
+                # document and pick up the .ota-chip CSS above -- an iframe would not inherit it.
+                st.markdown(
+                    f"<div class='ota-chip-wrap'>{chip_markup}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown("<div class='ota-empty'>No OTA versions configured yet.</div>", unsafe_allow_html=True)
 
         remove_ota = st.query_params.get("remove_ota")
         if remove_ota:
