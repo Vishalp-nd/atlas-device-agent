@@ -50,6 +50,31 @@ div[data-testid="stPlotlyChart"] {
 div[data-testid="stPlotlyChart"] > div {
     border-radius: 16px;
 }
+/* Streamlit's per-element hover toolbar (fullscreen/download icons above charts) renders with
+   an opaque background by default; on this light theme that shows up as a blank white bar
+   sitting on top of every chart. Keep it transparent until actually hovered. */
+div[data-testid="stElementToolbar"] {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+div[data-testid="stElementToolbar"] button {
+    color: rgb(49, 51, 63) !important;
+}
+[data-testid="stMetric"] {
+    color: rgb(49, 51, 63) !important;
+}
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] * {
+    color: rgb(49, 51, 63) !important;
+}
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] * {
+    color: rgb(17, 17, 17) !important;
+}
+[data-testid="stMetricDelta"],
+[data-testid="stMetricDelta"] * {
+    color: rgb(49, 51, 63) !important;
+}
 </style>
 """
 
