@@ -33,12 +33,6 @@ CHART_CARD_STYLE_BLOCK = """
     box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
     margin-bottom: 0.9rem;
 }
-.chart-card-title {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: rgb(49, 51, 63);
-    margin-bottom: 0.35rem;
-}
 .chart-card-caption {
     font-size: 0.84rem;
     color: rgba(49, 51, 63, 0.68);
@@ -50,15 +44,11 @@ div[data-testid="stPlotlyChart"] {
 div[data-testid="stPlotlyChart"] > div {
     border-radius: 16px;
 }
-/* Streamlit's per-element hover toolbar (fullscreen/download icons above charts) renders with
-   an opaque background by default; on this light theme that shows up as a blank white bar
-   sitting on top of every chart. Keep it transparent until actually hovered. */
+/* Streamlit's per-element hover toolbar (fullscreen/download icons above charts) reserves a
+   full-width bordered bar above every chart-card; on this light theme that shows up as a blank
+   white pill sitting on top of the title. Not needed here -- drop it entirely. */
 div[data-testid="stElementToolbar"] {
-    background: transparent !important;
-    box-shadow: none !important;
-}
-div[data-testid="stElementToolbar"] button {
-    color: rgb(49, 51, 63) !important;
+    display: none !important;
 }
 [data-testid="stMetric"] {
     color: rgb(49, 51, 63) !important;
@@ -121,7 +111,7 @@ def _dashboard_api_delete(path: str, payload: dict[str, object]) -> dict[str, ob
 
 def _apply_chart_theme(fig, title: str):
     fig.update_layout(
-        title={"text": title, "x": 0.02, "xanchor": "left"},
+        title={"text": title, "x": 0.02, "xanchor": "left", "font": {"color": "rgb(17, 17, 17)"}},
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,0.92)",
         font={"color": "rgb(49, 51, 63)"},
@@ -153,7 +143,6 @@ def _apply_chart_theme(fig, title: str):
 def _render_chart_card(fig, title: str, caption: str | None = None, key: str | None = None) -> None:
     st.markdown(CHART_CARD_STYLE_BLOCK, unsafe_allow_html=True)
     st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
-    st.markdown(f"<div class='chart-card-title'>{title}</div>", unsafe_allow_html=True)
     if caption:
         st.markdown(f"<div class='chart-card-caption'>{caption}</div>", unsafe_allow_html=True)
     st.plotly_chart(_apply_chart_theme(fig, title), use_container_width=True, key=key)
