@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import requests
+import streamlit.components.v1 as components
 import streamlit as st
 
 from atlas.critical_events_dashboard import configured_ota_versions
@@ -99,7 +100,11 @@ def _apply_chart_theme(fig, title: str):
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,0.92)",
         font={"color": "rgb(49, 51, 63)"},
-        legend={"bgcolor": "rgba(255,255,255,0.72)"},
+        legend={
+            "bgcolor": "rgba(255,255,255,0.72)",
+            "font": {"color": "rgb(49, 51, 63)"},
+            "title": {"font": {"color": "rgb(49, 51, 63)"}},
+        },
     )
     fig.update_xaxes(
         showgrid=True,
@@ -263,39 +268,45 @@ def _render_allowed_ota_versions_manager() -> None:
             gap: 0.55rem;
             align-items: flex-start;
         }
-        .ota-chip-row {
-            margin-bottom: 0.55rem;
-        }
-        .ota-chip-row:last-child {
-            margin-bottom: 0;
-        }
-        .ota-chip-row [data-testid="column"] {
-            display: flex;
-            align-items: stretch;
-        }
-        .ota-chip-button button,
-        .ota-chip-remove button {
+        .ota-chip {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             min-height: 2.5rem;
+            padding: 0.55rem 2rem 0.45rem 0.95rem;
             border-radius: 999px;
             border: 1px solid rgba(49, 51, 63, 0.16);
-            background: rgba(255, 255, 255, 0.92);
+            background: rgba(255, 255, 255, 0.94);
             color: rgb(49, 51, 63);
-            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05);
-        }
-        .ota-chip-button button {
-            justify-content: flex-start;
             font-size: 0.88rem;
-            padding: 0.2rem 0.9rem;
+            line-height: 1.2;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05);
+            white-space: nowrap;
         }
-        .ota-chip-remove button {
-            padding: 0.2rem 0;
-            font-size: 0.9rem;
-            font-weight: 700;
+        .ota-chip-label {
+            display: inline-block;
         }
-        .ota-chip-button button:hover,
-        .ota-chip-remove button:hover {
-            border-color: rgba(49, 51, 63, 0.28);
+        .ota-chip-remove {
+            position: absolute;
+            top: 0.28rem;
+            right: 0.42rem;
+            width: 1rem;
+            height: 1rem;
+            border-radius: 999px;
+            border: 1px solid rgba(49, 51, 63, 0.14);
             background: rgba(248, 249, 252, 0.98);
+            color: rgb(49, 51, 63);
+            font-size: 0.72rem;
+            font-weight: 700;
+            line-height: 0.9rem;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+        }
+        .ota-chip-remove:hover {
+            border-color: rgba(49, 51, 63, 0.28);
+            background: rgba(255, 255, 255, 1);
         }
         .ota-empty {
             padding: 0.8rem 0.9rem;
@@ -371,22 +382,23 @@ def _render_allowed_ota_versions_manager() -> None:
             elif level == "error":
                 st.error(message)
         if ota_versions:
-            st.markdown("<div class='ota-chip-wrap'>", unsafe_allow_html=True)
-            for ota in ota_versions:
-                label_col, remove_col = st.columns([0.84, 0.16], gap="small")
-                with label_col:
-                    st.markdown("<div class='ota-chip-button'>", unsafe_allow_html=True)
-                    st.button(ota, key=f"ota_chip_{ota}", use_container_width=True, disabled=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-                with remove_col:
-                    st.markdown("<div class='ota-chip-remove'>", unsafe_allow_html=True)
-                    if st.button("x", key=f"remove_ota_{ota}", use_container_width=True):
-                        _confirm_remove_allowed_ota_dialog(ota)
-                    st.markdown("</div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            chip_markup = "".join(
+                (
+                    "<span class='ota-chip'>"
+                    f"<span class='ota-chip-label'>{ota}</span>"
+                    f"<a class='ota-chip-remove' href='?remove_ota={ota}' target='_self'>x</a>"
+                    "</span>"
+                )
+                for ota in ota_versions
+            )
+            components.html(f"<div class='ota-chip-wrap'>{chip_markup}</div>", height=160, scrolling=True)
         else:
             st.markdown("<div class='ota-empty'>No OTA versions configured yet.</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
+
+        remove_ota = st.query_params.get("remove_ota")
+        if remove_ota:
+            _confirm_remove_allowed_ota_dialog(str(remove_ota))
 
     with input_col:
         with st.form("add_allowed_ota_version", clear_on_submit=True):
@@ -910,7 +922,6 @@ def main() -> None:
     _render_sidebar()
     st.title("Critical Events Monitor")
     st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
-    _render_allowed_ota_versions_manager()
 
     try:
         ota_versions = configured_ota_versions(REPO_ROOT)
@@ -923,6 +934,7 @@ def main() -> None:
         elif selected_ota:
             _render_ota_page(selected_ota)
         else:
+            _render_allowed_ota_versions_manager()
             _render_home(summary, ota_versions)
     except DashboardApiError as exc:
         st.error(str(exc))
