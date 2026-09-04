@@ -200,6 +200,7 @@ def _confirm_remove_allowed_ota_dialog(ota_version: str) -> None:
             "success",
             f"Removed OTA version. Total configured: {len([str(value) for value in result.get('ota_versions', [])])}",
         )
+        # Default scope="app", so this is a full rerun that closes the dialog fragment.
         st.rerun()
 
     if cancel_clicked:
@@ -416,8 +417,19 @@ def _render_allowed_ota_versions_manager() -> None:
             else:
                 st.markdown("<div class='ota-empty'>No OTA versions configured yet.</div>", unsafe_allow_html=True)
 
+        # The chip's "x" navigates to ?remove_ota=<ota>. Consume the param in the same run that
+        # opens the dialog: left in the URL it would survive every later rerun (Add OTA, Cancel,
+        # dismissing via the corner X or an outside click) and keep reopening the dialog.
+        #
+        # Deleting it here is safe and does not cut the dialog short:
+        #   - st.query_params mutation only pushes a URL update, it does not trigger a rerun;
+        #   - st.dialog is fragment-backed, so typing/clicking inside the dialog reruns only the
+        #     dialog body, never this guard -- the dialog stays open on its own.
+        # Every way of closing it ends in a full rerun where the param is already gone, so Cancel,
+        # the corner X and an outside click all behave the same: closed, and it stays closed.
         remove_ota = st.query_params.get("remove_ota")
         if remove_ota:
+            del st.query_params["remove_ota"]
             _confirm_remove_allowed_ota_dialog(str(remove_ota))
 
     with input_col:
