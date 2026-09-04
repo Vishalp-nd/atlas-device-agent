@@ -198,6 +198,10 @@ def _build_priority_breakdown_query(source_table: str) -> str:
 
 def run(args: argparse.Namespace) -> None:
     params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
+
+    if args.backup_only and args.skip_backup:
+        raise ValueError("--backup-only cannot be used together with --skip-backup")
+
     normalized_type_priority_map = _filter_mappings_by_pattern(
         _load_normalized_type_priority_map(Path(args.json_path)),
         args.description_pattern,
@@ -224,6 +228,12 @@ def run(args: argparse.Namespace) -> None:
             _run_clickhouse_query(params, query)
     else:
         print("Skipping backup table creation")
+
+    if args.backup_only:
+        print("Backup-only mode enabled; skipping updates.")
+        if backup_table is not None:
+            print(f"Backup table: {backup_table}")
+        return
 
     regex_batches = _iter_regex_batches(normalized_type_priority_map, args.batch_size)
     print(
@@ -273,6 +283,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-backup",
         action="store_true",
         help="Skip creating a backup table before applying updates",
+    )
+    parser.add_argument(
+        "--backup-only",
+        action="store_true",
+        help="Create the backup table and exit without applying any updates",
     )
     parser.add_argument(
         "--batch-size",

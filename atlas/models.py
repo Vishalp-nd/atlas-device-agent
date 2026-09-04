@@ -78,6 +78,10 @@ class AllowedOtaVersionAddRequest(BaseModel):
     ota_version: str
 
 
+class AllowedOtaVersionRemoveRequest(BaseModel):
+    ota_version: str
+
+
 class ObservationsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None

@@ -57,6 +57,13 @@ def _dashboard_api_post(path: str, payload: dict[str, object]) -> dict[str, obje
     return response.json()
 
 
+def _dashboard_api_delete(path: str, payload: dict[str, object]) -> dict[str, object]:
+    response = requests.delete(f"{API_BASE_URL}{path}", json=payload, timeout=REQUEST_TIMEOUT)
+    if not response.ok:
+        _raise_dashboard_api_error(response)
+    return response.json()
+
+
 @st.cache_data(show_spinner=False, ttl=60)
 def _load_allowed_ota_versions() -> dict[str, object]:
     return _dashboard_api_get("/atlas/dashboard/critical-events/allowed-ota-versions")
@@ -73,6 +80,56 @@ def _add_allowed_ota_version(ota_version: str) -> dict[str, object]:
     _load_allowed_ota_versions.clear()
     _load_summary.clear()
     return response.json()
+
+
+def _remove_allowed_ota_version(ota_version: str) -> dict[str, object]:
+    result = _dashboard_api_delete(
+        "/atlas/dashboard/critical-events/allowed-ota-versions",
+        {"ota_version": ota_version},
+    )
+    _load_allowed_ota_versions.clear()
+    _load_summary.clear()
+    return result
+
+
+@st.dialog("Confirm OTA removal")
+def _confirm_remove_allowed_ota_dialog(ota_version: str) -> None:
+    st.write(f"Retype `{ota_version}` to confirm removing it from monitoring.")
+    confirmation_value = st.text_input(
+        "Confirm OTA version",
+        key=f"confirm_remove_ota_{ota_version}",
+        placeholder=ota_version,
+    )
+    action_col, cancel_col = st.columns(2)
+    with action_col:
+        remove_clicked = st.button(
+            "Remove OTA",
+            key=f"confirm_remove_ota_button_{ota_version}",
+            use_container_width=True,
+            type="primary",
+            disabled=confirmation_value.strip() != ota_version,
+        )
+    with cancel_col:
+        cancel_clicked = st.button(
+            "Cancel",
+            key=f"cancel_remove_ota_button_{ota_version}",
+            use_container_width=True,
+        )
+
+    if remove_clicked:
+        try:
+            result = _remove_allowed_ota_version(ota_version)
+        except DashboardApiError as exc:
+            st.error(str(exc))
+            return
+        st.session_state["allowed_ota_versions_feedback"] = (
+            "success",
+            f"Removed OTA version. Total configured: {len([str(value) for value in result.get('ota_versions', [])])}",
+        )
+        st.rerun()
+
+    if cancel_clicked:
+        st.rerun()
 
 
 def _frame_from_rows(rows: list[dict[str, object]]) -> pd.DataFrame:
@@ -140,18 +197,39 @@ def _render_allowed_ota_versions_manager() -> None:
             gap: 0.55rem;
             align-items: flex-start;
         }
-        .ota-chip {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.45rem 0.8rem;
+        .ota-chip-row {
+            margin-bottom: 0.55rem;
+        }
+        .ota-chip-row:last-child {
+            margin-bottom: 0;
+        }
+        .ota-chip-row [data-testid="column"] {
+            display: flex;
+            align-items: stretch;
+        }
+        .ota-chip-button button,
+        .ota-chip-remove button {
+            min-height: 2.5rem;
             border-radius: 999px;
             border: 1px solid rgba(49, 51, 63, 0.16);
             background: rgba(255, 255, 255, 0.92);
             color: rgb(49, 51, 63);
-            font-size: 0.88rem;
-            line-height: 1.2;
             box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05);
-            white-space: nowrap;
+        }
+        .ota-chip-button button {
+            justify-content: flex-start;
+            font-size: 0.88rem;
+            padding: 0.2rem 0.9rem;
+        }
+        .ota-chip-remove button {
+            padding: 0.2rem 0;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        .ota-chip-button button:hover,
+        .ota-chip-remove button:hover {
+            border-color: rgba(49, 51, 63, 0.28);
+            background: rgba(248, 249, 252, 0.98);
         }
         .ota-empty {
             padding: 0.8rem 0.9rem;
@@ -214,17 +292,35 @@ def _render_allowed_ota_versions_manager() -> None:
 
     summary_col, input_col = st.columns(2)
     with summary_col:
-        chip_markup = "".join(f"<span class='ota-chip'>{ota}</span>" for ota in ota_versions)
-        content_markup = chip_markup or "<div class='ota-empty'>No OTA versions configured yet.</div>"
+        st.markdown("<div class='ota-manager-card'>", unsafe_allow_html=True)
         st.markdown(
-            (
-                "<div class='ota-manager-card'>"
-                f"<div class='ota-manager-meta'>Configured OTAs ({len(ota_versions)}/{limit})</div>"
-                f"<div class='ota-chip-wrap'>{content_markup}</div>"
-                "</div>"
-            ),
+            f"<div class='ota-manager-meta'>Configured OTAs ({len(ota_versions)}/{limit})</div>",
             unsafe_allow_html=True,
         )
+        feedback = st.session_state.pop("allowed_ota_versions_feedback", None)
+        if isinstance(feedback, tuple) and len(feedback) == 2:
+            level, message = feedback
+            if level == "success":
+                st.success(message)
+            elif level == "error":
+                st.error(message)
+        if ota_versions:
+            st.markdown("<div class='ota-chip-wrap'>", unsafe_allow_html=True)
+            for ota in ota_versions:
+                label_col, remove_col = st.columns([0.84, 0.16], gap="small")
+                with label_col:
+                    st.markdown("<div class='ota-chip-button'>", unsafe_allow_html=True)
+                    st.button(ota, key=f"ota_chip_{ota}", use_container_width=True, disabled=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                with remove_col:
+                    st.markdown("<div class='ota-chip-remove'>", unsafe_allow_html=True)
+                    if st.button("x", key=f"remove_ota_{ota}", use_container_width=True):
+                        _confirm_remove_allowed_ota_dialog(ota)
+                    st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("<div class='ota-empty'>No OTA versions configured yet.</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with input_col:
         with st.form("add_allowed_ota_version", clear_on_submit=True):

@@ -60,6 +60,7 @@ from .models import (
     AgentQueryResponse,
     AgentQueryWithDownloadsResponse,
     AllowedOtaVersionAddRequest,
+    AllowedOtaVersionRemoveRequest,
     AllowedOtaVersionsResponse,
     ChatRequest,
     ChatResponse,
@@ -312,6 +313,22 @@ def critical_events_dashboard_add_allowed_ota_version(req: AllowedOtaVersionAddR
         )
 
     updated_versions = ota_versions + [ota_version]
+    _write_allowed_ota_versions(env_path, updated_versions)
+    return AllowedOtaVersionsResponse(ota_versions=updated_versions, limit=_ALLOWED_OTA_LIMIT)
+
+
+@router.delete("/dashboard/critical-events/allowed-ota-versions", response_model=AllowedOtaVersionsResponse)
+def critical_events_dashboard_remove_allowed_ota_version(req: AllowedOtaVersionRemoveRequest) -> AllowedOtaVersionsResponse:
+    ota_version = req.ota_version.strip()
+    if not ota_version:
+        raise HTTPException(status_code=422, detail="OTA version is required")
+
+    env_path = REPO_ROOT / ".env"
+    ota_versions = _read_allowed_ota_versions(env_path)
+    if ota_version not in ota_versions:
+        raise HTTPException(status_code=404, detail=f"OTA version '{ota_version}' does not exist.")
+
+    updated_versions = [value for value in ota_versions if value != ota_version]
     _write_allowed_ota_versions(env_path, updated_versions)
     return AllowedOtaVersionsResponse(ota_versions=updated_versions, limit=_ALLOWED_OTA_LIMIT)
 
