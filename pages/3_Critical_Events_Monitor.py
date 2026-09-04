@@ -22,6 +22,35 @@ ERROR_PRIORITIES = {
     "P4": "minor/no immediate loss",
 }
 PRIORITY_BREAKDOWN_LABEL_LIMIT = 24
+CHART_CARD_STYLE_BLOCK = """
+<style>
+.chart-card {
+    border: 1px solid rgba(49, 51, 63, 0.18);
+    border-radius: 20px;
+    padding: 0.95rem 1rem 0.7rem 1rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 249, 252, 0.96));
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+    margin-bottom: 0.9rem;
+}
+.chart-card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: rgb(49, 51, 63);
+    margin-bottom: 0.35rem;
+}
+.chart-card-caption {
+    font-size: 0.84rem;
+    color: rgba(49, 51, 63, 0.68);
+    margin-bottom: 0.55rem;
+}
+div[data-testid="stPlotlyChart"] {
+    background: transparent;
+}
+div[data-testid="stPlotlyChart"] > div {
+    border-radius: 16px;
+}
+</style>
+"""
 
 
 class DashboardApiError(RuntimeError):
@@ -62,6 +91,43 @@ def _dashboard_api_delete(path: str, payload: dict[str, object]) -> dict[str, ob
     if not response.ok:
         _raise_dashboard_api_error(response)
     return response.json()
+
+
+def _apply_chart_theme(fig, title: str):
+    fig.update_layout(
+        title={"text": title, "x": 0.02, "xanchor": "left"},
+        paper_bgcolor="rgba(255,255,255,0)",
+        plot_bgcolor="rgba(255,255,255,0.92)",
+        font={"color": "rgb(49, 51, 63)"},
+        legend={"bgcolor": "rgba(255,255,255,0.72)"},
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(49, 51, 63, 0.08)",
+        zeroline=False,
+        linecolor="rgba(49, 51, 63, 0.12)",
+        tickfont={"color": "rgb(49, 51, 63)"},
+        title_font={"color": "rgb(49, 51, 63)"},
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(49, 51, 63, 0.08)",
+        zeroline=False,
+        linecolor="rgba(49, 51, 63, 0.12)",
+        tickfont={"color": "rgb(49, 51, 63)"},
+        title_font={"color": "rgb(49, 51, 63)"},
+    )
+    return fig
+
+
+def _render_chart_card(fig, title: str, caption: str | None = None, key: str | None = None) -> None:
+    st.markdown(CHART_CARD_STYLE_BLOCK, unsafe_allow_html=True)
+    st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='chart-card-title'>{title}</div>", unsafe_allow_html=True)
+    if caption:
+        st.markdown(f"<div class='chart-card-caption'>{caption}</div>", unsafe_allow_html=True)
+    st.plotly_chart(_apply_chart_theme(fig, title), use_container_width=True, key=key)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
@@ -620,10 +686,20 @@ def _render_home(summary: pd.DataFrame, ota_versions: list[str]) -> None:
 
     col1, col2 = st.columns([1.2, 1])
     with col1:
-        st.plotly_chart(_pie(summary, "DEVICE_VERSION", "events", "Event share by OTA"), use_container_width=True)
+        _render_chart_card(
+            _pie(summary, "DEVICE_VERSION", "events", "Event share by OTA"),
+            "Event share by OTA",
+            "Distribution of weighted events across configured OTA versions.",
+            key="home_event_share_by_ota",
+        )
     with col2:
         type_totals = summary.groupby("type", as_index=False)["events"].sum()
-        st.plotly_chart(_pie(type_totals, "type", "events", "Error vs Info split"), use_container_width=True)
+        _render_chart_card(
+            _pie(type_totals, "type", "events", "Error vs Info split"),
+            "Error vs Info split",
+            "Overall production mix for the currently monitored OTA set.",
+            key="home_error_info_split",
+        )
 
     st.markdown("### OTA tiles")
     tile_cols = st.columns(3)
@@ -702,29 +778,59 @@ def _render_ota_page(ota_version: str) -> None:
         else:
             priority_plot = priority_counts.copy()
             priority_plot["priority_label"] = priority_plot["priority"].map(_priority_label)
-            st.plotly_chart(_pie(priority_plot, "priority_label", "events", "Error priority split"), use_container_width=True)
+            _render_chart_card(
+                _pie(priority_plot, "priority_label", "events", "Error priority split"),
+                "Error priority split",
+                "Priority distribution for the selected OTA and filters.",
+                key=f"priority_split_{ota_version}",
+            )
             if st.button("View priority breakdown details", key=f"priority_breakdown_{ota_version}", use_container_width=True):
                 _set_priority_breakdown_query_params(ota_version, start_date_str, end_date_exclusive_str, selected_device_ids)
                 st.rerun()
     with top_row[1]:
-        st.plotly_chart(_pie(type_counts, "type", "events", "Errors vs Info"), use_container_width=True)
+        _render_chart_card(
+            _pie(type_counts, "type", "events", "Errors vs Info"),
+            "Errors vs Info",
+            "Current selection split by event type.",
+            key=f"type_split_{ota_version}",
+        )
 
     trend_cols = st.columns(2)
     if not daily_counts.empty:
         with trend_cols[0]:
-            st.plotly_chart(_bar(daily_counts, "day", "events", "type", "Daily event trend"), use_container_width=True)
+            _render_chart_card(
+                _bar(daily_counts, "day", "events", "type", "Daily event trend"),
+                "Daily event trend",
+                "Daily volume trend split by event type.",
+                key=f"daily_trend_{ota_version}",
+            )
 
     with trend_cols[1]:
-        st.plotly_chart(_bar(process_counts, "PROCESS_NAME", "events", None, "Top noisy processes"), use_container_width=True)
+        _render_chart_card(
+            _bar(process_counts, "PROCESS_NAME", "events", None, "Top noisy processes"),
+            "Top noisy processes",
+            "Processes contributing the highest event volume.",
+            key=f"top_processes_{ota_version}",
+        )
 
     bottom_cols = st.columns(2)
     with bottom_cols[0]:
         if code_counts.empty:
             st.info("No error codes found for this OTA selection.")
         else:
-            st.plotly_chart(_categorical_bar(code_counts, "CODE", "events", "Top error codes"), use_container_width=True)
+            _render_chart_card(
+                _categorical_bar(code_counts, "CODE", "events", "Top error codes"),
+                "Top error codes",
+                "Highest-frequency error codes for the current selection.",
+                key=f"top_codes_{ota_version}",
+            )
     with bottom_cols[1]:
-        st.plotly_chart(_categorical_bar(device_counts, "DEVICE_ID", "events", "Most affected devices"), use_container_width=True)
+        _render_chart_card(
+            _categorical_bar(device_counts, "DEVICE_ID", "events", "Most affected devices"),
+            "Most affected devices",
+            "Devices with the highest event counts in the current filter window.",
+            key=f"top_devices_{ota_version}",
+        )
 
     st.markdown("### Top Error Code Details")
     if code_details.empty:
@@ -782,7 +888,12 @@ def _render_priority_breakdown_page(ota_version: str) -> None:
             if priority_frame.empty:
                 st.info(f"No rows found for {priority}.")
             else:
-                st.plotly_chart(_priority_breakdown_bar(priority_frame, priority), use_container_width=True)
+                _render_chart_card(
+                    _priority_breakdown_bar(priority_frame, priority),
+                    f"{priority} breakdown",
+                    "Code-level breakdown for this priority bucket.",
+                    key=f"priority_breakdown_chart_{priority}_{ota_version}",
+                )
 
     unmapped = breakdown[~breakdown["priority"].isin(priorities)].copy()
     if not unmapped.empty:
