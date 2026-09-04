@@ -1,6 +1,6 @@
 #!/bin/bash
 # Nightly critical-events pipeline polling
-# Pulls a rolling 20-day window into ClickHouse
+# Pulls the previous day 01:00 -> today 01:00 window into ClickHouse
 # Runs daily at 01:00 IST via cron
 
 set -e
@@ -48,7 +48,10 @@ NOW_DT=$(date +"%Y-%m-%d %H:%M:%S")
 # Fixed 20-day window ending at today's 01:00 IST
 WINDOW_START_DAY=$(date -d "20 days ago" +"%Y-%m-%d")
 TODAY=$(date +"%Y-%m-%d")
-START_TS="${WINDOW_START_DAY}T01:00:00"
+
+# Critical-events poll window: previous day 01:00 -> today 01:00
+YESTERDAY=$(date -d "yesterday" +"%Y-%m-%d")
+START_TS="${YESTERDAY}T01:00:00"
 END_TS="${TODAY}T01:00:00"
 
 # Data-polling window: 20 days ago 01:00 to now
@@ -80,10 +83,8 @@ python3 critical_events_pipeline.py \
   "${AWS_PROFILE_ARG[@]}" \
   --start-ts "${START_TS}" \
   --end-ts "${END_TS}" \
-  --target clickhouse \
   --clickhouse-section CLICKHOUSE_DB \
   --table-name criticalinfo_snowflakes_data \
-  --commit-every 5 \
   2>&1 | tee -a "${LOG_FILE}"
 
 EXIT_CODE=${PIPESTATUS[0]}
@@ -94,23 +95,9 @@ else
   echo "✗ Poll failed with exit code $EXIT_CODE" | tee -a "${LOG_FILE}"
 fi
 
-# # Only run the unique-info/priority pipeline if the raw poll succeeded.
-# if [ $EXIT_CODE -eq 0 ]; then
-#   echo "" | tee -a "${LOG_FILE}"
-#   echo "=== Unique-info priority pipeline ===" | tee -a "${LOG_FILE}"
-#   python3 nightly_priority_pipeline.py \
-#     --db-section POLL_USER_DB \
-#     --start-ts "${START_TS}" \
-#     --end-ts "${END_TS}" \
-#     2>&1 | tee -a "${LOG_FILE}"
-#   PRIORITY_EXIT_CODE=${PIPESTATUS[0]}
-#   if [ $PRIORITY_EXIT_CODE -eq 0 ]; then
-#     echo "✓ Priority pipeline completed successfully" | tee -a "${LOG_FILE}"
-#   else
-#     echo "✗ Priority pipeline failed with exit code $PRIORITY_EXIT_CODE" | tee -a "${LOG_FILE}"
-#     EXIT_CODE=$PRIORITY_EXIT_CODE
-#   fi
-# fi
+# Note: TYPE/priority classification now happens inline during the poll above
+# (see cinfo_classifier.py) -- the old separate Postgres unique-info/priority
+# pipeline (nightly_priority_pipeline.py) has been removed.
 
 # if [ $EXIT_CODE -eq 0 ]; then
 #   echo "" | tee -a "${LOG_FILE}"

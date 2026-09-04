@@ -5585,7 +5585,7 @@
     "priority": "P101"
   },
   {
-    "description_pattern": "UART register conf <N> <N>\n<N> <N>\n",
+    "description_pattern": "UART register conf <N> <N>\n<N> <N>",
     "TYPE": "INFO",
     "priority": "P101"
   },
@@ -5600,12 +5600,7 @@
     "priority": "P104"
   },
   {
-    "description_pattern": "Sending set command to vbus <N>\n",
-    "TYPE": "INFO",
-    "priority": "P101"
-  },
-  {
-    "description_pattern": "Sending set command to vbus <N>\n",
+    "description_pattern": "Sending set command to vbus <N>",
     "TYPE": "INFO",
     "priority": "P101"
   },

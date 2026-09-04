@@ -228,7 +228,7 @@ def _render_allowed_ota_versions_manager() -> None:
 
     with input_col:
         with st.form("add_allowed_ota_version", clear_on_submit=True):
-            st.caption("Add a new OTA to ALLOWED_OTA_VERSIONS")
+            st.caption("Add a new OTA version to be monitored. This will be reflected in the dashboard from 2AM IST the next day.")
             new_ota_version = st.text_input("Add OTA version", placeholder="9.6.14.rc.1")
             submitted = st.form_submit_button("Add OTA", use_container_width=True)
         if submitted:

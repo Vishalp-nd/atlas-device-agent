@@ -12,20 +12,22 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from cinfo_classifier import DEFAULT_JSON_PATH
+from cinfo_normalization import NORMALIZE_TOKEN_REGEX, NORMALIZE_TOKEN_REPL
 from critical_events_pipeline import _read_clickhouse_config, _run_clickhouse_query
 
 
 DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
 DEFAULT_SOURCE_TABLE = "criticalinfo_snowflakes_data"
 DEFAULT_BATCH_SIZE = 100
-DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "unique_cinfo_op_mapped.json"
 NORMALIZED_DESCRIPTION_EXPR = (
     # trim(x) only strips the space character on this server version, and the
     # 2-argument custom-trim-characters overload of trimBoth isn't available
     # either (NUMBER_OF_ARGUMENTS_DOESNT_MATCH on 22.8.21), so leading/trailing
     # whitespace (including newlines) is stripped with the same regex function
     # already used for digit normalization, to match Python's str.strip().
-    "replaceRegexpAll(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>'), '^\\s+|\\s+$', '')"
+    "replaceRegexpAll(replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), "
+    f"'{NORMALIZE_TOKEN_REGEX}', '{NORMALIZE_TOKEN_REPL}'), '^\\s+|\\s+$', '')"
 )
 
 

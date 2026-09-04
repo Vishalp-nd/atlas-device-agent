@@ -16,7 +16,14 @@ import argparse
 import configparser
 import csv
 import subprocess
+import sys
 from pathlib import Path
+
+PIPELINE_DIR = Path(__file__).resolve().parents[1] / "pipeline"
+if str(PIPELINE_DIR) not in sys.path:
+    sys.path.insert(0, str(PIPELINE_DIR))
+
+from cinfo_normalization import NORMALIZE_TOKEN_REGEX, NORMALIZE_TOKEN_REPL  # noqa: E402
 
 
 DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
@@ -136,7 +143,10 @@ def build_create_table_sql(target_table: str) -> str:
 
 
 def build_grouped_source_sql(source_table: str) -> str:
-    normalized_expr = "replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), '\\S*\\d\\S*', '<N>')"
+    normalized_expr = (
+        "replaceRegexpAll(ifNull(\"DESCRIPTION\", ''), "
+        f"'{NORMALIZE_TOKEN_REGEX}', '{NORMALIZE_TOKEN_REPL}')"
+    )
     return f'''
     SELECT
         "CODE" AS code_value,

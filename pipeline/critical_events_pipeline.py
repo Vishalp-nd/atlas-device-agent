@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
-Fetch critical-event rows from Snowflake, classify with SVM, and store in PostgreSQL or ClickHouse.
+Fetch critical-event rows from Snowflake, classify TYPE/priority, and store in ClickHouse.
 
 Flow:
 1) Pull rows from `device_critical_event` in batches
-2) Predict TYPE (INFO/ERROR) from CODE + DESCRIPTION
-3) Insert into a local PostgreSQL or ClickHouse table with all source columns plus TYPE
+2) Classify TYPE (INFO/ERROR) and priority (P0-P4/P100-P104) per row: normalized-description lookup
+   in unique_cinfo_op_mapped.json first, SVM model fallback for TYPE, semantic-similarity fallback
+   for priority (see cinfo_classifier.py)
+3) Insert into a ClickHouse table with all source columns plus type and priority
+
+Each (window, OTA-versions) run is tracked in a registry table (criticalinfo_poll_runs) and the
+window's existing rows are deleted before the fresh classified insert, so a rerun -- including a
+retry after a mid-run crash -- never duplicates rows and a window already completed is skipped by
+default (see --force).
 """
 
 from __future__ import annotations
@@ -16,21 +23,28 @@ import configparser
 import io
 import os
 import pickle
-import re
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
-import psycopg2.extras
 from dotenv import load_dotenv
 
-from fetch_device_config import connect_to_db, connect_to_snowflake, read_db_config
-from regex_map import REGEX_TYPE_MAP
+from cinfo_classifier import (
+    CinfoClassifier,
+    DEFAULT_JSON_PATH,
+    append_new_patterns_to_json,
+    upsert_new_patterns_to_clickhouse,
+)
+from fetch_device_config import connect_to_snowflake
 
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "svm_type_classifier.pkl"
-DEFAULT_TABLE_NAME = "criticalinfo_snowflakes_classified"
+DEFAULT_TABLE_NAME = "criticalinfo_snowflakes_data"
 DEFAULT_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+DEFAULT_PRIORITY_MAP_TABLE = "unique_cinfo_priority_map"
+DEFAULT_REGISTRY_TABLE = "criticalinfo_poll_runs"
+LOCK_FILE = Path(__file__).resolve().parent / "OUTPUT" / ".critical_events_pipeline.lock"
 
 
 def _parse_csv_env(value: str) -> list[str]:
@@ -85,48 +99,30 @@ SOURCE_COLUMNS = [
     "LOADED_TO_SNOWFLAKE_ON",
 ]
 INT_LIKE_COLUMNS = ["CODE_AUX", "COUNT", "TENANT_ID"]
-COMPILED_REGEX_TYPE_MAP = [
-    (re.compile(pattern), event_type) for pattern, event_type in REGEX_TYPE_MAP.items()
-]
 
 
-def _predict_types(features: pd.Series, model) -> list[str]:
-    predicted_types: list[str | None] = [None] * len(features)
-    unmatched_indices: list[int] = []
-    unmatched_features: list[str] = []
+def _acquire_lock():
+    import fcntl
 
-    for index, description in enumerate(features.tolist()):
-        matched_type = None
-        for pattern, event_type in COMPILED_REGEX_TYPE_MAP:
-            if pattern.match(description):
-                matched_type = event_type
-                break
-        if matched_type is None:
-            unmatched_indices.append(index)
-            unmatched_features.append(description)
-        predicted_types[index] = matched_type
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = LOCK_FILE.open("w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print("Another critical_events_pipeline instance is running. Waiting for it to finish...")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    return lock_fd
 
-    if unmatched_features:
-        try:
-            fallback_predictions = model.predict(pd.Series(unmatched_features, dtype="string"))
-        except Exception as exc:
-            raise RuntimeError(
-                "Model prediction failed. The loaded model is likely incompatible with the current "
-                "description-only pipeline. Retrain the model with pipeline/svm_type_classifier.py "
-                "and rerun the pipeline."
-            ) from exc
 
-        if len(fallback_predictions) != len(unmatched_features):
-            raise RuntimeError(
-                f"Model returned {len(fallback_predictions)} predictions for {len(unmatched_features)} rows. "
-                "This usually means an old CODE+DESCRIPTION model is being used with the new "
-                "description-only pipeline. Retrain the model and rerun."
-            )
+def _release_lock(lock_fd) -> None:
+    import fcntl
 
-        for index, predicted_type in zip(unmatched_indices, fallback_predictions):
-            predicted_types[index] = str(predicted_type)
+    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    lock_fd.close()
 
-    return [predicted_type if predicted_type is not None else "" for predicted_type in predicted_types]
+
+def _to_clickhouse_datetime(value: str) -> str:
+    return str(value).replace("T", " ")[:19]
 
 
 def _read_clickhouse_config(config_file: str, section: str) -> dict[str, object]:
@@ -203,68 +199,6 @@ def _run_clickhouse_query(params: dict[str, object], query: str, input_text: str
     return result.stdout
 
 
-def _init_postgres(conn, table_name: str) -> None:
-    with conn.cursor() as cursor:
-        cursor.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {table_name} (
-                \"DEVICE_ID\" text,
-                \"TIMESTAMP\" timestamp without time zone,
-                \"PROCESS_NAME\" text,
-                \"CODE\" double precision,
-                \"CODE_AUX\" bigint,
-                \"COUNT\" bigint,
-                \"DESCRIPTION\" text,
-                \"DEVICE_VERSION\" text,
-                \"SYS_UPTIME\" double precision,
-                \"S3_PATH\" text,
-                \"TENANT_ID\" bigint,
-                \"UPSERT_TIME\" timestamp without time zone,
-                \"LOADED_TO_SNOWFLAKE_ON\" timestamp without time zone,
-                type text,
-                UNIQUE (\"DEVICE_ID\", \"TIMESTAMP\", \"PROCESS_NAME\", \"CODE\", \"DESCRIPTION\")
-            )
-            """
-        )
-        cursor.execute(
-            f'CREATE INDEX IF NOT EXISTS idx_ce_ts ON {table_name} ("TIMESTAMP")'
-        )
-        cursor.execute(
-            f"CREATE INDEX IF NOT EXISTS idx_ce_type ON {table_name} (type)"
-        )
-        cursor.execute(
-            f'CREATE INDEX IF NOT EXISTS idx_ce_code ON {table_name} ("CODE")'
-        )
-        cursor.execute(
-            f'CREATE INDEX IF NOT EXISTS idx_ce_proc ON {table_name} ("PROCESS_NAME")'
-        )
-        try:
-            cursor.execute(
-                f"""
-                ALTER TABLE {table_name}
-                ADD CONSTRAINT {table_name}_uniq_device_ts_proc_code_desc
-                UNIQUE (\"DEVICE_ID\", \"TIMESTAMP\", \"PROCESS_NAME\", \"CODE\", \"DESCRIPTION\")
-                """
-            )
-        except Exception as exc:
-            conn.rollback()
-            with conn.cursor() as retry_cursor:
-                retry_cursor.execute(
-                    """
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname = %s
-                    """,
-                    (f"{table_name}_uniq_device_ts_proc_code_desc",),
-                )
-                if retry_cursor.fetchone() is None:
-                    print(
-                        "Warning: could not create unique constraint for deduplication. "
-                        f"Continuing without ON CONFLICT support: {exc}"
-                    )
-    conn.commit()
-
-
 def _init_clickhouse(params: dict[str, object], table_name: str) -> None:
     _run_clickhouse_query(
         params,
@@ -289,20 +223,98 @@ def _init_clickhouse(params: dict[str, object], table_name: str) -> None:
         ORDER BY (\"DEVICE_ID\", \"TIMESTAMP\", \"PROCESS_NAME\", \"CODE\", \"DESCRIPTION\")
         """,
     )
+    # priority is not added here -- the live table already has it; this code makes no
+    # schema changes (see cinfo_classifier for how priority values are computed/written).
 
 
-def _has_dedup_constraint(conn, table_name: str) -> bool:
-    constraint_name = f"{table_name}_uniq_device_ts_proc_code_desc"
-    with conn.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM pg_constraint
-            WHERE conname = %s
-            """,
-            (constraint_name,),
-        )
-        return cursor.fetchone() is not None
+def _ensure_registry_table(params: dict[str, object], table_name: str) -> None:
+    _run_clickhouse_query(
+        params,
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            window_start DateTime,
+            window_end DateTime,
+            ota_versions_signature String,
+            status String,
+            rows_fetched UInt64,
+            rows_inserted UInt64,
+            started_at DateTime,
+            error_message Nullable(String)
+        ) ENGINE = MergeTree
+        ORDER BY (window_start, window_end, ota_versions_signature, started_at)
+        """,
+    )
+
+
+def _latest_run_status(
+    params: dict[str, object], table_name: str, window_start: str, window_end: str, signature: str
+) -> str | None:
+    query = f"""
+        SELECT status FROM {table_name}
+        WHERE window_start = '{_escape_sql_literal(window_start)}'
+          AND window_end = '{_escape_sql_literal(window_end)}'
+          AND ota_versions_signature = '{_escape_sql_literal(signature)}'
+        ORDER BY started_at DESC
+        LIMIT 1
+    """
+    output = _run_clickhouse_query(params, query).strip()
+    return output or None
+
+
+def _insert_registry_row(
+    params: dict[str, object],
+    table_name: str,
+    window_start: str,
+    window_end: str,
+    signature: str,
+    status: str,
+    rows_fetched: int,
+    rows_inserted: int,
+    error_message: str | None = None,
+) -> None:
+    copy_buffer = io.StringIO()
+    writer = csv.writer(copy_buffer, lineterminator="\n")
+    writer.writerow(
+        [
+            "window_start",
+            "window_end",
+            "ota_versions_signature",
+            "status",
+            "rows_fetched",
+            "rows_inserted",
+            "started_at",
+            "error_message",
+        ]
+    )
+    writer.writerow(
+        [
+            window_start,
+            window_end,
+            signature,
+            status,
+            rows_fetched,
+            rows_inserted,
+            datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            error_message or "",
+        ]
+    )
+    copy_buffer.seek(0)
+    _run_clickhouse_query(
+        params,
+        f"INSERT INTO {table_name} FORMAT CSVWithNames",
+        input_text=copy_buffer.getvalue(),
+    )
+
+
+def _delete_window_rows(params: dict[str, object], table_name: str, window_start: str, window_end: str) -> None:
+    _run_clickhouse_query(
+        params,
+        f"""
+        ALTER TABLE {table_name}
+        DELETE WHERE \"TIMESTAMP\" >= '{_escape_sql_literal(window_start)}'
+          AND \"TIMESTAMP\" < '{_escape_sql_literal(window_end)}'
+        """,
+    )
 
 
 def _get_available_source_columns(sf_conn) -> list[str]:
@@ -378,7 +390,7 @@ def _iter_snowflake_batches(
 
 
 def _predict_batch(
-    model,
+    classifier: CinfoClassifier,
     rows: list[tuple[object, ...]],
     selected_columns: list[str],
 ) -> tuple[list[tuple], int]:
@@ -388,167 +400,41 @@ def _predict_batch(
             df[missing_column] = None
     df = df.reindex(columns=SOURCE_COLUMNS)
 
-    features = df["DESCRIPTION"].fillna("").astype(str)
-    predicted = _predict_types(features, model)
+    classified = classifier.classify(df, description_col="DESCRIPTION", code_col="CODE")
+    classified = classifier.assign_missing_priorities(classified)
 
     # Snowflake numeric columns may arrive as floats when NULLs are present.
     # Coerce bigint-like columns back to true integers for PostgreSQL COPY.
     for column in INT_LIKE_COLUMNS:
-        numeric_series = pd.to_numeric(df[column], errors="coerce")
+        numeric_series = pd.to_numeric(classified[column], errors="coerce")
         fractional_mask = numeric_series.notna() & (numeric_series % 1 != 0)
         if fractional_mask.any():
             sample = numeric_series[fractional_mask].iloc[0]
             raise RuntimeError(
                 f"Column {column} contains non-integer value {sample!r}; cannot load into bigint"
             )
-        df[column] = numeric_series.astype("Int64")
+        classified[column] = numeric_series.astype("Int64")
 
     # Vectorised output — avoids itertuples loop over potentially millions of rows
-    df["type"] = predicted.astype(str)
-    safe_df = df.astype(object).where(pd.notnull(df), None)
+    classified["type"] = classified["type"].fillna("").astype(str)
+    classified["priority"] = classified["priority"].fillna("").astype(str)
+    output_columns = SOURCE_COLUMNS + ["type", "priority"]
+    output_df = classified[output_columns]
+    safe_df = output_df.astype(object).where(pd.notnull(output_df), None)
     out_rows = [tuple(row) for row in safe_df.values.tolist()]
 
     return out_rows, len(rows)
-
-
-def _upsert_rows(conn, table_name: str, rows: list[tuple], page_size: int, has_constraint: bool = True) -> int:
-    if not rows:
-        return 0
-
-    staging_table = "critical_event_stage"
-    copy_buffer = io.StringIO()
-    writer = csv.writer(copy_buffer, lineterminator="\n")
-    writer.writerows(rows)
-    copy_buffer.seek(0)
-
-    with conn.cursor() as cursor:
-        cursor.execute(
-            f"""
-            CREATE TEMP TABLE IF NOT EXISTS {staging_table} (
-                \"DEVICE_ID\" text,
-                \"TIMESTAMP\" timestamp without time zone,
-                \"PROCESS_NAME\" text,
-                \"CODE\" double precision,
-                \"CODE_AUX\" bigint,
-                \"COUNT\" bigint,
-                \"DESCRIPTION\" text,
-                \"DEVICE_VERSION\" text,
-                \"SYS_UPTIME\" double precision,
-                \"S3_PATH\" text,
-                \"TENANT_ID\" bigint,
-                \"UPSERT_TIME\" timestamp without time zone,
-                \"LOADED_TO_SNOWFLAKE_ON\" timestamp without time zone,
-                type text
-            ) ON COMMIT DELETE ROWS
-            """,
-        )
-        cursor.copy_expert(
-            f"""
-            COPY {staging_table} (
-                \"DEVICE_ID\",
-                \"TIMESTAMP\",
-                \"PROCESS_NAME\",
-                \"CODE\",
-                \"CODE_AUX\",
-                \"COUNT\",
-                \"DESCRIPTION\",
-                \"DEVICE_VERSION\",
-                \"SYS_UPTIME\",
-                \"S3_PATH\",
-                \"TENANT_ID\",
-                \"UPSERT_TIME\",
-                \"LOADED_TO_SNOWFLAKE_ON\",
-                type
-            )
-            FROM STDIN WITH (FORMAT CSV)
-            """,
-            copy_buffer,
-        )
-        if has_constraint:
-            cursor.execute(
-                f"""
-                INSERT INTO {table_name} (
-                    \"DEVICE_ID\",
-                    \"TIMESTAMP\",
-                    \"PROCESS_NAME\",
-                    \"CODE\",
-                    \"CODE_AUX\",
-                    \"COUNT\",
-                    \"DESCRIPTION\",
-                    \"DEVICE_VERSION\",
-                    \"SYS_UPTIME\",
-                    \"S3_PATH\",
-                    \"TENANT_ID\",
-                    \"UPSERT_TIME\",
-                    \"LOADED_TO_SNOWFLAKE_ON\",
-                    type
-                )
-                SELECT
-                    \"DEVICE_ID\",
-                    \"TIMESTAMP\",
-                    \"PROCESS_NAME\",
-                    \"CODE\",
-                    \"CODE_AUX\",
-                    \"COUNT\",
-                    \"DESCRIPTION\",
-                    \"DEVICE_VERSION\",
-                    \"SYS_UPTIME\",
-                    \"S3_PATH\",
-                    \"TENANT_ID\",
-                    \"UPSERT_TIME\",
-                    \"LOADED_TO_SNOWFLAKE_ON\",
-                    type
-                FROM {staging_table}
-                ON CONFLICT (\"DEVICE_ID\", \"TIMESTAMP\", \"PROCESS_NAME\", \"CODE\", \"DESCRIPTION\") DO NOTHING
-                """
-            )
-        else:
-            cursor.execute(
-                f"""
-                INSERT INTO {table_name} (
-                    \"DEVICE_ID\",
-                    \"TIMESTAMP\",
-                    \"PROCESS_NAME\",
-                    \"CODE\",
-                    \"CODE_AUX\",
-                    \"COUNT\",
-                    \"DESCRIPTION\",
-                    \"DEVICE_VERSION\",
-                    \"SYS_UPTIME\",
-                    \"S3_PATH\",
-                    \"TENANT_ID\",
-                    \"UPSERT_TIME\",
-                    \"LOADED_TO_SNOWFLAKE_ON\",
-                    type
-                )
-                SELECT
-                    \"DEVICE_ID\",
-                    \"TIMESTAMP\",
-                    \"PROCESS_NAME\",
-                    \"CODE\",
-                    \"CODE_AUX\",
-                    \"COUNT\",
-                    \"DESCRIPTION\",
-                    \"DEVICE_VERSION\",
-                    \"SYS_UPTIME\",
-                    \"S3_PATH\",
-                    \"TENANT_ID\",
-                    \"UPSERT_TIME\",
-                    \"LOADED_TO_SNOWFLAKE_ON\",
-                    type
-                FROM {staging_table}
-                """
-            )
-        inserted = cursor.rowcount
-    return inserted
 
 
 def _normalise_clickhouse_value(column_name: str, value: object) -> object:
     if value is None:
         return ""
     if column_name in {"TIMESTAMP", "UPSERT_TIME", "LOADED_TO_SNOWFLAKE_ON"}:
-        return str(value).replace("T", " ")[:19]
+        return _to_clickhouse_datetime(value)
     return value
+
+
+CLICKHOUSE_ROW_COLUMNS = SOURCE_COLUMNS + ["type", "priority"]
 
 
 def _insert_clickhouse_rows(params: dict[str, object], table_name: str, rows: list[tuple]) -> int:
@@ -557,10 +443,10 @@ def _insert_clickhouse_rows(params: dict[str, object], table_name: str, rows: li
 
     copy_buffer = io.StringIO()
     writer = csv.writer(copy_buffer, lineterminator="\n")
-    writer.writerow(SOURCE_COLUMNS + ["type"])
+    writer.writerow(CLICKHOUSE_ROW_COLUMNS)
     for row in rows:
         writer.writerow(
-            [_normalise_clickhouse_value(column_name, value) for column_name, value in zip(SOURCE_COLUMNS + ["type"], row)]
+            [_normalise_clickhouse_value(column_name, value) for column_name, value in zip(CLICKHOUSE_ROW_COLUMNS, row)]
         )
     copy_buffer.seek(0)
 
@@ -572,16 +458,8 @@ def _insert_clickhouse_rows(params: dict[str, object], table_name: str, rows: li
     return len(rows)
 
 
-def run_pipeline(args: argparse.Namespace) -> None:
-    model_path = Path(args.model)
+def _run_pipeline_body(args: argparse.Namespace, classifier: CinfoClassifier, ch_params: dict[str, object]) -> tuple[int, int]:
     table_name = args.table_name
-    target = args.target
-
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model not found: {model_path}")
-
-    with model_path.open("rb") as f:
-        model = pickle.load(f)
 
     sf_conn = connect_to_snowflake(
         args.db_config,
@@ -591,21 +469,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
     if sf_conn is None:
         raise RuntimeError("Failed to connect to Snowflake")
 
-    pg_conn = None
-    ch_params = None
-    has_constraint = False
-    if target == "postgres":
-        pg_params = read_db_config(args.db_config, args.postgres_section)
-        pg_conn = connect_to_db(pg_params)
-        if pg_conn is None:
-            raise RuntimeError("Failed to connect to PostgreSQL")
-
-        _init_postgres(pg_conn, table_name)
-        has_constraint = _has_dedup_constraint(pg_conn, table_name)
-        pg_conn.commit()
-    else:
-        ch_params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
-        _init_clickhouse(ch_params, table_name)
+    _init_clickhouse(ch_params, table_name)
+    _delete_window_rows(ch_params, table_name, _to_clickhouse_datetime(args.start_ts), _to_clickhouse_datetime(args.end_ts))
 
     available_columns = _get_available_source_columns(sf_conn)
     selected_columns = [col for col in SOURCE_COLUMNS if col in available_columns]
@@ -642,15 +507,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
         ):
             batch_started = time.perf_counter()
             predict_started = time.perf_counter()
-            classified_rows, fetched = _predict_batch(model, raw_rows, selected_columns)
+            classified_rows, fetched = _predict_batch(classifier, raw_rows, selected_columns)
             predict_seconds = time.perf_counter() - predict_started
             attempted = len(classified_rows)
 
             insert_started = time.perf_counter()
-            if target == "postgres":
-                inserted = _upsert_rows(pg_conn, table_name, classified_rows, args.insert_page_size, has_constraint)
-            else:
-                inserted = _insert_clickhouse_rows(ch_params, table_name, classified_rows)
+            inserted = _insert_clickhouse_rows(ch_params, table_name, classified_rows)
             insert_seconds = time.perf_counter() - insert_started
 
             total_fetched += fetched
@@ -658,47 +520,84 @@ def run_pipeline(args: argparse.Namespace) -> None:
             batches += 1
             total_predict_seconds += predict_seconds
             total_insert_seconds += insert_seconds
-            if target == "postgres" and batches % args.commit_every == 0:
-                commit_started = time.perf_counter()
-                pg_conn.commit()
-                commit_seconds = time.perf_counter() - commit_started
-            else:
-                commit_seconds = 0.0
 
             batch_seconds = time.perf_counter() - batch_started
             print(
                 f"Batch {batches}: fetched={fetched}, attempted={attempted}, inserted={inserted}, "
                 f"predict={predict_seconds:.2f}s ({_format_rate(fetched, predict_seconds)}), "
                 f"insert={insert_seconds:.2f}s ({_format_rate(attempted, insert_seconds)} attempted/s), "
-                f"commit={commit_seconds:.2f}s, total_batch={batch_seconds:.2f}s, "
+                f"total_batch={batch_seconds:.2f}s, "
                 f"total_fetched={total_fetched}, total_inserted={total_inserted}"
             )
-        final_commit_started = time.perf_counter()
-        if target == "postgres":
-            pg_conn.commit()
-            final_commit_seconds = time.perf_counter() - final_commit_started
-        else:
-            final_commit_seconds = 0.0
-
     finally:
         sf_conn.close()
-        if pg_conn is not None:
-            pg_conn.close()
 
     total_seconds = time.perf_counter() - run_started
     print("Done.")
-    print(f"Target {target} table: {table_name}")
+    print(f"Target clickhouse table: {table_name}")
     print(f"Total fetched from Snowflake: {total_fetched}")
-    print(f"Total inserted into {target}: {total_inserted}")
+    print(f"Total inserted into clickhouse: {total_inserted}")
     print(f"Total predict time: {total_predict_seconds:.2f}s")
     print(f"Total insert time: {total_insert_seconds:.2f}s")
-    print(f"Final commit time: {final_commit_seconds:.2f}s")
     print(f"Total runtime: {total_seconds:.2f}s ({_format_rate(total_fetched, total_seconds)})")
+
+    return total_fetched, total_inserted
+
+
+def run_pipeline(args: argparse.Namespace) -> None:
+    model_path = Path(args.model)
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    lock_fd = _acquire_lock()
+    try:
+        ota_signature = ",".join(sorted(ALLOWED_OTA_VERSIONS))
+        window_start = _to_clickhouse_datetime(args.start_ts)
+        window_end = _to_clickhouse_datetime(args.end_ts)
+
+        ch_params = _read_clickhouse_config(args.db_config, args.clickhouse_section)
+        _ensure_registry_table(ch_params, args.registry_table)
+        latest_status = _latest_run_status(ch_params, args.registry_table, window_start, window_end, ota_signature)
+        if latest_status == "completed" and not args.force:
+            print(
+                f"Window {args.start_ts} -> {args.end_ts} for OTA versions [{ota_signature}] "
+                f"already completed in {args.registry_table}; skipping (use --force to redo)."
+            )
+            return
+        _insert_registry_row(ch_params, args.registry_table, window_start, window_end, ota_signature, "running", 0, 0)
+
+        with model_path.open("rb") as f:
+            model = pickle.load(f)
+        classifier = CinfoClassifier(json_path=Path(args.json_map_path), svm_model=model)
+
+        try:
+            total_fetched, total_inserted = _run_pipeline_body(args, classifier, ch_params)
+        except Exception as exc:
+            _insert_registry_row(
+                ch_params, args.registry_table, window_start, window_end, ota_signature,
+                "failed", 0, 0, error_message=str(exc)[:2000],
+            )
+            raise
+
+        new_rows = classifier.new_patterns()
+        if new_rows:
+            appended = append_new_patterns_to_json(Path(args.json_map_path), new_rows)
+            upserted = upsert_new_patterns_to_clickhouse(ch_params, args.priority_map_table, new_rows)
+            print(
+                f"Appended {appended} new pattern(s) to {args.json_map_path}; "
+                f"upserted {upserted} into {args.priority_map_table}"
+            )
+        _insert_registry_row(
+            ch_params, args.registry_table, window_start, window_end, ota_signature,
+            "completed", total_fetched, total_inserted,
+        )
+    finally:
+        _release_lock(lock_fd)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Fetch critical events from Snowflake, classify, and store in PostgreSQL",
+        description="Fetch critical events from Snowflake, classify, and store in ClickHouse",
     )
     parser.add_argument(
         "--db-config",
@@ -732,18 +631,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Snowflake fetchmany batch size (default 100k — keep between 50k and 500k)",
     )
     parser.add_argument(
-        "--insert-page-size",
-        type=int,
-        default=10_000,
-        help="Rows per PostgreSQL execute_values page (default 10k — keep between 5k and 20k)",
-    )
-    parser.add_argument(
-        "--commit-every",
-        type=int,
-        default=5,
-        help="Commit after this many batches",
-    )
-    parser.add_argument(
         "--limit",
         type=int,
         default=None,
@@ -755,25 +642,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trained SVM model pickle",
     )
     parser.add_argument(
-        "--postgres-section",
-        default="IRAVATH_DB",
-        help="Section in db_credentials.ini for local PostgreSQL",
-    )
-    parser.add_argument(
         "--clickhouse-section",
         default="CLICKHOUSE_DB",
         help="Section in db_credentials.ini for ClickHouse",
     )
     parser.add_argument(
-        "--target",
-        choices=["postgres", "clickhouse"],
-        default="postgres",
-        help="Storage target for classified critical events",
-    )
-    parser.add_argument(
         "--table-name",
         default=DEFAULT_TABLE_NAME,
-        help="Target table for classified critical events",
+        help="Target ClickHouse table for classified critical events",
+    )
+    parser.add_argument(
+        "--json-map-path",
+        default=str(DEFAULT_JSON_PATH),
+        help="JSON file mapping normalized description -> TYPE/priority (unique_cinfo_op_mapped.json)",
+    )
+    parser.add_argument(
+        "--priority-map-table",
+        default=DEFAULT_PRIORITY_MAP_TABLE,
+        help="ClickHouse table newly-discovered normalized patterns are upserted into",
+    )
+    parser.add_argument(
+        "--registry-table",
+        default=DEFAULT_REGISTRY_TABLE,
+        help="ClickHouse run-registry table tracking completed (window, OTA-versions) runs",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Redo this window even if the registry already marks it completed",
     )
     return parser
 
