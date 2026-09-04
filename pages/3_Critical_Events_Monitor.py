@@ -25,14 +25,6 @@ ERROR_PRIORITIES = {
 PRIORITY_BREAKDOWN_LABEL_LIMIT = 24
 CHART_CARD_STYLE_BLOCK = """
 <style>
-.chart-card {
-    border: 1px solid rgba(49, 51, 63, 0.18);
-    border-radius: 20px;
-    padding: 0.95rem 1rem 0.7rem 1rem;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 249, 252, 0.96));
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
-    margin-bottom: 0.9rem;
-}
 .chart-card-caption {
     font-size: 0.84rem;
     color: rgba(49, 51, 63, 0.68);
@@ -43,12 +35,6 @@ div[data-testid="stPlotlyChart"] {
 }
 div[data-testid="stPlotlyChart"] > div {
     border-radius: 16px;
-}
-/* Streamlit's per-element hover toolbar (fullscreen/download icons above charts) reserves a
-   full-width bordered bar above every chart-card; on this light theme that shows up as a blank
-   white pill sitting on top of the title. Not needed here -- drop it entirely. */
-div[data-testid="stElementToolbar"] {
-    display: none !important;
 }
 [data-testid="stMetric"] {
     color: rgb(49, 51, 63) !important;
@@ -141,12 +127,14 @@ def _apply_chart_theme(fig, title: str):
 
 
 def _render_chart_card(fig, title: str, caption: str | None = None, key: str | None = None) -> None:
+    # Note: no HTML wrapper div here. Each st.markdown() renders into its own sanitized DOM node,
+    # so a bare "<div class='chart-card'>" opening tag does not wrap the chart -- it renders as an
+    # empty, fully-styled box above it (and the matching "</div>" is dropped). Use st.container
+    # if a real card border is wanted.
     st.markdown(CHART_CARD_STYLE_BLOCK, unsafe_allow_html=True)
-    st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
     if caption:
         st.markdown(f"<div class='chart-card-caption'>{caption}</div>", unsafe_allow_html=True)
     st.plotly_chart(_apply_chart_theme(fig, title), use_container_width=True, key=key)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
