@@ -22,6 +22,32 @@ class regionUS:
         "octo": ("octo", "7."),
     }
 
+    FAMILY_SP_CONFIG = {
+        "krait": ("krait", ".sp.2"),
+        "krait2": ("krait2", ".sp.4"),
+        "bagheera2": ("bagheera2", ".sp.3"),
+        "bagheera3": ("bagheera3", ".sp.5"),
+        "octo": ("octo", ".sp.7"),
+    }
+
+    @classmethod
+    def family_patterns(cls, family: str):
+        family_entry = cls.FAMILY_CONFIG.get(family)
+        sp_entry = cls.FAMILY_SP_CONFIG.get(family)
+        return (
+            family_entry[1] if family_entry else None,
+            sp_entry[1] if sp_entry else None,
+        )
+
+    @classmethod
+    def version_matches_family(cls, family: str, version: str) -> bool:
+        family_prefix, sp_pattern = cls.family_patterns(family)
+        if family_prefix and version.startswith(family_prefix):
+            return True
+        if sp_pattern and sp_pattern in version:
+            return True
+        return False
+
     def __init__(self):
         self.s3 = boto3.client("s3")
         for attr, (hw, major_prefix) in self.FAMILY_CONFIG.items():
@@ -42,13 +68,19 @@ class regionUS:
         prefix = f"{self.OTA_PREFIX}/{hw}/"
         paginator = self.s3.get_paginator("list_objects_v2")
         versions = set()
+        family = next(
+            (name for name, (family_hw, _) in self.FAMILY_CONFIG.items() if family_hw == hw),
+            None,
+        )
 
         try:
             for page in paginator.paginate(Bucket=self.BUCKET, Prefix=prefix, Delimiter="/"):
                 for cp in page.get("CommonPrefixes", []):
                     full_prefix = cp.get("Prefix", "")
                     version = full_prefix.replace(prefix, "").strip("/")
-                    if version.startswith(major_prefix):
+                    if family and self.version_matches_family(family, version):
+                        versions.add(version)
+                    elif version.startswith(major_prefix):
                         versions.add(version)
         except ClientError as e:
             logger.log_error(f"Failed to list OTA versions for {hw}: {e}")

@@ -133,7 +133,10 @@ def _fetch_rows(
             CODE_AUX,
             COUNT,
             DESCRIPTION,
-            DEVICE_VERSION
+            DEVICE_VERSION,
+            SYS_UPTIME,
+            IGNITION_STATUS,
+            TENANT_ID
         FROM {SNOWFLAKE_TABLE}
         WHERE {' AND '.join(filters)}
         ORDER BY PROCESS_NAME, CODE, TIMESTAMP DESC
@@ -255,7 +258,14 @@ def _build_report_rows(
             entry["devices"].add(device_id)
             timestamp = _format_timestamp(row.get("TIMESTAMP"))
             if timestamp:
-                entry["device_timestamps"][device_id].append(timestamp)
+                entry["device_timestamps"][device_id].append(
+                    {
+                        "timestamp": timestamp,
+                        "sys_uptime": row.get("SYS_UPTIME"),
+                        "ignition_status": row.get("IGNITION_STATUS"),
+                        "tenant_id": row.get("TENANT_ID"),
+                    }
+                )
 
     process_summary_map: dict[str, dict[str, object]] = defaultdict(
         lambda: {
@@ -279,7 +289,11 @@ def _build_report_rows(
                 **entry,
                 "devices": sorted(entry["devices"]),
                 "device_timestamps": {
-                    device_id: sorted(timestamps, reverse=True)
+                    device_id: sorted(
+                        timestamps,
+                        key=lambda item: str(item.get("timestamp") or ""),
+                        reverse=True,
+                    )
                     for device_id, timestamps in sorted(entry["device_timestamps"].items())
                 },
             }
@@ -353,12 +367,25 @@ def _render_html(
         for device_id in row["devices"]:
             timestamps = row["device_timestamps"].get(device_id, [])
             timestamp_items = "".join(
-                f"<li class=\"device-time\">{html.escape(timestamp)}</li>" for timestamp in timestamps
-            ) or '<li class="device-time muted">No timestamp</li>'
+                f"<tr>"
+                f"<td class=\"device-time mono\">{html.escape(str(item.get('timestamp') or ''))}</td>"
+                f"<td class=\"device-meta mono\">{html.escape(str(item.get('sys_uptime') or ''))}</td>"
+                f"<td class=\"device-meta mono\">{html.escape(str(item.get('ignition_status') or ''))}</td>"
+                f"<td class=\"device-meta mono\">{html.escape(str(item.get('tenant_id') or ''))}</td>"
+                f"</tr>"
+                for item in timestamps
+            ) or (
+                '<tr><td class="device-time muted" colspan="4">No timestamp</td></tr>'
+            )
             device_lists.append(
                 f"<div class=\"device-entry\">"
                 f"<div class=\"device-id mono\">{html.escape(device_id)}</div>"
-                f"<ul class=\"device-time-list\">{timestamp_items}</ul>"
+                f"<div class=\"device-time-wrap\">"
+                f"<table class=\"device-time-table\">"
+                f"<thead><tr><th>Timestamp</th><th>Uptime</th><th>Ign</th><th>Tenant</th></tr></thead>"
+                f"<tbody>{timestamp_items}</tbody>"
+                f"</table>"
+                f"</div>"
                 f"</div>"
             )
         device_tags = "".join(device_lists)
@@ -441,9 +468,12 @@ tr:hover > td {{ background:#fafcff }}
 .device-entry {{ background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:8px }}
 .device-entry:last-child {{ margin-bottom:0 }}
 .device-id {{ color:#166534; margin-bottom:6px }}
-.device-time-list {{ list-style:none; margin:0; padding:0; max-height:96px; overflow:auto; border-top:1px solid #e2e8f0 }}
-.device-time {{ font-size:11px; padding:4px 0; border-bottom:1px solid #eef2f7 }}
-.device-time:last-child {{ border-bottom:none }}
+.device-time-wrap {{ max-height:160px; overflow:auto; border:1px solid #e2e8f0; border-radius:6px; background:#fff }}
+.device-time-table {{ width:100%; border-collapse:collapse; font-size:10.5px }}
+.device-time-table th {{ position:sticky; top:0; z-index:1; padding:6px 8px; font-size:9.5px }}
+.device-time-table td {{ padding:5px 8px; border-bottom:1px solid #eef2f7; vertical-align:top }}
+.device-time {{ white-space:nowrap }}
+.device-meta {{ white-space:nowrap; text-align:right }}
 .filter-bar {{ padding:12px 18px; display:flex; gap:12px; align-items:center; border-bottom:1px solid var(--line); flex-wrap:wrap }}
 .filter-bar input, .filter-bar select {{ padding:6px 10px; border:1px solid var(--line); border-radius:6px; font-size:12px }}
 .filter-bar input {{ width:260px }}
