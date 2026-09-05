@@ -3,10 +3,9 @@ import sys
 import time
 import threading
 import json
-import io
 import tempfile
+import configparser
 from datetime import datetime
-import math
 import re
 import traceback
 from typing import Dict, List, Optional, Tuple, Any
@@ -18,187 +17,118 @@ from contextlib import contextmanager
 
 import pandas as pd
 import py7zr
-from sqlalchemy import create_engine, text
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import Text, Float, Integer, Boolean, TIMESTAMP, ARRAY, BigInteger
-from sqlalchemy.pool import QueuePool
-from sqlalchemy.dialects.postgresql import insert
-from psycopg2.extras import execute_values, Json
+import clickhouse_connect
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
+sys.path.append(REPO_ROOT)
 
-from db_login.db_login import db_connect_pool, read_db_config
+from db_login.db_login import db_connect_pool
 from lib.logger import Logger
 from lib.date_range import update_registry_data
 
 
-dtype_dict = {
-    "alerts_data": JSONB,
-    "audio_events_data": JSONB,
-    "events_data": JSONB,
-    "speed_data": JSONB,
-    "videometadata": JSONB,
-    "canmetadata": JSONB,
-    "user_generated_alert": JSONB,
-    "idling_report": JSONB,
-    "fuel_report": JSONB,
-    "ir_led_hw_status": JSONB,
-    "fields_transposed": JSONB,
-    "one_fps": JSONB,
-    "inertial_features": JSONB,
-    "videometadataone": JSONB,
-    "ignitions": JSONB,
-    "session_embedding": JSONB,
-    "burst_mode": JSONB,
-    "inward_models_processed": JSONB,
-    "outward_models_processed": JSONB,
-    "dms_models_processed": JSONB
-}
+# observation_data/video_metadata live in ClickHouse; see db_credentials.ini's
+# CLICKHOUSE_DB section (override via DP_CLICKHOUSE_SECTION for a different one).
+CLICKHOUSE_CONFIG_SECTION = os.getenv('DP_CLICKHOUSE_SECTION', 'CLICKHOUSE_DB')
+CLICKHOUSE_DB_CONFIG_PATH = os.path.join(REPO_ROOT, 'db_credentials.ini')
 
-def insert_ignore_duplicates(table, conn, keys, data_iter):
-    data = [dict(zip(keys, row)) for row in data_iter]
-    stmt = insert(table.table).values(data)
-    stmt = stmt.on_conflict_do_nothing(
-        index_elements=["s3_path","start_time"]  # composite PK
+# observation_data columns whose extracted Python value is a dict/list that must be
+# serialized to a JSON string before insertion (ClickHouse stores these as String).
+CLICKHOUSE_JSON_COLUMNS = {
+    'canmetadata', 'alerts_data', 'audio_events_data', 'events_data', 'speed_data',
+    'user_generated_alert', 'idling_report', 'fuel_report', 'session_embedding', 'burst_mode',
+}
+# observation_data columns typed Nullable(UInt8)/UInt8 that receive a Python bool/None.
+CLICKHOUSE_BOOL_COLUMNS = {
+    'inertial_processed', 'vision_processed', 'is_inward_processed', 'is_dms_processed',
+    'is_inward_cam_obstructed', 'has_multi_lane', 'has_road_boundary_tracks',
+    'has_ipc_events', 'is_hd_file', 'inward_vision_processed', 'faceImageCaptured',
+}
+# observation_data columns typed Array(String) - keep list-valued, never None.
+CLICKHOUSE_ARRAY_COLUMNS = {'inward_models_processed', 'outward_models_processed', 'dms_models_processed'}
+# observation_data columns kept as Nullable(String) even though the source value looks numeric.
+CLICKHOUSE_TEXT_COLUMNS = {'udid', 'starttime', 'starttimeld', 'inwardstarttime', 'inwardstarttimeld', 'rtc_valid'}
+
+VIDEO_METADATA_COLUMNS = [
+    'file_name', 'device_id', 'start_time', 'end_time', 'seq_no',
+    'valid', 'altitude', 'bearing', 'accuracy', 'lat', 'long',
+    'speed', 'raw_timestamp', 'altitudeMSL', 'timestamp',
+]
+
+CLICKHOUSE_OBSERVATION_DATA_DDL = """
+    CREATE TABLE IF NOT EXISTS observation_data
+    (
+        ota Nullable(String), udid Nullable(String), file_name String,
+        file_timestamp Nullable(Float64), start_time Nullable(DateTime64(3)),
+        end_time Nullable(DateTime64(3)), ignition_status Nullable(Int32),
+        uptime Nullable(Int64), service_uptime Nullable(Int64), privacymode Nullable(Int32),
+        dismode Nullable(String), voltage Nullable(Float64), processing_mode Nullable(Int32),
+        inertial_processed Nullable(UInt8), vision_processed Nullable(UInt8),
+        nrt_status Nullable(String), tripno Nullable(String), videometadatastatus Nullable(UInt32),
+        min_speed Nullable(Float32), max_speed Nullable(Float32), sensormetadata_count Nullable(UInt32),
+        driverinvariantsession Nullable(String), driverid Nullable(String), vehclass Nullable(String),
+        vehicleid Nullable(String), cameras Nullable(Int32), prevvideoname Nullable(String),
+        current_videoname Nullable(String), nextvideoname Nullable(String),
+        devicemodes_itemscount Nullable(UInt32), inference_data_itemscount Nullable(UInt32),
+        canmetadata Nullable(String), alerts_data_num_alerts Nullable(UInt32), alerts_data Nullable(String),
+        audio_events_num_alerts Nullable(UInt32), audio_events_data Nullable(String),
+        events_data_num_alerts Nullable(UInt32), events_data Nullable(String),
+        metadatastatus String DEFAULT 'full', device_id String, s3_path Nullable(String),
+        speed_data Nullable(String), starttime Nullable(String), starttimeld Nullable(String),
+        inwardstarttime Nullable(String), inwardstarttimeld Nullable(String), rssi Nullable(Int32),
+        vin Nullable(String), can_firmware_ver Nullable(String), offset Nullable(Int32),
+        session_embedding Nullable(String), burst_mode Nullable(String), fuel_report Nullable(String),
+        can_src Nullable(String), can_sn Nullable(String), engine_status Nullable(String),
+        protocol_info Nullable(String), idling_report Nullable(String), tc_recommendation Nullable(String),
+        num_frames_out Nullable(UInt32), num_frames_in Nullable(UInt32), num_frames_dms Nullable(UInt32),
+        num_alerts Nullable(UInt32), inward_models_processed Array(String),
+        outward_models_processed Array(String), dms_models_processed Array(String),
+        is_inward_processed Nullable(UInt8), is_dms_processed Nullable(UInt8),
+        irled_status Nullable(Int32), irled_states_timestamp Nullable(String),
+        irled_states_status Nullable(String), faceImageCaptured Nullable(UInt8),
+        obs_filetype Nullable(String), audioEnable Nullable(Int32),
+        user_generated_alert Nullable(String), rtc_valid Nullable(String),
+        rtc_jump_from Nullable(Int64), rtc_jump_to Nullable(Int64), session_count Nullable(UInt32),
+        valid_gps_entries Nullable(UInt32), gps_start_time Nullable(Int64), gps_end_time Nullable(Int64),
+        nw_source Nullable(String), sinr Nullable(Float64), nw_recorded_time Nullable(Int64),
+        idle Nullable(Int32), obdformat Nullable(String), is_inward_cam_obstructed Nullable(UInt8),
+        has_multi_lane UInt8 DEFAULT 0, has_road_boundary_tracks UInt8 DEFAULT 0,
+        has_ipc_events UInt8 DEFAULT 0, is_hd_file UInt8 DEFAULT 0,
+        inward_vision_processed Nullable(UInt8)
     )
-    conn.execute(stmt)
+    ENGINE = MergeTree
+    PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
+    ORDER BY (device_id, file_name)
+    SETTINGS index_granularity = 8192, allow_nullable_key = 1
+"""
+
+CLICKHOUSE_VIDEO_METADATA_DDL = """
+    CREATE TABLE IF NOT EXISTS video_metadata
+    (
+        file_name String, device_id String, start_time Nullable(DateTime64(3)),
+        end_time Nullable(DateTime64(3)), seq_no UInt16, valid Nullable(UInt8),
+        altitude Nullable(Float32), bearing Nullable(Float32), accuracy Nullable(Float32),
+        lat Nullable(Float64), long Nullable(Float64), speed Nullable(Float32),
+        raw_timestamp Nullable(UInt64), altitudeMSL Nullable(Float32), timestamp Nullable(DateTime64(3))
+    )
+    ENGINE = MergeTree
+    PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
+    ORDER BY (device_id, start_time, file_name, seq_no)
+    SETTINGS index_granularity = 8192, allow_nullable_key = 1
+"""
+
 
 # Configuration constants
 MAX_WORKERS_DEFAULT = int(os.getenv('DP_MAX_WORKERS', '24'))
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # in seconds
 BATCH_SIZE = int(os.getenv('DP_BATCH_SIZE', '5000'))
-CONNECTION_TIMEOUT = 60
-POOL_SIZE = 10
-MAX_OVERFLOW = 5
 INSERT_WORKERS_DEFAULT = int(os.getenv('DP_INSERT_WORKERS', '4'))
 S3_READ_CHUNK_SIZE = int(os.getenv('DP_S3_CHUNK_SIZE_MB', '8')) * 1024 * 1024
 
 # Initialize logger
 logger = Logger('data_processor')
 
-EXTRACTEDDATA_SCHEMA_COLUMNS: Dict[str, str] = {
-    'ota': 'TEXT',
-    'udid': 'TEXT',
-    'file_name': 'TEXT',
-    'file_timestamp': 'DOUBLE PRECISION',
-    'start_time': 'TIMESTAMP',
-    'end_time': 'TIMESTAMP',
-    'ignition_status': 'INTEGER',
-    'uptime': 'INTEGER',
-    'service_uptime': 'INTEGER',
-    'privacymode': 'INTEGER',
-    'dismode': 'TEXT',
-    'voltage': 'DOUBLE PRECISION',
-    'processing_mode': 'INTEGER',
-    'inertial_processed': 'TEXT',
-    'vision_processed': 'TEXT',
-    'nrt_status': 'TEXT',
-    'tripno': 'TEXT',
-    'videometadatastatus': 'INTEGER',
-    'min_speed': 'INTEGER',
-    'max_speed': 'INTEGER',
-    'sensormetadata_count': 'INTEGER',
-    'driverinvariantsession': 'TEXT',
-    'driverid': 'TEXT',
-    'vehclass': 'TEXT',
-    'vehicleid': 'TEXT',
-    'cameras': 'INTEGER',
-    'prevvideoname': 'TEXT',
-    'current_videoname': 'TEXT',
-    'nextvideoname': 'TEXT',
-    'devicemodes_itemscount': 'INTEGER',
-    'inference_data_itemscount': 'INTEGER',
-    'alerts_data_num_alerts': 'INTEGER',
-    'alerts_data': 'JSONB',
-    'audio_events_num_alerts': 'INTEGER',
-    'audio_events_data': 'JSONB',
-    'events_data_num_alerts': 'INTEGER',
-    'events_data': 'JSONB',
-    'metadatastatus': 'TEXT',
-    'device_id': 'TEXT',
-    's3_path': 'TEXT',
-    'speed_data': 'JSONB',
-    'triggerid': 'INTEGER',
-    'starttime': 'TEXT',
-    'starttimeld': 'TEXT',
-    'inwardstarttime': 'TEXT',
-    'inwardstarttimeld': 'TEXT',
-    'videometadata': 'JSONB',
-    'rssi': 'INTEGER',
-    'canmetadata': 'JSONB',
-    'vin': 'TEXT',
-    'can_firmware_ver': 'TEXT',
-    'offset': 'INTEGER',
-    'user_generated_alert': 'JSONB',
-    'faceImageCaptured': 'BOOLEAN',
-    'audioEnable': 'INTEGER',
-    'obs_filetype': 'TEXT',
-    'irled_status': 'INTEGER',
-    'irled_states_timestamp': 'TEXT',
-    'irled_states_status': 'TEXT',
-    'prediction': 'TEXT',
-    'obstructed_camera': 'INTEGER',
-    'clear_low_confidence': 'INTEGER',
-    'clear': 'INTEGER',
-    'idling_report': 'JSONB',
-    'fuel_report': 'JSONB',
-    'video_ir_failure_cnf': 'INTEGER',
-    'frame_ir_failure_cnfs': 'INTEGER[]',
-    'ir_led_hw_status': 'JSONB',
-    'frame_brightness_scores': 'INTEGER[]',
-    'video_brightness_score': 'INTEGER',
-    'num_ir_frames': 'INTEGER',
-    'num_of_ir_enabled_frames': 'INTEGER',
-    'ir_toggle_count': 'INTEGER',
-    'num_dark_frames': 'INTEGER',
-    'can_sn': 'TEXT',
-    'json_size_kb': 'DOUBLE PRECISION',
-    'observations_7z_size': 'DOUBLE PRECISION',
-    'observations_device_7z_size': 'DOUBLE PRECISION',
-    'fields_transposed': 'JSONB',
-    'one_fps': 'JSONB',
-    'worst_accel_str': 'TEXT',
-    'worst_gyro_str': 'TEXT',
-    'inertial_features': 'JSONB',
-    'videometadataone': 'JSONB',
-    'obs_data_optimization_version': 'TEXT',
-    'ignitions': 'JSONB',
-    'session_embedding': 'JSONB',
-    'burst_mode': 'JSONB',
-    'can_src': 'TEXT',
-    'engine_status': 'TEXT',
-    'num_frames_out': 'INTEGER',
-    'num_frames_in': 'INTEGER',
-    'num_frames_dms': 'INTEGER',
-    'num_alerts': 'INTEGER',
-    'inward_models_processed': 'JSONB',
-    'outward_models_processed': 'JSONB',
-    'dms_models_processed': 'JSONB',
-    'is_inward_processed': 'BOOLEAN',
-    'is_dms_processed': 'BOOLEAN',
-    'protocol_info': 'TEXT',
-    'tc_recommendation': 'TEXT',
-    'session_type': 'TEXT',
-    'rtc_valid': 'TEXT',
-    'rtc_jump_from': 'BIGINT',
-    'rtc_jump_to': 'BIGINT',
-    'session_count': 'INTEGER',
-    'valid_gps_entries': 'INTEGER',
-    'gps_start_time': 'BIGINT',
-    'gps_end_time': 'BIGINT',
-    'nw_source': 'TEXT',
-    'sinr': 'DOUBLE PRECISION',
-    'nw_recorded_time': 'BIGINT',
-    'idle': 'INTEGER',
-    'obdformat': 'TEXT',
-    'is_inward_cam_obstructed': 'BOOLEAN',
-    'has_multi_lane': 'BOOLEAN',
-    'has_road_boundary_tracks': 'BOOLEAN',
-    'has_ipc_events': 'BOOLEAN',
-    'is_hd_file': 'BOOLEAN',
-    'inward_vision_processed': 'TEXT',
-}
 
 @dataclass
 class ProcessingMetrics:
@@ -234,236 +164,62 @@ class DataProcessor:
         self.env = None
         self.shared_s3_client = None
         self._thread_lock = threading.Lock()
-        self._live_extracteddata_column_types: Optional[Dict[str, str]] = None
         self._last_progress_time = time.time()
         self.metrics = ProcessingMetrics()
-        
+
         # Initialize database connections with proper error handling
         self._init_database_connections()
-
-    def _get_live_extracteddata_column_types(self) -> Dict[str, str]:
-        """Cache the live PostgreSQL column types for extracteddata."""
-        if self._live_extracteddata_column_types is not None:
-            return self._live_extracteddata_column_types
-
-        query = text(
-            """
-            SELECT column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'extracteddata'
-            """
-        )
-
-        with self.db_insert_engine.begin() as conn:
-            rows = conn.execute(query).fetchall()
-
-        self._live_extracteddata_column_types = {row[0]: row[1] for row in rows}
-        return self._live_extracteddata_column_types
-
-    def _coerce_int_candidate(self, value: Any) -> Optional[int]:
-        """Best-effort conversion for values heading into integer-like columns."""
-        if value is None or isinstance(value, bool):
-            return None
-
-        if isinstance(value, int):
-            return value
-
-        if isinstance(value, float):
-            if not math.isfinite(value) or not value.is_integer():
-                return None
-            return int(value)
-
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return None
-            if re.fullmatch(r'-?\d+', stripped):
-                try:
-                    return int(stripped)
-                except ValueError:
-                    return None
-
-        return None
-
-    def _diagnose_numeric_overflow(self, rows: List[Dict]) -> Optional[Dict[str, Any]]:
-        """Find the first row/value that exceeds the live INTEGER type in Postgres."""
-        int_bounds = {
-            'smallint': (-32768, 32767),
-            'integer': (-2147483648, 2147483647),
-        }
-
-        live_types = self._get_live_extracteddata_column_types()
-
-        for row_index, row in enumerate(rows):
-            for column, value in row.items():
-                data_type = live_types.get(column)
-                if data_type not in int_bounds:
-                    continue
-
-                candidate = self._coerce_int_candidate(value)
-                if candidate is None:
-                    continue
-
-                lower, upper = int_bounds[data_type]
-                if candidate < lower or candidate > upper:
-                    return {
-                        'row_index': row_index,
-                        'column': column,
-                        'value': candidate,
-                        'postgres_type': data_type,
-                        'allowed_range': (lower, upper),
-                        'file_name': row.get('file_name'),
-                        's3_path': row.get('s3_path'),
-                        'start_time': row.get('start_time'),
-                    }
-
-        return None
-        
-        # Performance monitoring
-        self._last_progress_time = time.time()
-        self._processed_count = 0
 
     def _init_database_connections(self) -> None:
         """Initialize database connections with proper error handling"""
         try:
-            db_params = read_db_config('POLL_USER_DB')
-            
-            # Create SQLAlchemy engine with optimized settings
-            self.db_insert_engine = create_engine(
-                f"postgresql://{db_params['user']}:{db_params['password']}@{db_params['host']}:{db_params['port']}/{db_params['database']}",
-                poolclass=QueuePool,
-                pool_size=POOL_SIZE,
-                max_overflow=MAX_OVERFLOW,
-                pool_pre_ping=True,
-                pool_recycle=3600,  # Recycle connections after 1 hour
-                connect_args={
-                    "connect_timeout": CONNECTION_TIMEOUT,
-                    "application_name": "data_processor"
-                }
-            )
-            
+            # local_conn_pool backs the extracteddata_registry polling-window tracker
+            # (see _update_registry_data) and obs_conn_pool discovers pending S3 paths
+            # per device (see process_data) -- both are independent of where the
+            # extracted rows themselves are written.
             self.local_conn_pool = db_connect_pool('POLL_USER_DB')
             self.obs_conn_pool = None
+            self.ch_client = None
 
-            # Ensure target table schema is ready before any insert path starts.
-            self._ensure_extracteddata_schema()
-            
+            self._init_clickhouse_client()
+            self._ensure_clickhouse_schema()
+
             logger.log_info("Database connections initialized successfully")
-            
+
         except Exception as e:
             logger.log_error(f"Failed to initialize database connections: {e}")
             raise
 
-    def _ensure_extracteddata_schema(self) -> None:
-        """Create/align extracteddata schema and indexes for resilient inserts."""
-        try:
-            base_table_sql = """
-                CREATE TABLE IF NOT EXISTS public.extracteddata (
-                    start_time TIMESTAMP NOT NULL,
-                    s3_path TEXT NOT NULL,
-                    CONSTRAINT extracteddata_pkey PRIMARY KEY (s3_path, start_time)
-                )
-            """
+    def _init_clickhouse_client(self) -> None:
+        """Create the ClickHouse client used for observation_data/video_metadata inserts."""
+        parser = configparser.ConfigParser()
+        parser.read(CLICKHOUSE_DB_CONFIG_PATH)
+        if not parser.has_section(CLICKHOUSE_CONFIG_SECTION):
+            raise ValueError(
+                f"Section '{CLICKHOUSE_CONFIG_SECTION}' not found in {CLICKHOUSE_DB_CONFIG_PATH}"
+            )
 
-            with self.db_insert_engine.begin() as conn:
-                conn.execute(text(base_table_sql))
+        host = parser.get(CLICKHOUSE_CONFIG_SECTION, 'host', fallback='127.0.0.1')
+        port = parser.getint(CLICKHOUSE_CONFIG_SECTION, 'port', fallback=9000)
+        user = parser.get(CLICKHOUSE_CONFIG_SECTION, 'user', fallback='default')
+        password = parser.get(CLICKHOUSE_CONFIG_SECTION, 'password', fallback='')
+        database = parser.get(CLICKHOUSE_CONFIG_SECTION, 'database', fallback='default')
+        # clickhouse_connect speaks HTTP; the native port (9000) has no HTTP listener.
+        http_port = 8123 if port == 9000 else port
 
-                owner_info = conn.execute(
-                    text(
-                        """
-                        SELECT pg_get_userbyid(c.relowner) AS owner_name,
-                               current_user AS current_user_name
-                        FROM pg_class c
-                        JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE n.nspname = 'public'
-                          AND c.relname = 'extracteddata'
-                        LIMIT 1
-                        """
-                    )
-                ).first()
-                owner_name = owner_info[0] if owner_info else None
-                current_user_name = owner_info[1] if owner_info else None
-                can_manage_table_schema = owner_name == current_user_name
+        self.ch_client = clickhouse_connect.get_client(
+            host=host,
+            port=http_port,
+            username=user,
+            password=password,
+            database=database,
+        )
 
-                existing_cols = conn.execute(
-                    text(
-                        """
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = 'public' AND table_name = 'extracteddata'
-                        """
-                    )
-                ).fetchall()
-                existing_col_set = {row[0] for row in existing_cols}
-
-                missing_columns = [
-                    (col_name, col_type)
-                    for col_name, col_type in EXTRACTEDDATA_SCHEMA_COLUMNS.items()
-                    if col_name not in existing_col_set
-                ]
-
-                if missing_columns and can_manage_table_schema:
-                    for col_name, col_type in missing_columns:
-                        conn.execute(text(f'ALTER TABLE public.extracteddata ADD COLUMN "{col_name}" {col_type}'))
-                elif missing_columns:
-                    logger.log_warning(
-                        f"Skipping {len(missing_columns)} missing-column additions on public.extracteddata because current user '{current_user_name}' does not own the table (owner: '{owner_name}')."
-                    )
-
-                conflict_key_exists = conn.execute(
-                    text(
-                        """
-                        SELECT 1
-                        FROM pg_constraint con
-                        JOIN pg_class rel ON rel.oid = con.conrelid
-                        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
-                        WHERE nsp.nspname = 'public'
-                          AND rel.relname = 'extracteddata'
-                          AND con.contype IN ('p', 'u')
-                          AND (
-                                                                SELECT string_agg(att.attname::text, ',' ORDER BY arr.idx)
-                                FROM unnest(con.conkey) WITH ORDINALITY AS arr(attnum, idx)
-                                JOIN pg_attribute att
-                                  ON att.attrelid = rel.oid
-                                 AND att.attnum = arr.attnum
-                                                    ) = 's3_path,start_time'
-                        LIMIT 1
-                        """
-                    )
-                ).first() is not None
-
-                if not conflict_key_exists and can_manage_table_schema:
-                    conn.execute(
-                        text(
-                            """
-                            CREATE UNIQUE INDEX IF NOT EXISTS extracteddata_s3_path_start_time_uq
-                            ON public.extracteddata (s3_path, start_time)
-                            """
-                        )
-                    )
-                elif not conflict_key_exists:
-                    logger.log_warning(
-                        f"Skipping conflict-key index creation on public.extracteddata because current user '{current_user_name}' does not own the table (owner: '{owner_name}')."
-                    )
-
-                if can_manage_table_schema:
-                    conn.execute(
-                        text(
-                            """
-                            CREATE INDEX IF NOT EXISTS idx_extracteddata_device_id
-                            ON public.extracteddata USING btree (device_id)
-                            """
-                        )
-                    )
-                else:
-                    logger.log_warning(
-                        f"Skipping device_id index creation on public.extracteddata because current user '{current_user_name}' does not own the table (owner: '{owner_name}')."
-                    )
-
-            logger.log_info("Schema guard check complete for public.extracteddata")
-        except Exception as e:
-            logger.log_error(f"Schema guard failed for public.extracteddata: {e}")
-            raise
+    def _ensure_clickhouse_schema(self) -> None:
+        """Create observation_data/video_metadata in ClickHouse if they don't exist yet."""
+        self.ch_client.command(CLICKHOUSE_OBSERVATION_DATA_DDL)
+        self.ch_client.command(CLICKHOUSE_VIDEO_METADATA_DDL)
+        logger.log_info("Schema guard check complete for ClickHouse observation_data/video_metadata")
 
     @contextmanager
     def _get_s3_client(self):
@@ -702,7 +458,6 @@ class DataProcessor:
                 'starttimeld': data.get('startTimeLd'),
                 'inwardstarttime': data.get('inwardStartTime'),
                 'inwardstarttimeld': data.get('inwardStartTimeLd'),
-                'videometadata': video_metadata,
                 'rssi': data.get('networkInfo', {}).get('rssi'),
                 'vin': data.get('vin'),
                 'can_firmware_ver': data.get('can_firmware_ver'),
@@ -751,12 +506,52 @@ class DataProcessor:
                 'is_hd_file': 'carBoxTrackerListCompressed' in data.get('inference_data', {}).get('observations_data', {}),
                 'inward_vision_processed': self._check_module_processed(data, 'inward_vision'),
             }
-            
+
+            extracted_data['_video_metadata_rows'] = self._build_video_metadata_rows(
+                video_metadata, file_name, device_id,
+                extracted_data['start_time'], extracted_data['end_time'],
+            )
+
             return extracted_data
-            
+
         except Exception as e:
             logger.log_error(f"Error extracting data: {e}")
             return None
+
+    def _build_video_metadata_rows(
+        self,
+        video_metadata: Any,
+        file_name: Optional[str],
+        device_id: str,
+        start_time: Optional[str],
+        end_time: Optional[str],
+    ) -> List[Dict]:
+        """Flatten a file's videoMetaData[] array into video_metadata table rows."""
+        if not isinstance(video_metadata, list):
+            return []
+
+        rows = []
+        for seq_no, item in enumerate(video_metadata):
+            if not isinstance(item, dict):
+                continue
+            rows.append({
+                'file_name': file_name,
+                'device_id': device_id,
+                'start_time': start_time,
+                'end_time': end_time,
+                'seq_no': seq_no,
+                'valid': item.get('valid'),
+                'altitude': item.get('altitude'),
+                'bearing': item.get('bearing'),
+                'accuracy': item.get('accuracy'),
+                'lat': item.get('lat'),
+                'long': item.get('long'),
+                'speed': item.get('speed'),
+                'raw_timestamp': item.get('raw_timestamp'),
+                'altitudeMSL': item.get('altitudeMSL'),
+                'timestamp': self.epoch_to_utc(item.get('timestamp')),
+            })
+        return rows
 
     def _extract_observation_data(
         self,
@@ -770,6 +565,8 @@ class DataProcessor:
         inference_data = data.get('inference_data', {})
         observations = inference_data.get('observations_data', {}) if isinstance(inference_data, dict) else {}
         video_metadata = data.get('videoMetaData', [])
+        start_time_str = self.epoch_to_utc(data.get('startTime'))
+        end_time_str = self.epoch_to_utc(data.get('endTime'))
 
         return {
             'ota': data.get('app_ver'),
@@ -777,12 +574,11 @@ class DataProcessor:
             'udid': data.get('udid'),
             'file_name': file_name,
             'file_timestamp': file_timestamp,
-            'start_time': self.epoch_to_utc(data.get('startTime')),
-            'end_time': self.epoch_to_utc(data.get('endTime')),
+            'start_time': start_time_str,
+            'end_time': end_time_str,
             'starttime': data.get('startTime'),
             'starttimeld': data.get('startTimeLd'),
             's3_path': url,
-            'videometadata': video_metadata if isinstance(video_metadata, list) else [],
             'canmetadata': observations.get('canMetaData', []) if isinstance(observations, dict) else [],
             'protocol_info': observations.get('protocol_info') if isinstance(observations, dict) else None,
             'idling_report': observations.get('idling_report', {}) if isinstance(observations, dict) else {},
@@ -802,57 +598,61 @@ class DataProcessor:
             'session_embedding': data.get('session_embedding', {}),
             'burst_mode': data.get('burst_mode', {}),
             'fuel_report': data.get('fuel_report', {}),
+            '_video_metadata_rows': self._build_video_metadata_rows(
+                video_metadata, file_name, device_id, start_time_str, end_time_str,
+            ),
         }
 
     def _bulk_insert_rows(self, rows: List[Dict]) -> None:
-        """Fast bulk insert with conflict handling using execute_values."""
+        """Split each extracted row into its observation_data and video_metadata
+        parts, then insert both into ClickHouse."""
         if not rows:
             return
 
-        columns = list(rows[0].keys())
-        values = []
-
+        video_metadata_rows: List[Dict] = []
+        observation_rows: List[Dict] = []
         for row in rows:
-            row_tuple = []
-            for col in columns:
-                val = row.get(col)
-                if isinstance(val, (dict, list)):
-                    row_tuple.append(Json(val))
-                else:
-                    row_tuple.append(val)
-            values.append(tuple(row_tuple))
+            row = dict(row)
+            video_metadata_rows.extend(row.pop('_video_metadata_rows', None) or [])
+            observation_rows.append(row)
 
-        col_sql = ', '.join('"' + col.replace('"', '""') + '"' for col in columns)
-        sql = f"""
-            INSERT INTO extracteddata ({col_sql})
-            VALUES %s
-            ON CONFLICT (s3_path, start_time) DO NOTHING
-        """
+        self._insert_clickhouse_observation_rows(observation_rows)
+        self._insert_clickhouse_video_metadata_rows(video_metadata_rows)
 
-        raw_conn = self.db_insert_engine.raw_connection()
-        try:
-            with raw_conn.cursor() as cur:
-                execute_values(cur, sql, values, page_size=2000)
-            raw_conn.commit()
-        except Exception as exc:
-            raw_conn.rollback()
-            if exc.__class__.__name__ == 'NumericValueOutOfRange' or 'integer out of range' in str(exc).lower():
-                overflow_details = self._diagnose_numeric_overflow(rows)
-                if overflow_details:
-                    logger.log_error(
-                        "Numeric overflow candidate identified: "
-                        f"row_index={overflow_details['row_index']}, "
-                        f"column={overflow_details['column']}, "
-                        f"value={overflow_details['value']}, "
-                        f"postgres_type={overflow_details['postgres_type']}, "
-                        f"allowed_range={overflow_details['allowed_range']}, "
-                        f"file_name={overflow_details['file_name']}, "
-                        f"start_time={overflow_details['start_time']}, "
-                        f"s3_path={overflow_details['s3_path']}"
-                    )
-            raise
-        finally:
-            raw_conn.close()
+    def _prepare_clickhouse_observation_row(self, row: Dict) -> Dict:
+        """Coerce one extracted-data dict into ClickHouse-ready column values."""
+        prepared = {}
+        for col, val in row.items():
+            if col in CLICKHOUSE_JSON_COLUMNS:
+                prepared[col] = json.dumps(val) if val not in (None, '') else None
+            elif col in CLICKHOUSE_BOOL_COLUMNS:
+                prepared[col] = None if val is None else int(bool(val))
+            elif col in CLICKHOUSE_ARRAY_COLUMNS:
+                prepared[col] = val if isinstance(val, list) else []
+            elif col in CLICKHOUSE_TEXT_COLUMNS:
+                prepared[col] = None if val is None else str(val)
+            else:
+                prepared[col] = val
+        return prepared
+
+    def _insert_clickhouse_observation_rows(self, rows: List[Dict]) -> None:
+        if not rows:
+            return
+
+        prepared_rows = [self._prepare_clickhouse_observation_row(row) for row in rows]
+        columns = list(prepared_rows[0].keys())
+        data = [[row.get(col) for col in columns] for row in prepared_rows]
+
+        self.ch_client.insert('observation_data', data, column_names=columns)
+        logger.log_info(f"Inserted {len(prepared_rows)} row(s) into ClickHouse observation_data")
+
+    def _insert_clickhouse_video_metadata_rows(self, rows: List[Dict]) -> None:
+        if not rows:
+            return
+
+        data = [[row.get(col) for col in VIDEO_METADATA_COLUMNS] for row in rows]
+        self.ch_client.insert('video_metadata', data, column_names=VIDEO_METADATA_COLUMNS)
+        logger.log_info(f"Inserted {len(rows)} row(s) into ClickHouse video_metadata")
 
     def _check_module_processed(self, data: Dict, module_type: str) -> bool:
         """Check if a specific module type was processed"""
@@ -909,60 +709,6 @@ class DataProcessor:
             return []
         except (AttributeError, TypeError):
             return []
-
-    def insert_values(self, device_id: str, data: List[Dict], conn) -> None:
-        """Insert data with improved error handling and validation"""
-        if not data:
-            logger.log_debug(f"No data to insert for device {device_id}")
-            return
-        
-        try:
-            data_df = pd.DataFrame(data)
-            
-            # Validate DataFrame
-            if data_df.empty:
-                logger.log_warning(f"Empty DataFrame for device {device_id}")
-            else:
-                # Insert with retry mechanism
-                def insert_operation():
-                    data_df.to_sql(
-                        'extracteddata', 
-                        conn, 
-                        if_exists='append',
-                        method=insert_ignore_duplicates, 
-                        index=False, 
-                        dtype=dtype_dict
-                    )
-                
-                self._retry_operation(insert_operation)
-                logger.log_info(f"Successfully inserted {len(data)} records for device {device_id}")
-            
-        except Exception as e:
-            error_details = {
-                'timestamp': datetime.now().isoformat(),
-                'device_id': device_id,
-                'error_type': type(e).__name__,
-                'error_message': str(e),
-                'traceback': traceback.format_exc(),
-                'data_shape': data_df.shape if 'd' in locals() else 'N/A',
-                'columns': list(data_df.columns) if 'data_df' in locals() else 'N/A',
-                'connection_status': 'open' if conn and not conn.closed else 'closed',
-            }
-            
-            logger.log_error(
-                f"Database Insertion Error Report:\n"
-                f"{'='*60}\n"
-                f"Timestamp: {error_details['timestamp']}\n"
-                f"Device ID: {error_details['device_id']}\n"
-                f"Error Type: {error_details['error_type']}\n"
-                f"Error Message: {error_details['error_message']}\n"
-                f"Data Shape: {error_details['data_shape']}\n"
-                f"Columns: {error_details['columns']}\n"
-                f"Connection Status: {error_details['connection_status']}\n"
-                f"{'='*60}\n"
-                f"Full Traceback:\n{error_details['traceback']}"
-            )
-            raise
 
     def _log_progress(self, current: int, total: int, operation: str) -> None:
         """Log progress at intervals"""
@@ -1274,9 +1020,9 @@ class DataProcessor:
                 self.shared_s3_client = None
             
             # Close database engines
-            if hasattr(self, 'db_insert_engine'):
-                self.db_insert_engine.dispose()
-            
+            if getattr(self, 'ch_client', None) is not None:
+                self.ch_client.close()
+
             logger.log_info("Cleanup completed successfully")
             
         except Exception as e:
