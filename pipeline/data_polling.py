@@ -334,6 +334,7 @@ def daily_device_extraction(ys=False, target_date=None):
                         logging.log_warning(
                             f"Device_State column missing in {device_data_csv_path}; writing unfiltered device list"
                         )
+                    df['product_line'] = product_line
                     df['environment'] = env
                     df.to_csv(device_data_final_csv_path, index=False)
                     logging.log_info(f"Successfully copied device data CSV for version {version}")

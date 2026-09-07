@@ -51,7 +51,7 @@ CLICKHOUSE_BOOL_COLUMNS = {
 # observation_data columns typed Array(String) - keep list-valued, never None.
 CLICKHOUSE_ARRAY_COLUMNS = {'inward_models_processed', 'outward_models_processed', 'dms_models_processed'}
 # observation_data columns kept as Nullable(String) even though the source value looks numeric.
-CLICKHOUSE_TEXT_COLUMNS = {'udid', 'starttime', 'starttimeld', 'inwardstarttime', 'inwardstarttimeld', 'rtc_valid', 'file_timestamp'}
+CLICKHOUSE_TEXT_COLUMNS = {'product_line', 'udid', 'starttime', 'starttimeld', 'inwardstarttime', 'inwardstarttimeld', 'rtc_valid', 'file_timestamp'}
 
 VIDEO_METADATA_COLUMNS = [
     'file_name', 'device_id', 'start_time', 'end_time', 'seq_no',
