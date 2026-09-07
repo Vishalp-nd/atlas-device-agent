@@ -72,7 +72,7 @@ CREATE TABLE observation_data
     protocol_info                Nullable(String),
     idling_report                Nullable(String),             -- raw JSON
     tc_recommendation            Nullable(String),
-    num_frames_out               Nullable(UInt32),
+    num_frames_out               Nullable(String),
     num_frames_in                Nullable(UInt32),
     num_frames_dms               Nullable(UInt32),
     num_alerts                   Nullable(UInt32),
@@ -91,7 +91,7 @@ CREATE TABLE observation_data
     rtc_valid                     Nullable(String),             -- observed value is text ('1'), not boolean
     rtc_jump_from                 Nullable(Int64),
     rtc_jump_to                   Nullable(Int64),
-    session_count                 Nullable(UInt32),
+    session_count                 Nullable(String),
     valid_gps_entries             Nullable(UInt32),
     gps_start_time                Nullable(Int64),
     gps_end_time                  Nullable(Int64),

@@ -3,8 +3,10 @@ import sys
 import time
 import threading
 import json
+import gc
 import tempfile
 import configparser
+import socket
 from datetime import datetime
 import re
 import traceback
@@ -47,7 +49,7 @@ CLICKHOUSE_BOOL_COLUMNS = {
 # observation_data columns typed Array(String) - keep list-valued, never None.
 CLICKHOUSE_ARRAY_COLUMNS = {'inward_models_processed', 'outward_models_processed', 'dms_models_processed'}
 # observation_data columns kept as Nullable(String) even though the source value looks numeric.
-CLICKHOUSE_TEXT_COLUMNS = {'udid', 'starttime', 'starttimeld', 'inwardstarttime', 'inwardstarttimeld', 'rtc_valid'}
+CLICKHOUSE_TEXT_COLUMNS = {'udid', 'starttime', 'starttimeld', 'inwardstarttime', 'inwardstarttimeld', 'rtc_valid', 'file_timestamp'}
 
 VIDEO_METADATA_COLUMNS = [
     'file_name', 'device_id', 'start_time', 'end_time', 'seq_no',
@@ -80,7 +82,7 @@ CLICKHOUSE_OBSERVATION_DATA_DDL = """
         session_embedding Nullable(String), burst_mode Nullable(String), fuel_report Nullable(String),
         can_src Nullable(String), can_sn Nullable(String), engine_status Nullable(String),
         protocol_info Nullable(String), idling_report Nullable(String), tc_recommendation Nullable(String),
-        num_frames_out Nullable(UInt32), num_frames_in Nullable(UInt32), num_frames_dms Nullable(UInt32),
+        num_frames_out Nullable(String), num_frames_in Nullable(UInt32), num_frames_dms Nullable(UInt32),
         num_alerts Nullable(UInt32), inward_models_processed Array(String),
         outward_models_processed Array(String), dms_models_processed Array(String),
         is_inward_processed Nullable(UInt8), is_dms_processed Nullable(UInt8),
@@ -88,7 +90,7 @@ CLICKHOUSE_OBSERVATION_DATA_DDL = """
         irled_states_status Nullable(String), faceImageCaptured Nullable(UInt8),
         obs_filetype Nullable(String), audioEnable Nullable(Int32),
         user_generated_alert Nullable(String), rtc_valid Nullable(String),
-        rtc_jump_from Nullable(Int64), rtc_jump_to Nullable(Int64), session_count Nullable(UInt32),
+        rtc_jump_from Nullable(Int64), rtc_jump_to Nullable(Int64), session_count Nullable(String),
         valid_gps_entries Nullable(UInt32), gps_start_time Nullable(Int64), gps_end_time Nullable(Int64),
         nw_source Nullable(String), sinr Nullable(Float64), nw_recorded_time Nullable(Int64),
         idle Nullable(Int32), obdformat Nullable(String), is_inward_cam_obstructed Nullable(UInt8),
@@ -119,11 +121,11 @@ CLICKHOUSE_VIDEO_METADATA_DDL = """
 
 
 # Configuration constants
-MAX_WORKERS_DEFAULT = int(os.getenv('DP_MAX_WORKERS', '24'))
+MAX_WORKERS_DEFAULT = int(os.getenv('DP_MAX_WORKERS', '4'))
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # in seconds
-BATCH_SIZE = int(os.getenv('DP_BATCH_SIZE', '5000'))
-INSERT_WORKERS_DEFAULT = int(os.getenv('DP_INSERT_WORKERS', '4'))
+BATCH_SIZE = int(os.getenv('DP_BATCH_SIZE', '500'))
+INSERT_WORKERS_DEFAULT = int(os.getenv('DP_INSERT_WORKERS', '1'))
 S3_READ_CHUNK_SIZE = int(os.getenv('DP_S3_CHUNK_SIZE_MB', '8')) * 1024 * 1024
 
 # Initialize logger
@@ -164,6 +166,8 @@ class DataProcessor:
         self.env = None
         self.shared_s3_client = None
         self._thread_lock = threading.Lock()
+        self._clickhouse_lock = threading.Lock()
+        self._observation_column_types = {}
         self._last_progress_time = time.time()
         self.metrics = ProcessingMetrics()
 
@@ -204,6 +208,22 @@ class DataProcessor:
         user = parser.get(CLICKHOUSE_CONFIG_SECTION, 'user', fallback='default')
         password = parser.get(CLICKHOUSE_CONFIG_SECTION, 'password', fallback='')
         database = parser.get(CLICKHOUSE_CONFIG_SECTION, 'database', fallback='default')
+        override_host = os.getenv(f'{CLICKHOUSE_CONFIG_SECTION}_HOST', '').strip()
+        global_override = os.getenv('DB_HOST_OVERRIDE', '').strip()
+        if override_host or global_override:
+            host = override_host or global_override
+
+        if host == 'host.docker.internal':
+            try:
+                socket.gethostbyname(host)
+            except OSError:
+                fallback_host = os.getenv('DB_DOCKER_HOST_FALLBACK', '127.0.0.1').strip() or '127.0.0.1'
+                logger.log_warning(
+                    'host.docker.internal is not resolvable on this host; '
+                    f'using fallback {fallback_host} for section {CLICKHOUSE_CONFIG_SECTION}. '
+                    f'Set {CLICKHOUSE_CONFIG_SECTION}_HOST or DB_HOST_OVERRIDE to control this explicitly.'
+                )
+                host = fallback_host
         # clickhouse_connect speaks HTTP; the native port (9000) has no HTTP listener.
         http_port = 8123 if port == 9000 else port
 
@@ -219,7 +239,37 @@ class DataProcessor:
         """Create observation_data/video_metadata in ClickHouse if they don't exist yet."""
         self.ch_client.command(CLICKHOUSE_OBSERVATION_DATA_DDL)
         self.ch_client.command(CLICKHOUSE_VIDEO_METADATA_DDL)
+        self._observation_column_types = self._load_clickhouse_column_types('observation_data')
         logger.log_info("Schema guard check complete for ClickHouse observation_data/video_metadata")
+
+    def _load_clickhouse_column_types(self, table_name: str) -> Dict[str, str]:
+        rows = self.ch_client.query(
+            "SELECT name, type FROM system.columns WHERE database = currentDatabase() AND table = %(table)s",
+            parameters={'table': table_name},
+        ).result_rows
+        return {name: col_type for name, col_type in rows}
+
+    @staticmethod
+    def _base_clickhouse_type(col_type: str) -> str:
+        while col_type.startswith('Nullable(') and col_type.endswith(')'):
+            col_type = col_type[len('Nullable('):-1]
+        return col_type
+
+    def _coerce_clickhouse_value(self, col: str, val: Any) -> Any:
+        if val is None:
+            return None
+
+        col_type = self._base_clickhouse_type(self._observation_column_types.get(col, ''))
+        if not col_type:
+            return val
+
+        if col_type.startswith('Array('):
+            return val if isinstance(val, list) else []
+        if col_type.startswith('String') or col_type.startswith('FixedString'):
+            return str(val)
+        if col_type.startswith('UInt8') and isinstance(val, bool):
+            return int(val)
+        return val
 
     @contextmanager
     def _get_s3_client(self):
@@ -632,7 +682,7 @@ class DataProcessor:
             elif col in CLICKHOUSE_TEXT_COLUMNS:
                 prepared[col] = None if val is None else str(val)
             else:
-                prepared[col] = val
+                prepared[col] = self._coerce_clickhouse_value(col, val)
         return prepared
 
     def _insert_clickhouse_observation_rows(self, rows: List[Dict]) -> None:
@@ -643,7 +693,8 @@ class DataProcessor:
         columns = list(prepared_rows[0].keys())
         data = [[row.get(col) for col in columns] for row in prepared_rows]
 
-        self.ch_client.insert('observation_data', data, column_names=columns)
+        with self._clickhouse_lock:
+            self.ch_client.insert('observation_data', data, column_names=columns)
         logger.log_info(f"Inserted {len(prepared_rows)} row(s) into ClickHouse observation_data")
 
     def _insert_clickhouse_video_metadata_rows(self, rows: List[Dict]) -> None:
@@ -651,7 +702,8 @@ class DataProcessor:
             return
 
         data = [[row.get(col) for col in VIDEO_METADATA_COLUMNS] for row in rows]
-        self.ch_client.insert('video_metadata', data, column_names=VIDEO_METADATA_COLUMNS)
+        with self._clickhouse_lock:
+            self.ch_client.insert('video_metadata', data, column_names=VIDEO_METADATA_COLUMNS)
         logger.log_info(f"Inserted {len(rows)} row(s) into ClickHouse video_metadata")
 
     def _check_module_processed(self, data: Dict, module_type: str) -> bool:
@@ -807,12 +859,7 @@ class DataProcessor:
         
         # Constants for batch processing 
         batch_size = BATCH_SIZE
-
-        # Buffer per device with thread-safe access
-        device_data_buffer = defaultdict(list)
-        device_counts = defaultdict(int)
         device_registry_data = {}
-        buffer_lock = threading.Lock()
 
         max_workers = min(os.cpu_count() or 4, MAX_WORKERS_DEFAULT)
 
@@ -872,58 +919,41 @@ class DataProcessor:
                             executor.submit(self.process_url, device_id, url, date_range)
                         )
 
-                # Process completed tasks with batch insertion
+                # Process completed tasks and insert each URL result immediately in small chunks.
                 with ThreadPoolExecutor(max_workers=INSERT_WORKERS, thread_name_prefix="BatchInsert") as batch_executor:
+                    batch_futures = []
                     for future in as_completed(futures):
                         try:
                             device_id, extracted_data, _ = future.result()
                             if extracted_data:
-                                with buffer_lock:
-                                    device_data_buffer[device_id].extend(extracted_data)
-                                    device_counts[device_id] += len(extracted_data)
-                                    
-                                    # Check if we need to insert a batch
-                                    if device_counts[device_id] >= batch_size:
-                                        # Extract batch data
-                                        batch_data = device_data_buffer[device_id][:batch_size]
-                                        device_data_buffer[device_id] = device_data_buffer[device_id][batch_size:]
-                                        device_counts[device_id] -= batch_size
-                                        
-                                        # Submit batch for insertion
+                                for start_idx in range(0, len(extracted_data), batch_size):
+                                    batch_data = extracted_data[start_idx:start_idx + batch_size]
+                                    batch_futures.append(
                                         batch_executor.submit(insert_device_batch, device_id, batch_data)
-                                        
+                                    )
+                            extracted_data = None
                         except Exception as e:
                             logger.log_error(f"URL processing failed: {e}")
+                        finally:
+                            future = None
+
+                    for batch_future in as_completed(batch_futures):
+                        try:
+                            batch_future.result()
+                        except Exception as e:
+                            logger.log_error(f"Batch insertion failed: {e}")
+                        finally:
+                            batch_future = None
+
+                    batch_futures.clear()
+
+                futures.clear()
+                s3_dict.clear()
 
             logger.log_info("URL processing completed")
-            logger.log_info(
-                f"Devices with remaining data: {len(device_data_buffer)} / {len(s3_dict)}"
-            )
 
             # -----------------------------
-            # STEP 2: INSERT REMAINING DATA
-            # -----------------------------
-            logger.log_info("Inserting remaining data for all devices")
-            
-            with ThreadPoolExecutor(max_workers=INSERT_WORKERS, thread_name_prefix="FinalInsert") as final_executor:
-                final_futures = []
-                
-                for device_id, remaining_data in device_data_buffer.items():
-                    if remaining_data:  # Insert any remaining data that didn't fill a complete batch
-                        logger.log_info(f"Inserting remaining {len(remaining_data)} records for device {device_id}")
-                        final_futures.append(
-                            final_executor.submit(insert_device_batch, device_id, remaining_data)
-                        )
-                
-                # Wait for all final insertions to complete
-                for future in as_completed(final_futures):
-                    try:
-                        future.result()
-                    except Exception as e:
-                        logger.log_error(f"Final insertion failed: {e}")
-
-            # -----------------------------
-            # STEP 3: UPDATE REGISTRY
+            # STEP 2: UPDATE REGISTRY
             # -----------------------------
             self._update_registry_data(device_registry_data)
 
@@ -1022,6 +1052,8 @@ class DataProcessor:
             # Close database engines
             if getattr(self, 'ch_client', None) is not None:
                 self.ch_client.close()
+
+            gc.collect()
 
             logger.log_info("Cleanup completed successfully")
             

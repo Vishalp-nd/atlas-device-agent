@@ -4,6 +4,8 @@ from urllib.parse import urlparse
 
 import boto3
 from botocore.config import Config
+from botocore.credentials import InstanceMetadataProvider, InstanceMetadataFetcher
+from botocore.session import Session as BotocoreSession
 
 from lib.date_range import subtract_date_range_main
 from lib.logger import Logger
@@ -14,8 +16,52 @@ logger = Logger("s3_manager")
 
 class S3Manager:
     def __init__(self):
-        # EC2 instance role is used by default credential chain.
-        self._session = boto3.Session()
+        self._session = self._build_session()
+
+    def _build_session(self):
+        # On EC2, prefer IMDS-backed instance-role credentials explicitly so ambient
+        # profile resolution cannot accidentally override them. Off EC2, fall back
+        # to boto3's normal credential chain for local development.
+        if self._is_running_on_ec2():
+            session = self._build_ec2_session()
+            if session is not None:
+                logger.log_info("Using EC2 instance-role credentials for S3 access")
+                return session
+            logger.log_warning(
+                "EC2 environment detected but IMDS credentials were unavailable; "
+                "falling back to default boto3 credential chain"
+            )
+
+        logger.log_info("Using default boto3 credential chain for S3 access")
+        return boto3.Session()
+
+    def _is_running_on_ec2(self) -> bool:
+        return os.path.exists('/sys/hypervisor/uuid') or os.path.exists('/sys/devices/virtual/dmi/id/product_uuid')
+
+    def _build_ec2_session(self):
+        try:
+            botocore_session = BotocoreSession()
+            fetcher = InstanceMetadataFetcher(
+                timeout=float(os.getenv("AWS_METADATA_SERVICE_TIMEOUT", "1")),
+                num_attempts=int(os.getenv("AWS_METADATA_SERVICE_NUM_ATTEMPTS", "2")),
+            )
+            provider = InstanceMetadataProvider(
+                iam_role_fetcher=fetcher,
+            )
+            creds = provider.load()
+            if creds is None:
+                return None
+
+            frozen = creds.get_frozen_credentials()
+            return boto3.Session(
+                aws_access_key_id=frozen.access_key,
+                aws_secret_access_key=frozen.secret_key,
+                aws_session_token=frozen.token,
+                region_name=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-west-1",
+            )
+        except Exception as exc:
+            logger.log_warning(f"Failed to initialize EC2 IMDS credentials: {exc}")
+            return None
 
     def get_s3_client(self):
         return self._session.client(

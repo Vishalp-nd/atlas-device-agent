@@ -1385,7 +1385,10 @@ def _make_tools(
                         s3_path,
                         start_time,
                         COALESCE(
-                            num_frames_out,
+                            CASE
+                                WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint
+                                ELSE NULL
+                            END,
                             CASE
                                 WHEN jsonb_typeof(videometadata) = 'array' THEN jsonb_array_length(videometadata)
                                 ELSE NULL
@@ -1393,7 +1396,7 @@ def _make_tools(
                             0
                         )::bigint AS observed_frames,
                         CASE
-                            WHEN num_frames_out IS NULL
+                               WHEN (num_frames_out IS NULL OR num_frames_out !~ '^\\d+$')
                                  AND (jsonb_typeof(videometadata) <> 'array' OR jsonb_array_length(videometadata) = 0)
                             THEN 1 ELSE 0
                         END AS missing_frame_signal
@@ -1440,7 +1443,10 @@ def _make_tools(
                         s3_path,
                         start_time,
                         COALESCE(
-                            num_frames_out,
+                            CASE
+                                WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint
+                                ELSE NULL
+                            END,
                             CASE
                                 WHEN jsonb_typeof(videometadata) = 'array' THEN jsonb_array_length(videometadata)
                                 ELSE NULL
@@ -1548,8 +1554,8 @@ def _make_tools(
                         WHERE jsonb_typeof(videometadata) = 'array'
                         AND jsonb_array_length(videometadata) > 0
                     )                                                           AS files_with_videometadata,
-                    COUNT(*) FILTER (WHERE num_frames_out IS NOT NULL)          AS files_with_frame_count,
-                    ROUND(AVG(COALESCE(num_frames_out, 0))::numeric, 1)        AS avg_frames_per_file,
+                    COUNT(*) FILTER (WHERE num_frames_out ~ '^\\d+$')         AS files_with_frame_count,
+                    ROUND(AVG(COALESCE(CASE WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint END, 0))::numeric, 1) AS avg_frames_per_file,
                     COUNT(*) FILTER (WHERE metadatastatus = 'full')             AS full_metadata_files,
                     COUNT(*) FILTER (WHERE metadatastatus IS NULL)              AS null_metadatastatus_files
                 FROM {table_ident}
@@ -1573,8 +1579,8 @@ def _make_tools(
                         WHERE jsonb_typeof(videometadata) = 'array'
                         AND jsonb_array_length(videometadata) > 0
                     )                                                               AS has_videometadata,
-                    COUNT(*) FILTER (WHERE num_frames_out IS NOT NULL)              AS has_frame_count,
-                    ROUND(AVG(COALESCE(num_frames_out, 0))::numeric, 1)            AS avg_frames,
+                    COUNT(*) FILTER (WHERE num_frames_out ~ '^\\d+$')             AS has_frame_count,
+                    ROUND(AVG(COALESCE(CASE WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint END, 0))::numeric, 1) AS avg_frames,
                     COUNT(*) FILTER (WHERE metadatastatus = 'full')                 AS full_metadata
                 FROM {table_ident}
                 WHERE {where_sql}

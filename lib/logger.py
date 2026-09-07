@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 
 class Logger:
@@ -13,7 +14,7 @@ class Logger:
             "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
         )
 
-        stream_handler = logging.StreamHandler()
+        stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setFormatter(formatter)
         self.logger.addHandler(stream_handler)
 
