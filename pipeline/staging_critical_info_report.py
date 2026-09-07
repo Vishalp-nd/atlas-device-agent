@@ -22,6 +22,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import pandas as pd
 
+from cinfo_classifier import CinfoClassifier, DEFAULT_JSON_PATH, append_new_patterns_to_json
 from fetch_device_config import connect_to_snowflake
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +36,8 @@ DRIVE_MINUTES_TABLE = "IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW"
 
 NORMALIZE_DYNAMIC_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 NON_ALPHA_TAIL_RE = re.compile(r" *[^A-Z ].*$")
+
+MAX_TIMESTAMPS_PER_DEVICE = 20
 
 
 def _parse_csv_env(value: str) -> list[str]:
@@ -101,11 +104,16 @@ def _connect_staging_snowflake(aws_profile: str | None):
     return conn
 
 
-def _load_classifier(model_path: Path = DEFAULT_MODEL_PATH):
+def _load_svm_model(model_path: Path = DEFAULT_MODEL_PATH):
     if not model_path.exists():
         raise FileNotFoundError(f"SVM model file not found: {model_path}")
     with model_path.open("rb") as handle:
         return pickle.load(handle)
+
+
+def _build_classifier(json_path: Path = DEFAULT_JSON_PATH, model_path: Path = DEFAULT_MODEL_PATH) -> CinfoClassifier:
+    svm_model = _load_svm_model(model_path)
+    return CinfoClassifier(json_path=json_path, svm_model=svm_model)
 
 
 def _fetch_rows(
@@ -191,29 +199,36 @@ def _classify_severity(predicted_type: object) -> str:
     return "info"
 
 
-def _predict_types(model, rows: list[dict[str, object]]) -> list[str]:
+def _classify_rows(classifier: CinfoClassifier, rows: list[dict[str, object]], ota_version: str) -> pd.DataFrame:
+    """Classify rows via CinfoClassifier: JSON pattern map first (TYPE + priority), then the
+    SVM model as a TYPE fallback, then semantic-similarity-to-prototype for the priority of any
+    SVM-classified row (see cinfo_classifier.py for the full precedence)."""
     if not rows:
-        return []
-    features = pd.Series([str(row.get("DESCRIPTION") or "") for row in rows], dtype="string")
-    try:
-        predicted = model.predict(features)
-    except Exception as exc:
-        raise RuntimeError(
-            "Model prediction failed. The loaded model is likely incompatible with the current "
-            "description-only pipeline. Retrain the model with pipeline/svm_type_classifier.py "
-            "and rerun the report."
-        ) from exc
-    if len(predicted) != len(rows):
-        raise RuntimeError(
-            f"Model returned {len(predicted)} predictions for {len(rows)} rows. "
-            "This usually means an incompatible model file is being used."
-        )
-    return [str(item) for item in predicted]
+        return pd.DataFrame(columns=["type", "priority", "matched_via"])
+    df = pd.DataFrame(rows)
+    classified = classifier.classify(df, description_col="DESCRIPTION", code_col="CODE")
+    _log_match_breakdown(ota_version, classified)
+    classified = classifier.assign_missing_priorities(classified)
+    return classified
+
+
+def _log_match_breakdown(ota_version: str, classified: pd.DataFrame) -> None:
+    total = len(classified)
+    if not total:
+        print(f"[{ota_version}] CINFO classification: 0 rows")
+        return
+    json_matched = int((classified["matched_via"] == "json").sum())
+    svm_fallback = total - json_matched
+    print(
+        f"[{ota_version}] CINFO classification: {total} rows total — "
+        f"{json_matched} matched via unique_cinfo_op_mapped.json ({json_matched / total:.1%}), "
+        f"{svm_fallback} fell back to SVM/embeddings ({svm_fallback / total:.1%})"
+    )
 
 
 def _build_report_rows(
     rows: list[dict[str, object]],
-    predicted_types: list[str],
+    classified: pd.DataFrame,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]], int, int, int]:
     grouped: dict[tuple[str, str, str, str], dict[str, object]] = {}
     device_versions: dict[str, str] = {}
@@ -221,7 +236,11 @@ def _build_report_rows(
     error_count = 0
     info_count = 0
 
-    for row, predicted_type in zip(rows, predicted_types, strict=True):
+    predicted_types = classified["type"].fillna("").astype(str).tolist() if not classified.empty else []
+    priorities = classified["priority"].fillna("").astype(str).tolist() if not classified.empty else []
+    matched_via = classified["matched_via"].fillna("").astype(str).tolist() if not classified.empty else []
+
+    for row, predicted_type, priority, source in zip(rows, predicted_types, priorities, matched_via, strict=True):
         process_name = str(row.get("PROCESS_NAME") or "")
         code = row.get("CODE")
         code_aux = row.get("CODE_AUX")
@@ -246,6 +265,8 @@ def _build_report_rows(
                 "code_aux": "" if code_aux is None else str(code_aux),
                 "severity": severity,
                 "predicted_type": str(predicted_type).strip().upper() or "INFO",
+                "priority": priority or "",
+                "matched_via": source or "svm",
                 "normalized_description": normalized,
                 "sample_description": description,
                 "occurrences": 0,
@@ -366,6 +387,8 @@ def _render_html(
         device_lists = []
         for device_id in row["devices"]:
             timestamps = row["device_timestamps"].get(device_id, [])
+            total_timestamps = len(timestamps)
+            visible_timestamps = timestamps[:MAX_TIMESTAMPS_PER_DEVICE]
             timestamp_items = "".join(
                 f"<tr>"
                 f"<td class=\"device-time mono\">{html.escape(str(item.get('timestamp') or ''))}</td>"
@@ -373,9 +396,14 @@ def _render_html(
                 f"<td class=\"device-meta mono\">{html.escape(str(item.get('ignition_status') or ''))}</td>"
                 f"<td class=\"device-meta mono\">{html.escape(str(item.get('tenant_id') or ''))}</td>"
                 f"</tr>"
-                for item in timestamps
+                for item in visible_timestamps
             ) or (
                 '<tr><td class="device-time muted" colspan="4">No timestamp</td></tr>'
+            )
+            truncated_note = (
+                f"<div class=\"device-more muted\">Showing latest {len(visible_timestamps)} of {total_timestamps:,}</div>"
+                if total_timestamps > len(visible_timestamps)
+                else ""
             )
             device_lists.append(
                 f"<div class=\"device-entry\">"
@@ -386,17 +414,22 @@ def _render_html(
                 f"<tbody>{timestamp_items}</tbody>"
                 f"</table>"
                 f"</div>"
+                f"{truncated_note}"
                 f"</div>"
             )
         device_tags = "".join(device_lists)
+        priority_label = str(row.get("priority") or "").strip() or "—"
+        source_label = "JSON" if str(row.get("matched_via") or "") == "json" else "SVM+Embed"
         detail_rows_html.append(
             f"<tr data-proc=\"{html.escape(str(row['process']))}\" data-code=\"{html.escape(str(row['code']))}\" "
-            f"data-sev=\"{html.escape(str(row['severity']))}\">"
+            f"data-sev=\"{html.escape(str(row['severity']))}\" data-priority=\"{html.escape(priority_label)}\">"
             f"<td class=\"num\">{index}</td>"
             f"<td><span class=\"badge badge-proc\">{html.escape(str(row['process']))}</span></td>"
             f"<td class=\"mono\">{html.escape(str(row['code']))}</td>"
             f"<td>{html.escape(str(row['code_aux']))}</td>"
             f"<td><span class=\"badge {'badge-error' if row['severity'] == 'error' else 'badge-info'}\">{html.escape(str(row['severity']).upper())}</span></td>"
+            f"<td class=\"mono\">{html.escape(priority_label)}</td>"
+            f"<td><span class=\"badge badge-source\" title=\"Matched via {html.escape(source_label)}\">{html.escape(source_label)}</span></td>"
             f"<td class=\"desc-cell muted\">{html.escape(str(row['sample_description']))}</td>"
             f"<td class=\"num mono\">{int(row['occurrences']):,}</td>"
             f"<td class=\"device-tags\">{device_tags}</td></tr>"
@@ -409,6 +442,10 @@ def _render_html(
     code_options = "".join(
         f"<option value=\"{html.escape(str(code))}\">{html.escape(str(code))}</option>"
         for code in sorted({row['code'] for row in detail_rows}, key=str)
+    )
+    priority_options = "".join(
+        f"<option value=\"{html.escape(str(priority))}\">{html.escape(str(priority))}</option>"
+        for priority in sorted({str(row.get("priority") or "").strip() for row in detail_rows} - {""}, key=str)
     )
 
     return f"""<!DOCTYPE html>
@@ -461,6 +498,7 @@ tr:hover > td {{ background:#fafcff }}
 .badge-proc {{ background:#dbeafe; color:#1e40af }}
 .badge-error {{ background:#fef2f2; color:#dc2626 }}
 .badge-info {{ background:#f0fdf4; color:#16a34a }}
+.badge-source {{ background:#f1f5f9; color:#475569 }}
 .sev-error {{ color:var(--fail); font-weight:700 }}
 .sev-info {{ color:var(--pass); font-weight:700 }}
 .desc-cell {{ max-width:420px; word-break:break-word }}
@@ -468,6 +506,7 @@ tr:hover > td {{ background:#fafcff }}
 .device-entry {{ background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:8px }}
 .device-entry:last-child {{ margin-bottom:0 }}
 .device-id {{ color:#166534; margin-bottom:6px }}
+.device-more {{ font-size:10px; margin-top:4px }}
 .device-time-wrap {{ max-height:160px; overflow:auto; border:1px solid #e2e8f0; border-radius:6px; background:#fff }}
 .device-time-table {{ width:100%; border-collapse:collapse; font-size:10.5px }}
 .device-time-table th {{ position:sticky; top:0; z-index:1; padding:6px 8px; font-size:9.5px }}
@@ -548,10 +587,11 @@ tr:hover > td {{ background:#fafcff }}
     <select id=\"procFilter\" onchange=\"filterTable()\"><option value=\"\">All Processes</option>{process_options}</select>
     <select id=\"codeFilter\" onchange=\"filterTable()\"><option value=\"\">All Codes</option>{code_options}</select>
     <select id=\"sevFilter\" onchange=\"filterTable()\"><option value=\"\">All Severity</option><option value=\"error\">Error</option><option value=\"info\">Info</option></select>
+    <select id=\"prioFilter\" onchange=\"filterTable()\"><option value=\"\">All Priorities</option>{priority_options}</select>
    </div>
    <div class=\"scroll-table\">
     <table id=\"mainTable\">
-    <thead><tr><th>#</th><th>Process</th><th>Code</th><th>Code Aux</th><th>Severity</th><th>Sample Description</th><th class=\"num\">Occurrences</th><th>Devices</th></tr></thead>
+    <thead><tr><th>#</th><th>Process</th><th>Code</th><th>Code Aux</th><th>Severity</th><th>Priority</th><th>Source</th><th>Sample Description</th><th class=\"num\">Occurrences</th><th>Devices</th></tr></thead>
      <tbody>
      {''.join(detail_rows_html)}
      </tbody>
@@ -572,14 +612,16 @@ function filterTable() {{
   const proc = document.getElementById('procFilter').value;
   const code = document.getElementById('codeFilter').value;
   const sev = document.getElementById('sevFilter').value;
-  const rows = document.querySelectorAll('#mainTable tbody tr');
+  const prio = document.getElementById('prioFilter').value;
+  const rows = document.querySelectorAll('#mainTable > tbody > tr');
   let idx = 0;
   rows.forEach(row => {{
     const pv = row.dataset.proc || '';
     const cv = row.dataset.code || '';
     const sv = row.dataset.sev || '';
+    const pr = row.dataset.priority || '';
     const text = row.textContent.toLowerCase();
-    const show = (!search || text.includes(search)) && (!proc || pv === proc) && (!code || cv === code) && (!sev || sv === sev);
+    const show = (!search || text.includes(search)) && (!proc || pv === proc) && (!code || cv === code) && (!sev || sv === sev) && (!prio || pr === prio);
     row.style.display = show ? '' : 'none';
     if (show) {{ idx++; row.cells[0].textContent = idx; }}
   }});
@@ -609,17 +651,17 @@ def generate_reports(
     start_ts = f"{start_date.isoformat()} 00:00:00"
     end_ts = f"{(end_date + timedelta(days=1)).isoformat()} 00:00:00"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-    model = _load_classifier()
+    classifier = _build_classifier()
 
     conn = _connect_staging_snowflake(aws_profile)
     try:
         written_files: list[Path] = []
         for ota_version in ota_versions:
             rows = _fetch_rows(conn, ota_version, device_ids, start_ts, end_ts)
-            predicted_types = _predict_types(model, rows)
+            classified = _classify_rows(classifier, rows, ota_version)
             process_rows, detail_rows, device_rows, device_count, error_count, info_count = _build_report_rows(
                 rows,
-                predicted_types,
+                classified,
             )
             drive_minutes_by_device = _fetch_drive_minutes(
                 conn,
@@ -652,6 +694,16 @@ def generate_reports(
             )
             output_path.write_text(report_html, encoding="utf-8")
             written_files.append(output_path)
+
+        new_patterns = classifier.new_patterns()
+        if new_patterns:
+            appended = append_new_patterns_to_json(classifier.json_path, new_patterns)
+            print(
+                f"Appended {appended} new description_pattern/TYPE/priority row(s) to "
+                f"{classifier.json_path} (from rows that needed the SVM/embedding fallback this run) "
+                "so future runs match them via the JSON map."
+            )
+
         return written_files
     finally:
         conn.close()

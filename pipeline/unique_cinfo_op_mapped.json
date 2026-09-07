@@ -6398,5 +6398,190 @@
     "description_pattern": "",
     "TYPE": "ERROR",
     "priority": "P2"
+  },
+  {
+    "description_pattern": "kFatal: fatal camera error",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Cannot receive from queue q_cam_rec",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DRP: VOD File is not present in DB",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Padding at end of inode bitmap is not set.",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "eMMC Health: WAF DB Corrupted ISSUE",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Lumia module ICCID not initialized",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "IRLED Read <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "EPO files failed to load to module",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Audio file:  is not present",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Upload privacy is enabled <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cannot receive from queue UniUpload",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "nd_config softlink is not changed as IN is not part of North America",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:REBOOT_REASON_COLD_BOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:REBOOT_REASON_SOFT_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:REBOOT_REASON_COLD_BOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:REBOOT_REASON_COLD_BOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:REBOOT_REASON_C",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:REBOOT_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:REBOOT_REASON_HW_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: D OFF, SCAP: D ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: D OFF, GPS: D OFF, SCAP: D ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: D OFF, GPS: D OFF, SCAP: D ON, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "kSOFFreeze: SOF freeze detected",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:POWER_DOWN:REBOOT_REASON_COLD_BOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:REBOOT_REASON_SOFT_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:REBOOT_REASON_HW_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SHUTDOWN:REBOOT_REASON_COLD_BOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:REBOOT_REASON_COLD_BOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:REBOOT_REASON_COLD_BOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:REBOOT_REASON_SOFT_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:REBOOT_REASON_COLD_BOOT, RTC_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:REBOOT_REASON_COLD_BOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:REBOOT_REASON_PANIC, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:REBOOT_REASON_PANIC (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:REBOOT_REASON_COLD_BOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Syslog files are bloating!!! <N> files are present within the range of <N> minutes",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+    {
+    "description_pattern": "Installer active \u2014 ignored AWS_HOTSPOT_UPDATE",
+    "TYPE": "INFO",
+    "priority": "P103"
   }
 ]
