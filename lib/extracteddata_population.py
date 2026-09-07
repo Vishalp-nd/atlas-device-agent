@@ -37,7 +37,7 @@ def obs_processor(device_data: str, trigger_id: int) -> None:
 
     df = df.copy()
     if 'product_line' in df.columns and df['product_line'].notna().any():
-        df['product_line'] = df['product_line'].fillna(method='ffill').fillna(method='bfill')
+        df['product_line'] = df['product_line'].ffill().bfill()
     else:
         df['product_line'] = _product_line_from_device_data_path(device_data)
 

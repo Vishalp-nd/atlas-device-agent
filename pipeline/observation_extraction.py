@@ -231,10 +231,16 @@ class ProcessingMetrics:
 
 class DataProcessor:
     
-    def __init__(self, s3_manager, trigger_hash:str, observation_only: bool = False):
+    def __init__(self, s3_manager, trigger_hash: str, observation_only: bool = False,
+                 product_line: Optional[str] = None):
         self.s3_manager = s3_manager
         self.trigger_hash = trigger_hash
         self.observation_only = observation_only or os.getenv('DP_OBSERVATION_ONLY', '0') == '1'
+        # Supplied by the caller, or picked up from the device list's product_line
+        # column in process_data. It is a path segment of the CSV that was read
+        # (OUTPUT/<product_line>/<version>/polling/<date>), never a field in the
+        # archive JSON, so it cannot be extracted like the rest of the row.
+        self.product_line = product_line
         self.env = None
         self.shared_s3_client = None
         self._thread_lock = threading.Lock()
@@ -431,11 +437,7 @@ class DataProcessor:
                 
                 bucket_name = parsed_url.netloc.split('.')[0]
                 file_key = parsed_url.path.lstrip('/')
-                product_line = None
-                if date_range:
-                    first_range = date_range[0]
-                    if isinstance(first_range, dict):
-                        product_line = first_range.get('product_line')
+                product_line = self.product_line
                 
                 # Stream download to a temp file to avoid large in-memory buffers on EC2.
                 def process_archive_from_s3() -> List[Dict]:
@@ -894,6 +896,42 @@ class DataProcessor:
             logger.log_info(f"{operation}: {current}/{total} ({percentage:.1f}%) completed")
             self._last_progress_time = current_time
 
+    def _resolve_product_line(self, sample_device_info_df: pd.DataFrame) -> None:
+        """Adopt the device list's product_line so it can be written to every row.
+
+        obs_processor derives it from the CSV's own path and puts it on the frame; a
+        constructor-supplied value wins. One CSV covers one product line, so a frame
+        carrying several means the wrong file was handed in and each row would be
+        labelled from whichever value came first -- warn instead of guessing.
+        """
+        if self.product_line is not None:
+            logger.log_info(f"Product line for this run: {self.product_line} (supplied by caller)")
+            return
+
+        if 'product_line' not in sample_device_info_df.columns:
+            logger.log_warning(
+                "Device list has no product_line column; observation_data.product_line "
+                "will be NULL for this run"
+            )
+            return
+
+        values = [str(v).strip() for v in sample_device_info_df['product_line'].dropna().unique()
+                  if str(v).strip() and str(v).strip().lower() != 'nan']
+        if not values:
+            logger.log_warning(
+                "Device list product_line column is empty; observation_data.product_line "
+                "will be NULL for this run"
+            )
+            return
+
+        if len(values) > 1:
+            logger.log_warning(
+                f"Device list carries multiple product lines {values}; using {values[0]}"
+            )
+
+        self.product_line = values[0]
+        logger.log_info(f"Product line for this run: {self.product_line} (from device list)")
+
     def process_data(self, sample_device_info_df: pd.DataFrame) -> Dict:
         """Process data with comprehensive monitoring and error handling"""
         self.metrics.start_time = datetime.now()
@@ -910,6 +948,8 @@ class DataProcessor:
             # Initialize environment
             self.env = sample_device_info_df['environment'].unique()[0]
             logger.log_info(f"Environment detected: {self.env}")
+
+            self._resolve_product_line(sample_device_info_df)
 
             # Warm up shared client once to reduce first-request auth latency per run.
             if os.getenv('DP_PREWARM_S3_CLIENT', '1') == '1':
