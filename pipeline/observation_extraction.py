@@ -137,9 +137,24 @@ URL_INFLIGHT_FACTOR = max(1, int(os.getenv('DP_URL_INFLIGHT_FACTOR', '2')))
 INSERT_QUEUE_DEPTH = max(1, int(os.getenv('DP_INSERT_QUEUE_DEPTH', '4')))
 # How many URL results to consume between malloc_trim() calls (0 disables trimming).
 MEMORY_TRIM_INTERVAL = max(0, int(os.getenv('DP_MEMORY_TRIM_INTERVAL', '200')))
+# A session carries one video_metadata row per GPS sample, so those outnumber
+# observation rows by two orders of magnitude and are ~95% of a buffered batch.
+# Batches are therefore capped on GPS samples as well as on observation rows;
+# BATCH_SIZE alone says nothing about how much memory a batch actually holds.
+VIDEO_METADATA_BATCH_SIZE = max(1, int(os.getenv('DP_VIDEO_METADATA_BATCH_SIZE', '20000')))
 
 # Initialize logger
 logger = Logger('data_processor')
+
+
+def _process_rss_mb() -> Optional[float]:
+    """Resident set size of this process in MiB, or None if unavailable."""
+    try:
+        with open('/proc/self/statm', 'r') as statm:
+            resident_pages = int(statm.read().split()[1])
+        return resident_pages * os.sysconf('SC_PAGE_SIZE') / (1024 * 1024)
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def _release_freed_memory() -> None:
@@ -151,12 +166,20 @@ def _release_freed_memory() -> None:
     MALLOC_ARENA_MAX=2 before starting the process so each worker thread does not
     grow an arena of its own.
     """
+    before = _process_rss_mb()
     gc.collect()
     try:
         ctypes.CDLL('libc.so.6').malloc_trim(0)
     except Exception:
         # Non-glibc platform; the gc.collect() above is all we can do.
         pass
+
+    after = _process_rss_mb()
+    if before is not None and after is not None:
+        # Logged so a run can be checked for the expected plateau: RSS should level
+        # off and stay level. Steady linear growth across these lines means
+        # something is still being retained.
+        logger.log_info(f"RSS {before:.0f} MiB -> {after:.0f} MiB after releasing memory")
 
 
 def _serialize_json_columns(row: Dict) -> None:
@@ -554,7 +577,9 @@ class DataProcessor:
                 'metadatastatus': data.get('metadataStatus', 'full'),
                 'device_id': device_id,
                 's3_path': url,
-                'speed_data': {"speed": [item.get("speed") for item in video_metadata if isinstance(item, dict)]},
+                # Per-sample speeds live in video_metadata.speed; only the aggregates
+                # (min_speed/max_speed/videometadatastatus) belong in observation_data.
+                'speed_data': None,
                 'starttime': data.get('startTime'),
                 'starttimeld': data.get('startTimeLd'),
                 'inwardstarttime': data.get('inwardStartTime'),
@@ -925,7 +950,7 @@ class DataProcessor:
         A completed Future keeps its whole result list reachable, so futures are
         popped out of `done` and dropped one at a time; keeping every completed
         future in a list (the previous shape) pinned every row extracted during the
-        run. Chunks are sliced off the tail of the result so the extracted list
+        run. Chunks are taken off the tail of the result so the extracted list
         shrinks while it is being handed over, and batch_queue.put() blocks once the
         insert workers fall behind, which is what bounds peak memory.
         """
@@ -942,8 +967,15 @@ class DataProcessor:
                 future = None
 
             while extracted_data:
-                chunk = extracted_data[-batch_size:]
-                del extracted_data[-batch_size:]
+                # Cap a chunk on both observation rows and the GPS samples they
+                # carry, so one session with a long trip cannot make a batch huge.
+                chunk = []
+                samples = 0
+                while (extracted_data and len(chunk) < batch_size
+                       and samples < VIDEO_METADATA_BATCH_SIZE):
+                    row = extracted_data.pop()
+                    samples += len(row.get('_video_metadata_rows') or ())
+                    chunk.append(row)
                 batch_queue.put((device_id, chunk))
                 chunk = None
             extracted_data = None
