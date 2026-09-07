@@ -62,7 +62,7 @@ VIDEO_METADATA_COLUMNS = [
 CLICKHOUSE_OBSERVATION_DATA_DDL = """
     CREATE TABLE IF NOT EXISTS observation_data
     (
-        ota Nullable(String), udid Nullable(String), file_name String,
+        ota Nullable(String), product_line Nullable(String), udid Nullable(String), file_name String,
         file_timestamp Nullable(Float64), start_time Nullable(DateTime64(3)),
         end_time Nullable(DateTime64(3)), ignition_status Nullable(Int32),
         uptime Nullable(Int64), service_uptime Nullable(Int64), privacymode Nullable(Int32),
@@ -431,6 +431,11 @@ class DataProcessor:
                 
                 bucket_name = parsed_url.netloc.split('.')[0]
                 file_key = parsed_url.path.lstrip('/')
+                product_line = None
+                if date_range:
+                    first_range = date_range[0]
+                    if isinstance(first_range, dict):
+                        product_line = first_range.get('product_line')
                 
                 # Stream download to a temp file to avoid large in-memory buffers on EC2.
                 def process_archive_from_s3() -> List[Dict]:
@@ -462,7 +467,7 @@ class DataProcessor:
                                 try:
                                     with open(extracted_path, 'r', encoding='utf-8') as json_file:
                                         data = json.load(json_file)
-                                    extracted_item = self._extract_data(data, url, self.trigger_hash)
+                                    extracted_item = self._extract_data(data, url, self.trigger_hash, product_line)
                                     # The extracted row holds no references into `data`
                                     # (_serialize_json_columns collapsed the nested columns
                                     # to strings), so drop the parsed document now rather
@@ -494,7 +499,7 @@ class DataProcessor:
             self.metrics.failed_files += 1
             return device_id, [], date_range
 
-    def _extract_data(self, data: Dict, url: str, trigger_hash: str) -> Optional[Dict]:
+    def _extract_data(self, data: Dict, url: str, trigger_hash: str, product_line: Optional[str] = None) -> Optional[Dict]:
         """Extract data from JSON with comprehensive validation"""
         try:
             if not isinstance(data, dict):
@@ -535,7 +540,14 @@ class DataProcessor:
             file_timestamp = self.extract_timestamp_from_filename(file_name) if file_name else None
 
             if self.observation_only:
-                return self._extract_observation_data(data, url, file_name, file_timestamp, device_id)
+                return self._extract_observation_data(
+                    data,
+                    url,
+                    file_name,
+                    file_timestamp,
+                    device_id,
+                    product_line,
+                )
 
             # Keys to exclude from model processing lists
             EXCLUDED_INWARD_KEYS = {'annotation_image_scale','annotation_driver_side','process_fps','drop_packet','nrt_code_version','frame_rate','annotation_start_idx','frames_processed_info','process_rate','annotation_driving_side'}
@@ -544,6 +556,7 @@ class DataProcessor:
             
             extracted_data = {
                 'ota': data.get('app_ver'),
+                'product_line': product_line,
                 'udid': data.get('udid'),
                 'file_name': file_name,
                 'file_timestamp': file_timestamp,
@@ -699,6 +712,7 @@ class DataProcessor:
         file_name: Optional[str],
         file_timestamp: Optional[int],
         device_id: str,
+        product_line: Optional[str] = None,
     ) -> Dict:
         """Fast-path extraction for observation-oriented fields only."""
         inference_data = data.get('inference_data', {})
@@ -709,6 +723,7 @@ class DataProcessor:
 
         row = {
             'ota': data.get('app_ver'),
+            'product_line': product_line,
             'device_id': device_id,
             'udid': data.get('udid'),
             'file_name': file_name,

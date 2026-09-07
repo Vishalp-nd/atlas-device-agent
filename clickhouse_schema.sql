@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS observation_data;
 CREATE TABLE observation_data
 (
     ota                          Nullable(String),
+    product_line                 Nullable(String),
     udid                         Nullable(String),
     file_name                    String,                      -- join key
     file_timestamp               Nullable(Float64),

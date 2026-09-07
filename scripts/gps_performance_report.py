@@ -8,21 +8,20 @@ Emits four workbooks per run:
   3. GPS Observation Report - Condition 3  (ignition ON)
   4. GPS Summary Report                    (one row per video file)
 
-Reports 1-3 are aggregated per device (weekly mode) or per device per day
-(day-wise mode). Report 4 is one row per observation/video file, with the GPS
+Reports 1-3 are aggregated per device for the requested date range. Report 4
+is one row per observation/video file, with the GPS
 samples inside each file collapsed into counts, joined value lists, a mean and
 the first valid fix.
 
 Data comes from the ClickHouse `observation_data` and `video_metadata` tables
 (see clickhouse_schema.sql), joined on file_name. Device scope and tenant
-display names come from OUTPUT/device_list/<family>/*/device_list.csv, produced
-by pipeline/fetch_device_list_by_product_line.py.
+display names come from OUTPUT/octo/<ota>/polling/<date>/device_data_<ota>.csv,
+produced by pipeline/data_polling.py.
 
 Note: --end is EXCLUSIVE. A 7-day week is --start 2026-06-15 --end 2026-06-22.
 
 Usage:
-    python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-22 --mode weekly
-    python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-22 --mode daywise
+    python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-22
     python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-16 \
         --devices 125072600091 --filename QA_Smoke.xlsx
 """
@@ -49,7 +48,7 @@ from lib.logger import Logger
 logger = Logger("gps_performance_report")
 
 DEFAULT_CLICKHOUSE_SECTION = "CLICKHOUSE_DB"
-DEFAULT_DEVICE_LIST_ROOT = REPO_ROOT / "OUTPUT" / "device_list" / "octo"
+DEFAULT_DEVICE_LIST_ROOT = REPO_ROOT / "OUTPUT" / "octo"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "OUTPUT" / "gps_performance_reports"
 INSTALLED_STATE = "INSTALLED"
 DEVICE_CHUNK = 200
@@ -172,16 +171,16 @@ def _parse_dt(value: str) -> datetime:
 def load_installed_devices(device_list_root: Path) -> dict[str, str]:
     """device_id -> Tenant_Display_Name for every INSTALLED device in the CSVs.
 
-    Reads OUTPUT/device_list/<family>/<ota>/device_list.csv as written by
-    pipeline/fetch_device_list_by_product_line.py:147.
+    Reads OUTPUT/octo/<ota>/polling/<date>/device_data_<ota>.csv as written by
+    pipeline/data_polling.py.
     """
-    pattern = str(device_list_root / "*" / "device_list.csv")
+    pattern = str(device_list_root / "*" / "polling" / "*" / "device_data_*.csv")
     paths = sorted(glob.glob(pattern))
     if not paths:
         raise FileNotFoundError(
-            f"No device_list.csv found under {device_list_root}.\n"
+            f"No device_data_*.csv found under {device_list_root}.\n"
             "Generate it first:\n"
-            "  python pipeline/fetch_device_list_by_product_line.py --product-lines octo"
+            "  python pipeline/data_polling.py obs --start-dt '2026-08-31 00:00:00' --end-dt '2026-09-01 00:00:00'"
         )
 
     tenants: dict[str, str] = {}
@@ -197,7 +196,7 @@ def load_installed_devices(device_list_root: Path) -> dict[str, str]:
                 tenants[device_id] = (row.get("Tenant_Display_Name") or "").strip()
 
     logger.log_info(
-        f"Loaded {len(tenants)} {INSTALLED_STATE} devices from {len(paths)} device_list.csv file(s)"
+        f"Loaded {len(tenants)} {INSTALLED_STATE} devices from {len(paths)} polling device_data CSV file(s)"
     )
     return tenants
 
@@ -259,7 +258,7 @@ SELECT
     o.nw_source                                            AS nw_source,
     o.nw_recorded_time                                     AS nw_recorded_time,
     greatest(dateDiff('second', o.start_time, o.end_time), 0)      AS duration_sec,
-    greatest(dateDiff('millisecond', o.start_time, o.end_time), 0) AS duration_ms,
+    greatest(toUnixTimestamp64Milli(o.end_time) - toUnixTimestamp64Milli(o.start_time), 0) AS duration_ms,
     vm.acc_count                                           AS acc_count,
     vm.invalid_acc_count                                   AS invalid_acc_count,
     vm.acc_le_2                                            AS acc_le_2,
@@ -473,7 +472,6 @@ def _aggregate_group(
 def build_observation_report(
     condition_frame: pd.DataFrame,
     full_frame: pd.DataFrame,
-    mode: str,
     date_range_label: str,
     tenant_map: dict[str, str],
 ) -> pd.DataFrame:
@@ -483,25 +481,13 @@ def build_observation_report(
 
     rows: list[dict[str, Any]] = []
 
-    if mode == "weekly":
-        for device_id, group in condition_frame.groupby("device_id", sort=True):
-            # IGN High/Low are deliberately taken from the UNFILTERED group: in an
-            # ignition-ON condition subset IGN Low is structurally always zero.
-            unfiltered = full_frame[full_frame["device_id"] == device_id]
-            rows.append(
-                _aggregate_group(group, unfiltered, date_range_label, device_id, tenant_map)
-            )
-    else:
-        for (device_id, report_date), group in condition_frame.groupby(
-            ["device_id", "report_date"], sort=True
-        ):
-            unfiltered = full_frame[
-                (full_frame["device_id"] == device_id)
-                & (full_frame["report_date"] == report_date)
-            ]
-            rows.append(
-                _aggregate_group(group, unfiltered, str(report_date), device_id, tenant_map)
-            )
+    for device_id, group in condition_frame.groupby("device_id", sort=True):
+        # IGN High/Low are deliberately taken from the UNFILTERED group: in an
+        # ignition-ON condition subset IGN Low is structurally always zero.
+        unfiltered = full_frame[full_frame["device_id"] == device_id]
+        rows.append(
+            _aggregate_group(group, unfiltered, date_range_label, device_id, tenant_map)
+        )
 
     return pd.DataFrame(rows, columns=OBS_COLUMNS)
 
@@ -736,7 +722,6 @@ def _report_path(output_dir: Path, custom_stem: str | None, tag: str, timestamp:
 def generate_reports(
     start: datetime,
     end: datetime,
-    mode: str,
     output_dir: Path,
     tenant_map: dict[str, str],
     device_ids: list[str] | None,
@@ -760,7 +745,7 @@ def generate_reports(
 
     for _key, label, tag, condition in CONDITIONS:
         subset = condition(frame) if not frame.empty else frame
-        report = build_observation_report(subset, frame, mode, date_range_label, tenant_map)
+        report = build_observation_report(subset, frame, date_range_label, tenant_map)
         path = _report_path(output_dir, custom_stem, tag, timestamp)
         write_workbook(path, [("GPS_Observation", report)])
         logger.log_info(f"{label}: {len(subset)} files -> {len(report)} rows")
@@ -790,12 +775,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start", required=True, help="Start datetime, inclusive (YYYY-MM-DD)")
     parser.add_argument("--end", required=True, help="End datetime, EXCLUSIVE (YYYY-MM-DD)")
     parser.add_argument(
-        "--mode",
-        choices=("weekly", "daywise"),
-        default="weekly",
-        help="weekly: one row per device. daywise: one row per device per day. Default: weekly",
-    )
-    parser.add_argument(
         "--filename",
         default=None,
         help=(
@@ -816,7 +795,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--device-list-root",
         default=str(DEFAULT_DEVICE_LIST_ROOT),
-        help=f"Directory holding <ota>/device_list.csv. Default: {DEFAULT_DEVICE_LIST_ROOT}",
+        help=f"Directory holding <ota>/polling/<date>/device_data_<ota>.csv. Default: {DEFAULT_DEVICE_LIST_ROOT}",
     )
     parser.add_argument(
         "--output",
@@ -848,7 +827,7 @@ def main() -> int:
     span = end - start
     logger.log_info(
         f"Window: {start} <= start_time < {end} "
-        f"({span.days} day(s) {span.seconds // 3600}h), mode={args.mode}"
+        f"({span.days} day(s) {span.seconds // 3600}h)"
     )
 
     tenant_map: dict[str, str] = {}
@@ -878,13 +857,12 @@ def main() -> int:
     if args.filename:
         custom_stem = Path(args.filename).stem
 
-    output_dir = Path(args.output) / args.mode / _date_range_slug(args.start, args.end)
+    output_dir = Path(args.output) / _date_range_slug(args.start, args.end)
 
     try:
         written = generate_reports(
             start=start,
             end=end,
-            mode=args.mode,
             output_dir=output_dir,
             tenant_map=tenant_map,
             device_ids=device_ids,
