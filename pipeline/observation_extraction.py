@@ -4,6 +4,8 @@ import time
 import threading
 import json
 import gc
+import ctypes
+import queue
 import tempfile
 import configparser
 import socket
@@ -14,7 +16,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from contextlib import contextmanager
 
 import pandas as pd
@@ -124,12 +126,52 @@ CLICKHOUSE_VIDEO_METADATA_DDL = """
 MAX_WORKERS_DEFAULT = int(os.getenv('DP_MAX_WORKERS', '4'))
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # in seconds
-BATCH_SIZE = int(os.getenv('DP_BATCH_SIZE', '500'))
+BATCH_SIZE = int(os.getenv('DP_BATCH_SIZE', '200'))
 INSERT_WORKERS_DEFAULT = int(os.getenv('DP_INSERT_WORKERS', '1'))
 S3_READ_CHUNK_SIZE = int(os.getenv('DP_S3_CHUNK_SIZE_MB', '8')) * 1024 * 1024
+# Extraction is much faster than insertion, so both hand-off points are bounded:
+# at most DP_URL_INFLIGHT_FACTOR * max_workers URLs may hold an unconsumed result,
+# and at most DP_INSERT_QUEUE_DEPTH extracted chunks may wait on the insert workers.
+# Without these the whole window's extracted rows pile up in RAM.
+URL_INFLIGHT_FACTOR = max(1, int(os.getenv('DP_URL_INFLIGHT_FACTOR', '2')))
+INSERT_QUEUE_DEPTH = max(1, int(os.getenv('DP_INSERT_QUEUE_DEPTH', '4')))
+# How many URL results to consume between malloc_trim() calls (0 disables trimming).
+MEMORY_TRIM_INTERVAL = max(0, int(os.getenv('DP_MEMORY_TRIM_INTERVAL', '200')))
 
 # Initialize logger
 logger = Logger('data_processor')
+
+
+def _release_freed_memory() -> None:
+    """Collect garbage and hand the freed heap back to the OS.
+
+    gc.collect() alone only makes memory reusable inside this process; glibc keeps
+    it on per-arena free lists, which is why RSS stayed at its peak long after the
+    inserts had finished. malloc_trim() releases those arenas. Also export
+    MALLOC_ARENA_MAX=2 before starting the process so each worker thread does not
+    grow an arena of its own.
+    """
+    gc.collect()
+    try:
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except Exception:
+        # Non-glibc platform; the gc.collect() above is all we can do.
+        pass
+
+
+def _serialize_json_columns(row: Dict) -> None:
+    """Collapse the dict/list JSON columns of one extracted row into strings.
+
+    These columns are inserted as strings anyway, and a row waits in memory between
+    extraction and insertion. Serializing here rather than at insert time keeps the
+    row several times smaller and drops its references into the parsed source JSON,
+    so an archive's object graph can be freed as soon as its file is done.
+    """
+    for col in CLICKHOUSE_JSON_COLUMNS:
+        val = row.get(col)
+        if val is None or isinstance(val, str):
+            continue
+        row[col] = json.dumps(val, separators=(',', ':'))
 
 
 @dataclass
@@ -386,16 +428,25 @@ class DataProcessor:
                                 if not os.path.exists(extracted_path):
                                     continue
 
+                                data = None
                                 try:
                                     with open(extracted_path, 'r', encoding='utf-8') as json_file:
                                         data = json.load(json_file)
                                     extracted_item = self._extract_data(data, url, self.trigger_hash)
+                                    # The extracted row holds no references into `data`
+                                    # (_serialize_json_columns collapsed the nested columns
+                                    # to strings), so drop the parsed document now rather
+                                    # than keeping it alive while the next file is parsed.
+                                    data = None
                                     if extracted_item:
                                         extracted_data_local.append(extracted_item)
+                                    extracted_item = None
                                 except json.JSONDecodeError as e:
                                     logger.log_error(f"Invalid JSON in file {name} from {url}: {e}")
                                 except Exception as e:
                                     logger.log_error(f"Error processing file {name} from {url}: {e}")
+                                finally:
+                                    data = None
 
                     return extracted_data_local
 
@@ -557,6 +608,7 @@ class DataProcessor:
                 'inward_vision_processed': self._check_module_processed(data, 'inward_vision'),
             }
 
+            _serialize_json_columns(extracted_data)
             extracted_data['_video_metadata_rows'] = self._build_video_metadata_rows(
                 video_metadata, file_name, device_id,
                 extracted_data['start_time'], extracted_data['end_time'],
@@ -575,8 +627,13 @@ class DataProcessor:
         device_id: str,
         start_time: Optional[str],
         end_time: Optional[str],
-    ) -> List[Dict]:
-        """Flatten a file's videoMetaData[] array into video_metadata table rows."""
+    ) -> List[Tuple]:
+        """Flatten a file's videoMetaData[] array into video_metadata table rows.
+
+        Rows are tuples ordered like VIDEO_METADATA_COLUMNS rather than dicts: a
+        session has one entry per GPS sample, so these dominate a buffered row's
+        footprint and a 15-field dict costs several times what the tuple does.
+        """
         if not isinstance(video_metadata, list):
             return []
 
@@ -584,23 +641,23 @@ class DataProcessor:
         for seq_no, item in enumerate(video_metadata):
             if not isinstance(item, dict):
                 continue
-            rows.append({
-                'file_name': file_name,
-                'device_id': device_id,
-                'start_time': start_time,
-                'end_time': end_time,
-                'seq_no': seq_no,
-                'valid': item.get('valid'),
-                'altitude': item.get('altitude'),
-                'bearing': item.get('bearing'),
-                'accuracy': item.get('accuracy'),
-                'lat': item.get('lat'),
-                'long': item.get('long'),
-                'speed': item.get('speed'),
-                'raw_timestamp': item.get('raw_timestamp'),
-                'altitudeMSL': item.get('altitudeMSL'),
-                'timestamp': self.epoch_to_utc(item.get('timestamp')),
-            })
+            rows.append((
+                file_name,
+                device_id,
+                start_time,
+                end_time,
+                seq_no,
+                item.get('valid'),
+                item.get('altitude'),
+                item.get('bearing'),
+                item.get('accuracy'),
+                item.get('lat'),
+                item.get('long'),
+                item.get('speed'),
+                item.get('raw_timestamp'),
+                item.get('altitudeMSL'),
+                self.epoch_to_utc(item.get('timestamp')),
+            ))
         return rows
 
     def _extract_observation_data(
@@ -618,7 +675,7 @@ class DataProcessor:
         start_time_str = self.epoch_to_utc(data.get('startTime'))
         end_time_str = self.epoch_to_utc(data.get('endTime'))
 
-        return {
+        row = {
             'ota': data.get('app_ver'),
             'device_id': device_id,
             'udid': data.get('udid'),
@@ -648,25 +705,29 @@ class DataProcessor:
             'session_embedding': data.get('session_embedding', {}),
             'burst_mode': data.get('burst_mode', {}),
             'fuel_report': data.get('fuel_report', {}),
-            '_video_metadata_rows': self._build_video_metadata_rows(
-                video_metadata, file_name, device_id, start_time_str, end_time_str,
-            ),
         }
+        _serialize_json_columns(row)
+        row['_video_metadata_rows'] = self._build_video_metadata_rows(
+            video_metadata, file_name, device_id, start_time_str, end_time_str,
+        )
+        return row
 
     def _bulk_insert_rows(self, rows: List[Dict]) -> None:
         """Split each extracted row into its observation_data and video_metadata
-        parts, then insert both into ClickHouse."""
+        parts, then insert both into ClickHouse.
+
+        Takes ownership of `rows`: the list is drained and the rows are mutated in
+        place, so a batch is never duplicated just to be split. Callers must not
+        reuse the list afterwards.
+        """
         if not rows:
             return
 
-        video_metadata_rows: List[Dict] = []
-        observation_rows: List[Dict] = []
+        video_metadata_rows: List[Tuple] = []
         for row in rows:
-            row = dict(row)
             video_metadata_rows.extend(row.pop('_video_metadata_rows', None) or [])
-            observation_rows.append(row)
 
-        self._insert_clickhouse_observation_rows(observation_rows)
+        self._insert_clickhouse_observation_rows(rows)
         self._insert_clickhouse_video_metadata_rows(video_metadata_rows)
 
     def _prepare_clickhouse_observation_row(self, row: Dict) -> Dict:
@@ -674,7 +735,14 @@ class DataProcessor:
         prepared = {}
         for col, val in row.items():
             if col in CLICKHOUSE_JSON_COLUMNS:
-                prepared[col] = json.dumps(val) if val not in (None, '') else None
+                # Usually already a string: _serialize_json_columns() collapses these
+                # at extraction time. The dict/list branch stays for direct callers.
+                if val is None or val == '':
+                    prepared[col] = None
+                elif isinstance(val, str):
+                    prepared[col] = val
+                else:
+                    prepared[col] = json.dumps(val, separators=(',', ':'))
             elif col in CLICKHOUSE_BOOL_COLUMNS:
                 prepared[col] = None if val is None else int(bool(val))
             elif col in CLICKHOUSE_ARRAY_COLUMNS:
@@ -686,25 +754,34 @@ class DataProcessor:
         return prepared
 
     def _insert_clickhouse_observation_rows(self, rows: List[Dict]) -> None:
+        """Insert extracted rows, draining `rows` as it goes.
+
+        Each row is converted and released one at a time instead of materializing a
+        prepared-dict list and then a value-matrix on top of the originals; that kept
+        three copies of every batch alive at once.
+        """
         if not rows:
             return
 
-        prepared_rows = [self._prepare_clickhouse_observation_row(row) for row in rows]
-        columns = list(prepared_rows[0].keys())
-        data = [[row.get(col) for col in columns] for row in prepared_rows]
+        columns = list(rows[0].keys())
+        data = []
+        while rows:
+            prepared = self._prepare_clickhouse_observation_row(rows.pop())
+            data.append([prepared.get(col) for col in columns])
 
         with self._clickhouse_lock:
             self.ch_client.insert('observation_data', data, column_names=columns)
-        logger.log_info(f"Inserted {len(prepared_rows)} row(s) into ClickHouse observation_data")
+        logger.log_info(f"Inserted {len(data)} row(s) into ClickHouse observation_data")
 
-    def _insert_clickhouse_video_metadata_rows(self, rows: List[Dict]) -> None:
+    def _insert_clickhouse_video_metadata_rows(self, rows: List[Tuple]) -> None:
+        """Insert video_metadata rows already ordered like VIDEO_METADATA_COLUMNS."""
         if not rows:
             return
 
-        data = [[row.get(col) for col in VIDEO_METADATA_COLUMNS] for row in rows]
+        row_count = len(rows)
         with self._clickhouse_lock:
-            self.ch_client.insert('video_metadata', data, column_names=VIDEO_METADATA_COLUMNS)
-        logger.log_info(f"Inserted {len(rows)} row(s) into ClickHouse video_metadata")
+            self.ch_client.insert('video_metadata', rows, column_names=VIDEO_METADATA_COLUMNS)
+        logger.log_info(f"Inserted {row_count} row(s) into ClickHouse video_metadata")
 
     def _check_module_processed(self, data: Dict, module_type: str) -> bool:
         """Check if a specific module type was processed"""
@@ -842,10 +919,45 @@ class DataProcessor:
         finally:
             self.metrics.end_time = datetime.now()
 
+    def _drain_url_results(self, done, batch_queue, batch_size: int) -> int:
+        """Hand each finished URL's rows to the insert queue, releasing as we go.
+
+        A completed Future keeps its whole result list reachable, so futures are
+        popped out of `done` and dropped one at a time; keeping every completed
+        future in a list (the previous shape) pinned every row extracted during the
+        run. Chunks are sliced off the tail of the result so the extracted list
+        shrinks while it is being handed over, and batch_queue.put() blocks once the
+        insert workers fall behind, which is what bounds peak memory.
+        """
+        consumed = 0
+        while done:
+            future = done.pop()
+            consumed += 1
+            try:
+                device_id, extracted_data, _ = future.result()
+            except Exception as e:
+                logger.log_error(f"URL processing failed: {e}")
+                continue
+            finally:
+                future = None
+
+            while extracted_data:
+                chunk = extracted_data[-batch_size:]
+                del extracted_data[-batch_size:]
+                batch_queue.put((device_id, chunk))
+                chunk = None
+            extracted_data = None
+        return consumed
+
     def insert_data_to_db(self, s3_dict: Dict) -> None:
-        from collections import defaultdict
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        import threading
+        """Extract each device's S3 archives and stream the rows into ClickHouse.
+
+        Both hand-off points are bounded, because extraction runs far ahead of
+        insertion: only `max_inflight` URLs may hold an unconsumed result, and only
+        INSERT_QUEUE_DEPTH extracted chunks may wait on the insert workers. When the
+        inserts fall behind, back-pressure propagates all the way to the S3 stage
+        instead of the backlog accumulating in RAM.
+        """
         if not s3_dict:
             logger.log_info("No data to insert into the database")
             return
@@ -853,104 +965,125 @@ class DataProcessor:
         start_time = datetime.now()
         logger.log_info(f"Starting database insertion for {len(s3_dict)} devices")
 
-        # Hard limit DB writers
-        INSERT_WORKERS = INSERT_WORKERS_DEFAULT
-        insert_semaphore = threading.Semaphore(INSERT_WORKERS)
-        
-        # Constants for batch processing 
         batch_size = BATCH_SIZE
+        insert_workers = max(1, INSERT_WORKERS_DEFAULT)
+        max_workers = min(os.cpu_count() or 4, MAX_WORKERS_DEFAULT)
+        max_inflight = max(max_workers, max_workers * URL_INFLIGHT_FACTOR)
         device_registry_data = {}
 
-        max_workers = min(os.cpu_count() or 4, MAX_WORKERS_DEFAULT)
+        logger.log_info(
+            f"Processing URLs using {max_workers} workers "
+            f"(max {max_inflight} results in flight), batch size {batch_size}, "
+            f"{insert_workers} insert worker(s), insert queue depth {INSERT_QUEUE_DEPTH}"
+        )
 
-        logger.log_info(f"Processing URLs using {max_workers} workers with batch size {batch_size}")
+        batch_queue: queue.Queue = queue.Queue(maxsize=INSERT_QUEUE_DEPTH)
 
         def insert_device_batch(device_id: str, rows: list):
             """Insert a batch of data for a device"""
             if not rows:
                 return
 
-            logger.log_info(f"Inserting batch for device {device_id}, rows={len(rows)}")
+            row_count = len(rows)
+            logger.log_info(f"Inserting batch for device {device_id}, rows={row_count}")
 
-            with insert_semaphore:
+            try:
+                self._bulk_insert_rows(rows)
+
+                logger.log_info(f"Successfully inserted batch for device {device_id}")
+
+            except Exception as e:
+                error_details = {
+                    'timestamp': datetime.now().isoformat(),
+                    'device_id': device_id,
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'traceback': traceback.format_exc(),
+                    'batch_rows': row_count,
+                }
+
+                logger.log_error(
+                    f"Database Insertion Error Report:\n"
+                    f"{'='*60}\n"
+                    f"Timestamp: {error_details['timestamp']}\n"
+                    f"Device ID: {error_details['device_id']}\n"
+                    f"Error Type: {error_details['error_type']}\n"
+                    f"Error Message: {error_details['error_message']}\n"
+                    f"Batch Rows: {error_details['batch_rows']}\n"
+                    f"{'='*60}\n"
+                    f"Full Traceback:\n{error_details['traceback']}"
+                )
+                raise
+
+        def insert_worker():
+            """Drain batch_queue until the producer sends the None sentinel."""
+            while True:
+                item = batch_queue.get()
                 try:
-                    self._bulk_insert_rows(rows)
+                    if item is None:
+                        return
+                    device_id, rows = item
+                    item = None
+                    try:
+                        insert_device_batch(device_id, rows)
+                    except Exception as e:
+                        logger.log_error(f"Batch insertion failed for device {device_id}: {e}")
+                    finally:
+                        rows = None
+                finally:
+                    batch_queue.task_done()
 
-                    logger.log_info(f"Successfully inserted batch for device {device_id}")
+        def url_tasks():
+            """Yield (device_id, url, date_range) lazily so nothing is pre-submitted."""
+            for device_id, data in s3_dict.items():
+                urls, date_range = data
+                device_registry_data[device_id] = date_range
+                for url in urls:
+                    yield device_id, url, date_range
 
-                except Exception as e:
-                    error_details = {
-                        'timestamp': datetime.now().isoformat(),
-                        'device_id': device_id,
-                        'error_type': type(e).__name__,
-                        'error_message': str(e),
-                        'traceback': traceback.format_exc(),
-                        'batch_rows': len(rows),
-                        'columns': list(rows[0].keys()) if rows else []
-                    }
-                    
-                    logger.log_error(
-                        f"Database Insertion Error Report:\n"
-                        f"{'='*60}\n"
-                        f"Timestamp: {error_details['timestamp']}\n"
-                        f"Device ID: {error_details['device_id']}\n"
-                        f"Error Type: {error_details['error_type']}\n"
-                        f"Error Message: {error_details['error_message']}\n"
-                        f"Batch Rows: {error_details['batch_rows']}\n"
-                        f"Columns: {error_details['columns']}\n"
-                        f"{'='*60}\n"
-                        f"Full Traceback:\n{error_details['traceback']}"
-                    )
-                    raise
+        insert_threads = [
+            threading.Thread(target=insert_worker, name=f"BatchInsert-{i}", daemon=True)
+            for i in range(insert_workers)
+        ]
+        for thread in insert_threads:
+            thread.start()
 
         try:
             # -----------------------------
-            # STEP 1: PROCESS URLS (PARALLEL)
+            # STEP 1: PROCESS URLS (PARALLEL, BOUNDED)
             # -----------------------------
-            with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="URLProcess") as executor:
-                futures = []
+            consumed = 0
+            since_trim = 0
+            pending = set()
 
-                for device_id, data in s3_dict.items():
-                    urls, date_range = data
-                    device_registry_data[device_id] = date_range
+            try:
+                with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="URLProcess") as executor:
+                    for device_id, url, date_range in url_tasks():
+                        if len(pending) >= max_inflight:
+                            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                            consumed += self._drain_url_results(done, batch_queue, batch_size)
+                            done = None
+                            since_trim = self._maybe_trim_memory(consumed, since_trim)
+                        pending.add(executor.submit(self.process_url, device_id, url, date_range))
 
-                    for url in urls:
-                        futures.append(
-                            executor.submit(self.process_url, device_id, url, date_range)
-                        )
+                    while pending:
+                        done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                        consumed += self._drain_url_results(done, batch_queue, batch_size)
+                        done = None
+                        since_trim = self._maybe_trim_memory(consumed, since_trim)
 
-                # Process completed tasks and insert each URL result immediately in small chunks.
-                with ThreadPoolExecutor(max_workers=INSERT_WORKERS, thread_name_prefix="BatchInsert") as batch_executor:
-                    batch_futures = []
-                    for future in as_completed(futures):
-                        try:
-                            device_id, extracted_data, _ = future.result()
-                            if extracted_data:
-                                for start_idx in range(0, len(extracted_data), batch_size):
-                                    batch_data = extracted_data[start_idx:start_idx + batch_size]
-                                    batch_futures.append(
-                                        batch_executor.submit(insert_device_batch, device_id, batch_data)
-                                    )
-                            extracted_data = None
-                        except Exception as e:
-                            logger.log_error(f"URL processing failed: {e}")
-                        finally:
-                            future = None
+                logger.log_info(
+                    f"URL processing completed for {consumed} URL(s); waiting for pending inserts"
+                )
+                batch_queue.join()
+            finally:
+                for _ in insert_threads:
+                    batch_queue.put(None)
+                for thread in insert_threads:
+                    thread.join(timeout=300)
 
-                    for batch_future in as_completed(batch_futures):
-                        try:
-                            batch_future.result()
-                        except Exception as e:
-                            logger.log_error(f"Batch insertion failed: {e}")
-                        finally:
-                            batch_future = None
-
-                    batch_futures.clear()
-
-                futures.clear()
-                s3_dict.clear()
-
-            logger.log_info("URL processing completed")
+            s3_dict.clear()
+            _release_freed_memory()
 
             # -----------------------------
             # STEP 2: UPDATE REGISTRY
@@ -963,6 +1096,16 @@ class DataProcessor:
         except Exception as e:
             logger.log_error(f"Critical error in insert_data_to_db: {e}")
             raise
+
+    @staticmethod
+    def _maybe_trim_memory(consumed: int, since_trim: int) -> int:
+        """Return freed arenas to the OS every MEMORY_TRIM_INTERVAL URLs."""
+        if not MEMORY_TRIM_INTERVAL:
+            return since_trim
+        if consumed - since_trim < MEMORY_TRIM_INTERVAL:
+            return since_trim
+        _release_freed_memory()
+        return consumed
 
     def _update_registry_data(self, device_registry_data: Dict[str, List[Dict]]) -> None:
         """Update registry data with proper error handling and OTA details"""
@@ -1053,7 +1196,7 @@ class DataProcessor:
             if getattr(self, 'ch_client', None) is not None:
                 self.ch_client.close()
 
-            gc.collect()
+            _release_freed_memory()
 
             logger.log_info("Cleanup completed successfully")
             
