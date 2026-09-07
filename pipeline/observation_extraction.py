@@ -141,7 +141,14 @@ MEMORY_TRIM_INTERVAL = max(0, int(os.getenv('DP_MEMORY_TRIM_INTERVAL', '200')))
 # observation rows by two orders of magnitude and are ~95% of a buffered batch.
 # Batches are therefore capped on GPS samples as well as on observation rows;
 # BATCH_SIZE alone says nothing about how much memory a batch actually holds.
-VIDEO_METADATA_BATCH_SIZE = max(1, int(os.getenv('DP_VIDEO_METADATA_BATCH_SIZE', '20000')))
+#
+# 100k is deliberately large. The driver's per-row serialization overhead falls as
+# the block grows, and each insert is one more MergeTree part for the server to
+# merge: a day's poll of ~8.7M rows is 87 inserts at this size versus 435 at 20k.
+# The driver also claims a one-time ~78 MiB of arena that malloc_trim cannot
+# reclaim, but it plateaus there and does not grow per insert at any batch size.
+# Costs ~40 MiB of tuples per buffered batch.
+VIDEO_METADATA_BATCH_SIZE = max(1, int(os.getenv('DP_VIDEO_METADATA_BATCH_SIZE', '100000')))
 
 # Initialize logger
 logger = Logger('data_processor')
