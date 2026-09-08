@@ -537,6 +537,8 @@ def _run_pipeline_body(args: argparse.Namespace, classifier: CinfoClassifier, ch
     print(f"Target clickhouse table: {table_name}")
     print(f"Total fetched from Snowflake: {total_fetched}")
     print(f"Total inserted into clickhouse: {total_inserted}")
+    print(f"Rows matched in JSON map: {classifier.json_matched_rows}")
+    print(f"Rows missed in JSON map (SVM + similarity fallback): {classifier.json_missed_rows}")
     print(f"Total predict time: {total_predict_seconds:.2f}s")
     print(f"Total insert time: {total_insert_seconds:.2f}s")
     print(f"Total runtime: {total_seconds:.2f}s ({_format_rate(total_fetched, total_seconds)})")

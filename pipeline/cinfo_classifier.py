@@ -96,6 +96,9 @@ class CinfoClassifier:
         # so far this run so the embedding model is invoked once per unique pair, not per row.
         self._priority_cache: dict[tuple[str, str], str] = {}
         self._new_patterns: dict[str, dict] = {}
+        # Run-wide row counts: JSON-map hits vs rows that fell through to the SVM/embedding path.
+        self.json_matched_rows = 0
+        self.json_missed_rows = 0
         self._description_col = "DESCRIPTION"
         self._code_col = "CODE"
 
@@ -114,6 +117,9 @@ class CinfoClassifier:
         df["priority"] = matched.map(lambda m: m[1] if m is not None else None)
 
         svm_mask = df["matched_via"] == "svm"
+        missed = int(svm_mask.sum())
+        self.json_missed_rows += missed
+        self.json_matched_rows += len(df) - missed
         if svm_mask.any():
             df.loc[svm_mask, "type"] = self._predict_svm(descriptions[svm_mask])
 
