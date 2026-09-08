@@ -261,7 +261,7 @@ def render_gps_summary_page() -> None:
         force = st.checkbox("Force regenerate", value=False, disabled=not cached)
 
     if cached and not submitted:
-        st.info(f"Reports for this range already exist downloading now...")
+        st.info(f"Reports for this range already exist click generate to download them.")
 
     if submitted:
         try:
@@ -308,7 +308,7 @@ def render_gps_summary_page() -> None:
         # the latter on link/download buttons, leaving a content-width button.
         st.link_button(DOWNLOAD_LABEL, download_url, width="stretch")
         st.caption(
-            f"`{payload['name']}` · {size_mb:.1f} MB · contains "
+            f"`{payload['name']}` · {size_mb:.1f} MB ·"
             "The download starts automatically; "
             "use the button if your browser blocks it."
         )
