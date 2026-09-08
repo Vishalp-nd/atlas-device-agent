@@ -248,15 +248,26 @@ def _inject_css() -> None:
         }
 
         [data-testid="stSidebar"] button,
-        .stButton > button {
+        .stButton > button,
+        /* stDownloadButton/stLinkButton were missing here, so they kept
+           Streamlit's own button colors -- light text on this forced-white
+           page in a dark-mode browser, i.e. an invisible button. */
+        .stDownloadButton > button,
+        .stLinkButton > a {
             background: #ffffff !important;
             color: #007a3d !important;
             border: 1.5px solid rgba(0, 166, 81, 0.7) !important;
             box-shadow: 0 8px 20px rgba(0, 166, 81, 0.12);
         }
 
+        .stLinkButton > a {
+            text-decoration: none !important;
+        }
+
         [data-testid="stSidebar"] button:hover,
-        .stButton > button:hover {
+        .stButton > button:hover,
+        .stDownloadButton > button:hover,
+        .stLinkButton > a:hover {
             border-color: rgba(0, 166, 81, 0.95) !important;
             box-shadow: 0 10px 24px rgba(0, 166, 81, 0.18);
         }

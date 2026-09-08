@@ -114,35 +114,22 @@ def _download_url(url: str) -> str:
     return f"{API_BASE_URL.rstrip('/')}{url}" if url.startswith("/") else url
 
 
-def fetch_zip_bytes(url: str) -> bytes:
-    """Pull the archive from the backend. Called only when the button is clicked.
-
-    Streamlit's deferred data generation means this does not run on every rerun,
-    so the archive is not held in the frontend for the life of the connection.
-    """
-    response = requests.get(_download_url(url), timeout=REQUEST_TIMEOUT)
-    if not response.ok:
-        _raise_gps_api_error(response)
-    return response.content
-
-
 # ---------------------------------------------------------------------------
 # Auto-download
 # ---------------------------------------------------------------------------
 
-def _auto_download(token: str) -> None:
-    """Click the download button once, as soon as it exists.
+def _auto_download(token: str, url: str) -> None:
+    """Start the download once, straight from the backend URL.
 
-    Clicking Streamlit's own button reuses its blob URL, so the archive is never
-    inlined as a base64 data URI. st.html is used rather than
-    components.v1.html (deprecated) because it is *not* iframed -- the script
-    runs in the app document, so the button is reachable without a window.parent
-    hop. Keyed on a token so an ordinary rerun, or the user returning to the
-    page, does not re-trigger a download; only a fresh report request does.
-    Polling covers the button not having painted yet, which is also what lets
-    this fire after the user has switched to another browser tab.
+    A hidden iframe rather than a synthetic click on a Streamlit download
+    button. The backend response carries Content-Disposition: attachment, so the
+    browser saves the file and the iframe never navigates the page. This also
+    keeps the archive out of this process entirely -- a proxied download button
+    would have had to hold all of it in memory to hand it over. Keyed on a token
+    so an ordinary rerun, or the user returning to the page, does not re-trigger
+    a download; only a fresh report request does.
     """
-    payload = json.dumps({"token": token, "label": DOWNLOAD_LABEL})
+    payload = json.dumps({"token": token, "url": url})
     st.html(
         f"""
         <script>
@@ -150,23 +137,12 @@ def _auto_download(token: str) -> None:
             const cfg = {payload};
             window.__gpsAutoDownloaded = window.__gpsAutoDownloaded || {{}};
             if (window.__gpsAutoDownloaded[cfg.token]) return;
+            window.__gpsAutoDownloaded[cfg.token] = true;
 
-            let attempts = 0;
-            const findButton = () => Array.from(
-                document.querySelectorAll('[data-testid="stDownloadButton"] button')
-            ).find((btn) => (btn.innerText || '').indexOf(cfg.label) !== -1);
-
-            const tick = () => {{
-                if (window.__gpsAutoDownloaded[cfg.token]) return;
-                const btn = findButton();
-                if (btn) {{
-                    window.__gpsAutoDownloaded[cfg.token] = true;
-                    btn.click();
-                    return;
-                }}
-                if (attempts++ < 60) setTimeout(tick, 250);
-            }};
-            tick();
+            const frame = document.createElement('iframe');
+            frame.style.display = 'none';
+            frame.src = cfg.url;
+            document.body.appendChild(frame);
         }})();
         </script>
         """,
@@ -323,20 +299,18 @@ def render_gps_summary_page() -> None:
     payload = st.session_state.get("gps_zip")
     if payload:
         size_mb = payload["size_bytes"] / (1024 * 1024)
-        st.download_button(
-            DOWNLOAD_LABEL,
-            # Deferred data generation: the callable runs only when the button
-            # is clicked, on its own thread. Passing bytes instead would fetch
-            # the whole archive from the backend on every rerun and hold it.
-            data=lambda url=payload["url"]: fetch_zip_bytes(url),
-            file_name=payload["name"],
-            mime="application/zip",
-            use_container_width=True,
-        )
+        # A direct link to the API, the same way _render_download_refs() hands
+        # over agent downloads. The browser fetches the zip from FastAPI, which
+        # streams it off disk -- so a ~300 MB archive never passes through
+        # Streamlit's memory on its way to the user.
+        download_url = _download_url(payload["url"])
+        # width="stretch", not use_container_width: Streamlit 1.60 silently drops
+        # the latter on link/download buttons, leaving a content-width button.
+        st.link_button(DOWNLOAD_LABEL, download_url, width="stretch")
         st.caption(
             f"`{payload['name']}` · {size_mb:.1f} MB · contains "
             f"`{payload['folder_name']}/` with {len(payload['report_names'])} CSV reports. "
-            "Fetched from the backend on click. The download starts automatically; "
+            "Streamed straight from the backend. The download starts automatically; "
             "use the button if your browser blocks it."
         )
-        _auto_download(payload["token"])
+        _auto_download(payload["token"], download_url)
