@@ -11,7 +11,7 @@ import requests
 import streamlit as st
 
 from atlas.critical_events_dashboard import configured_ota_versions
-from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, configure_app
+from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, _render_sidebar_nav, configure_app
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -227,15 +227,6 @@ def _filter_payload(
         "end_ts": end_date_exclusive,
         "limit": limit,
     }
-
-
-def _render_sidebar() -> None:
-    with st.sidebar:
-        st.page_link("streamlit_app.py", label="Dashboard")
-        st.markdown("### Agents")
-        st.page_link("pages/1_Atlas.py", label="Atlas", icon=":material/precision_manufacturing:")
-        st.page_link("pages/2_Cypher.py", label="Cypher", icon=":material/account_tree:")
-        st.page_link("pages/3_Critical_Events_Monitor.py", label="Critical Events Monitor", icon=":material/monitoring:")
 
 
 def _render_allowed_ota_versions_manager() -> None:
@@ -951,7 +942,7 @@ def _render_priority_breakdown_page(ota_version: str) -> None:
 
 def main() -> None:
     configure_app()
-    _render_sidebar()
+    _render_sidebar_nav()
     st.title("Critical Events Monitor")
     st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
 

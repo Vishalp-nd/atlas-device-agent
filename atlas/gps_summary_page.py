@@ -22,7 +22,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT
+from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, _render_sidebar_nav
 
 DOWNLOAD_LABEL = "Download GPS reports (.zip)"
 AVAILABILITY_TTL = 300
@@ -213,6 +213,10 @@ def _render_unreachable(exc: Exception) -> None:
 
 
 def render_gps_summary_page() -> None:
+    # Same first call as render_atlas_page/render_cypher_page: the nav is per-page
+    # in Streamlit's multipage model, so a page that skips it renders an empty
+    # sidebar and strands the user with no way back to the other pages.
+    _render_sidebar_nav()
     st.title("GPS Summary")
     st.caption(
         "Generate the GPS Observation report"
