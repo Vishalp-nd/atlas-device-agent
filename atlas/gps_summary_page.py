@@ -98,14 +98,18 @@ def load_report_status(product_line: str, start: date, end_inclusive: date) -> d
     )
 
 
-def request_reports(product_line: str, start: date, end_inclusive: date, force: bool) -> dict:
+def request_reports(product_line: str, start: date, end_inclusive: date) -> dict:
+    """Ask the backend for this range.
+
+    It reuses an existing report set when it has one, so a repeat request does
+    not re-query ClickHouse.
+    """
     return _gps_api_post(
         "/atlas/dashboard/gps/reports",
         {
             "product_line": product_line,
             "start": start.isoformat(),
             "end": end_inclusive.isoformat(),
-            "force": force,
         },
     )
 
@@ -254,30 +258,29 @@ def render_gps_summary_page() -> None:
         return
     cached = bool(status.get("cached"))
 
-    action = st.columns([1, 1, 2])
+    action = st.columns([1, 3])
     with action[0]:
         submitted = st.button("Generate reports", type="primary", use_container_width=True)
-    with action[1]:
-        force = st.checkbox("Force regenerate", value=False, disabled=not cached)
 
     if cached and not submitted:
-        st.info(f"Reports for this range already exist click generate to download them.")
+        st.info("Reports for this range already exist click generate to download them.")
 
     if submitted:
         try:
-            if cached and not force:
-                result = request_reports(product_line, start_date, end_date, force=False)
-                st.success(f"Reused existing reports from `{result['output_dir']}`.")
+            if cached:
+                # Served from what the backend already has -- no ClickHouse work,
+                # so no spinner to sit through.
+                result = request_reports(product_line, start_date, end_date)
             else:
                 with st.spinner("building reports…"):
-                    result = request_reports(product_line, start_date, end_date, force=force)
-                if result.get("reused"):
-                    st.success(f"Reused existing reports from `{result['output_dir']}`.")
-                else:
-                    st.success(
-                        f"Generated {len(result['report_names'])} reports in "
-                        f"`{result['output_dir']}`."
-                    )
+                    result = request_reports(product_line, start_date, end_date)
+            if result.get("reused"):
+                st.success(f"Reused existing reports from `{result['output_dir']}`.")
+            else:
+                st.success(
+                    f"Generated {len(result['report_names'])} reports in "
+                    f"`{result['output_dir']}`."
+                )
         except (GpsApiError, requests.RequestException) as exc:
             st.error(f"Report generation failed: {exc}")
             return
