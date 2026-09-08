@@ -63,7 +63,7 @@ CREATE TABLE observation_data
     rssi                         Nullable(Int32),
     vin                          Nullable(String),
     can_firmware_ver             Nullable(String),
-    offset                       Nullable(Int32),
+    offset                       Nullable(Int64),
     session_embedding            Nullable(String),             -- raw JSON
     burst_mode                   Nullable(String),             -- raw JSON
     fuel_report                  Nullable(String),             -- raw JSON

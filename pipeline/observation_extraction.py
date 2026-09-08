@@ -80,7 +80,7 @@ CLICKHOUSE_OBSERVATION_DATA_DDL = """
         metadatastatus String DEFAULT 'full', device_id String, s3_path Nullable(String),
         speed_data Nullable(String), starttime Nullable(String), starttimeld Nullable(String),
         inwardstarttime Nullable(String), inwardstarttimeld Nullable(String), rssi Nullable(Int32),
-        vin Nullable(String), can_firmware_ver Nullable(String), offset Nullable(Int32),
+        vin Nullable(String), can_firmware_ver Nullable(String), offset Nullable(Int64),
         session_embedding Nullable(String), burst_mode Nullable(String), fuel_report Nullable(String),
         can_src Nullable(String), can_sn Nullable(String), engine_status Nullable(String),
         protocol_info Nullable(String), idling_report Nullable(String), tc_recommendation Nullable(String),
@@ -347,6 +347,32 @@ class DataProcessor:
             return str(val)
         if col_type.startswith('UInt8') and isinstance(val, bool):
             return int(val)
+        if col_type.startswith('Int') or col_type.startswith('UInt'):
+            try:
+                coerced = int(val)
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+            match = re.match(r'^(U?)Int(8|16|32|64)$', col_type)
+            if not match:
+                return coerced
+
+            is_unsigned = bool(match.group(1))
+            bits = int(match.group(2))
+            if is_unsigned:
+                min_value = 0
+                max_value = (1 << bits) - 1
+            else:
+                min_value = -(1 << (bits - 1))
+                max_value = (1 << (bits - 1)) - 1
+
+            if coerced < min_value or coerced > max_value:
+                logger.log_warning(
+                    f"Dropping out-of-range value for column {col}: {coerced} not in [{min_value}, {max_value}]"
+                )
+                return None
+
+            return coerced
         return val
 
     @contextmanager
