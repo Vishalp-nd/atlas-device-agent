@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate GPS Performance Excel reports for installed OCTA devices from ClickHouse.
+"""Generate GPS Performance CSV reports for installed OCTA devices from ClickHouse.
 
-Emits four workbooks per run:
+Emits four CSV files per run:
 
   1. GPS Observation Report - Condition 1  (ignition ON and uptime > 300 s)
   2. GPS Observation Report - Condition 2  (ignition ON and max speed > 5 mph)
@@ -18,12 +18,19 @@ Data comes from the ClickHouse `observation_data` and `video_metadata` tables
 display names come from OUTPUT/octo/<ota>/polling/<date>/device_data_<ota>.csv,
 produced by pipeline/data_polling.py.
 
+Memory: the result set is never held whole. Rows stream out of ClickHouse in
+blocks, are buffered only up to --max-buffer-rows, and each buffered frame is
+aggregated and appended to the CSVs before the next one is read. Because the
+query is ordered by device_id and buffers are cut on a device boundary, every
+device's rows are complete inside exactly one buffer, which is what lets the
+per-device aggregation and the per-device files be written incrementally.
+
 Note: --end is EXCLUSIVE. A 7-day week is --start 2026-06-15 --end 2026-06-22.
 
 Usage:
     python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-22
     python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-16 \
-        --devices 125072600091 --filename QA_Smoke.xlsx
+        --devices 125072600091 --filename QA_Smoke.csv
 """
 
 from __future__ import annotations
@@ -33,11 +40,11 @@ import csv
 import glob
 import sys
 import time
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterator
 
-import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -53,11 +60,23 @@ DEFAULT_OUTPUT_ROOT = REPO_ROOT / "OUTPUT" / "gps_performance_reports"
 INSTALLED_STATE = "INSTALLED"
 DEVICE_CHUNK = 200
 
+# Rows buffered in RAM before a flush. A flush is cut back to the last complete
+# device, so peak usage is roughly this many rows plus the trailing device.
+DEFAULT_MAX_BUFFER_ROWS = 250_000
+
+# ClickHouse block size for the streaming reads; keeps a single block from
+# arriving as one multi-million-row DataFrame.
+STREAM_BLOCK_SIZE = 65_536
+
 # A device that never acquired a fix writes impossible lat/long (91 / 181) into
 # its filename. Established marker; see atlas/gps_oh_summary_generator.py:469.
 NO_GPS_SENTINEL = "_91.0000_181.0000_"
 
 NO_GPS_LABEL = "No GPS"
+
+# Matches the number format the Excel edition of this report displayed.
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+PERCENT_DECIMALS = 2
 
 OBS_COLUMNS = [
     "Given Date Range",
@@ -127,17 +146,19 @@ def _isum(series: pd.Series) -> int:
     return int(_num(series).fillna(0).sum())
 
 
-def _epoch_to_gmt(epoch_ms: Any) -> str:
-    """Epoch milliseconds -> 'YYYY-MM-DD HH:MM:SS' GMT, '' when absent."""
-    try:
-        if epoch_ms is None or str(epoch_ms) in ("None", "nan", "NaT", ""):
-            return ""
-        value = float(epoch_ms)
-        if value == 0:
-            return ""
-        return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(value / 1000))
-    except (TypeError, ValueError, OverflowError, OSError):
-        return ""
+def _pct(value: float) -> float:
+    return round(float(value), PERCENT_DECIMALS)
+
+
+def _epoch_ms_to_gmt(series: pd.Series) -> pd.Series:
+    """Epoch milliseconds -> 'YYYY-MM-DD HH:MM:SS' GMT, '' when absent or 0.
+
+    Vectorised on purpose: a per-row time.gmtime() call is one of the largest
+    costs in the summary build once the window holds millions of files.
+    """
+    epoch = _num(series)
+    stamps = pd.to_datetime(epoch.where(epoch != 0), unit="ms", errors="coerce")
+    return stamps.dt.strftime(DATETIME_FORMAT).fillna("")
 
 
 def _date_range_slug(start: str, end: str) -> str:
@@ -145,12 +166,13 @@ def _date_range_slug(start: str, end: str) -> str:
     return start_slug if start_slug == end_slug else f"{start_slug}_to_{end_slug}"
 
 
-def _sanitize_sheet_name(name: Any, fallback: str = "Sheet") -> str:
+def _sanitize_name(name: Any, fallback: str = "part") -> str:
+    """Reduce a value to something safe to use as a filename stem."""
     text = str(name).strip() if name is not None else ""
     if not text:
         text = fallback
     cleaned = "".join("_" if ch in set("[]:*?/\\") else ch for ch in text)
-    return cleaned.strip("'")[:31] or fallback
+    return cleaned.strip("'")[:64] or fallback
 
 
 def _parse_dt(value: str) -> datetime:
@@ -319,18 +341,74 @@ def _apply_device_filters(sql: str, vm_filter: str, o_filter: str) -> str:
     )
 
 
-def _chunks(items: list[str], size: int) -> Iterable[list[str]]:
+def _chunks(items: list[str], size: int) -> Iterator[list[str]]:
     for index in range(0, len(items), size):
         yield items[index : index + size]
 
 
-def fetch_per_file_frame(
+def _flush_on_device_boundary(
+    blocks: Iterator[pd.DataFrame], max_buffer_rows: int
+) -> Iterator[pd.DataFrame]:
+    """Regroup streamed blocks into frames that end on a device boundary.
+
+    The query is ordered by device_id, so the rows of the frame's last device
+    may continue into the next block. Those trailing rows are carried over
+    instead of being emitted, which guarantees every device's rows reach the
+    aggregation together and keeps peak memory at ~max_buffer_rows.
+    """
+    carry: list[pd.DataFrame] = []
+    carried = 0
+
+    for block in blocks:
+        if block is None or block.empty:
+            continue
+        carry.append(block)
+        carried += len(block)
+        if carried < max_buffer_rows:
+            continue
+
+        buffered = pd.concat(carry, ignore_index=True) if len(carry) > 1 else carry[0]
+        carry, carried = [], 0
+
+        # Rows are device_id-ordered, so the last device's rows are the tail.
+        tail = buffered["device_id"] == buffered["device_id"].iloc[-1]
+        head = buffered.loc[~tail]
+        if not head.empty:
+            yield head
+        remainder = buffered.loc[tail]
+        del buffered, head
+        carry, carried = [remainder], len(remainder)
+
+    if carry:
+        buffered = pd.concat(carry, ignore_index=True) if len(carry) > 1 else carry[0]
+        if not buffered.empty:
+            yield buffered
+
+
+def _query_blocks(client, sql: str, parameters: dict[str, Any]) -> Iterator[pd.DataFrame]:
+    """Stream one query as DataFrame blocks, falling back to a single frame."""
+    settings = {"max_block_size": STREAM_BLOCK_SIZE}
+    stream = getattr(client, "query_df_stream", None)
+    if stream is None:
+        frame = client.query_df(sql, parameters=parameters)
+        if frame is not None and not frame.empty:
+            yield frame
+        return
+
+    with stream(sql, parameters=parameters, settings=settings) as blocks:
+        for block in blocks:
+            if block is not None and not block.empty:
+                yield block
+
+
+def iter_per_file_frames(
     start: datetime,
     end: datetime,
     device_ids: list[str] | None,
     section: str,
-) -> pd.DataFrame:
-    """Query ClickHouse for the per-observation-file frame both reports build on."""
+    max_buffer_rows: int,
+) -> Iterator[pd.DataFrame]:
+    """Yield the per-observation-file frame in device-complete chunks."""
     client = _clickhouse_client(section)
 
     # str.format() cannot be used here: ClickHouse's own {name:Type} parameter
@@ -349,33 +427,13 @@ def fetch_per_file_frame(
             for chunk in _chunks(device_ids, DEVICE_CHUNK)
         ]
 
-    frames: list[pd.DataFrame] = []
     for index, parameters in enumerate(batches, start=1):
         logger.log_info(f"ClickHouse query batch {index}/{len(batches)}")
-        frame = client.query_df(sql, parameters=parameters)
-        if frame is not None and not frame.empty:
-            frames.append(frame)
-
-    if not frames:
-        return pd.DataFrame(columns=_expected_frame_columns())
-
-    combined = pd.concat(frames, ignore_index=True)
-    logger.log_info(
-        f"Fetched {len(combined)} observation files for "
-        f"{combined['device_id'].nunique()} device(s)"
-    )
-    return combined
-
-
-def _expected_frame_columns() -> list[str]:
-    return [
-        "device_id", "file_name", "udid", "ota", "start_time", "end_time",
-        "ignition_status", "uptime", "min_speed", "max_speed", "metadatastatus",
-        "rssi", "sinr", "nw_source", "nw_recorded_time", "duration_sec", "duration_ms",
-        "acc_count", "invalid_acc_count", "acc_le_2", "acc_le_3_5", "acc_le_6",
-        "acc_le_10", "acc_gt_10", "avg_accuracy", "max_accuracy", "min_accuracy",
-        "acc_list", "inv_acc_list", "first_lat", "first_long", "first_ts",
-    ]
+        blocks = _query_blocks(client, sql, parameters)
+        # Device chunks never overlap, so a boundary flush per batch is enough.
+        for frame in _flush_on_device_boundary(blocks, max_buffer_rows):
+            frame["device_id"] = frame["device_id"].astype(str)
+            yield frame
 
 
 # ---------------------------------------------------------------------------
@@ -427,9 +485,31 @@ def _extreme(series: pd.Series, how: str) -> float | str:
     return float(value.max() if how == "max" else value.min())
 
 
+def _ignition_counts(frame: pd.DataFrame) -> pd.DataFrame:
+    """Per-device IGN High/Low counts over the UNFILTERED rows.
+
+    Computed once per buffered frame with a single groupby. Re-deriving it with
+    a `frame[frame.device_id == d]` mask inside the per-device loop was an
+    O(devices x rows) scan and dominated the runtime of all three reports.
+    """
+    ignition = _num(frame["ignition_status"])
+    return (
+        pd.DataFrame(
+            {
+                "device_id": frame["device_id"].to_numpy(),
+                "high": (ignition > 0).to_numpy(),
+                "low": (ignition == 0).to_numpy(),
+            }
+        )
+        .groupby("device_id", sort=False)[["high", "low"]]
+        .sum()
+    )
+
+
 def _aggregate_group(
     group: pd.DataFrame,
-    unfiltered: pd.DataFrame,
+    ign_high: int,
+    ign_low: int,
     date_range_label: str,
     device_id: str,
     tenant_map: dict[str, str],
@@ -443,8 +523,6 @@ def _aggregate_group(
         group["file_name"].fillna("").astype(str).str.contains(NO_GPS_SENTINEL, regex=False).sum()
     )
 
-    ignition = _num(unfiltered["ignition_status"])
-
     return {
         "Given Date Range": date_range_label,
         "Device ID": device_id,
@@ -456,40 +534,43 @@ def _aggregate_group(
         "0-6 m": _isum(group["acc_le_6"]),
         "0-10 m": _isum(group["acc_le_10"]),
         "Above 10 m": _isum(group["acc_gt_10"]),
-        "GPS Loss %": (invalid * 100.0 / expected) if expected > 0 else 0.0,
-        "No GPS %": (no_gps_files * 100.0 / obs_count) if obs_count > 0 else 0.0,
+        "GPS Loss %": _pct(invalid * 100.0 / expected) if expected > 0 else 0.0,
+        "No GPS %": _pct(no_gps_files * 100.0 / obs_count) if obs_count > 0 else 0.0,
         "Expected Accuracy Count": expected,
         "Actual Accuracy Count": actual,
         "Invalid Accuracy Count": invalid,
         "Average Accuracy": _weighted_mean(group["avg_accuracy"], group["acc_count"]),
         "Maximum Accuracy": _extreme(group["max_accuracy"], "max"),
         "Minimum Accuracy": _extreme(group["min_accuracy"], "min"),
-        "IGN High Count": int((ignition > 0).sum()),
-        "IGN Low Count": int((ignition == 0).sum()),
+        "IGN High Count": ign_high,
+        "IGN Low Count": ign_low,
     }
 
 
-def build_observation_report(
+def build_observation_rows(
     condition_frame: pd.DataFrame,
     full_frame: pd.DataFrame,
     date_range_label: str,
     tenant_map: dict[str, str],
-) -> pd.DataFrame:
-    """Aggregate one condition subset into the GPS Observation Report."""
+) -> list[dict[str, Any]]:
+    """Aggregate one condition subset into GPS Observation Report rows."""
     if condition_frame.empty:
-        return pd.DataFrame(columns=OBS_COLUMNS)
+        return []
+
+    # IGN High/Low are deliberately taken from the UNFILTERED frame: in an
+    # ignition-ON condition subset IGN Low is structurally always zero.
+    ign_counts = _ignition_counts(full_frame)
 
     rows: list[dict[str, Any]] = []
-
     for device_id, group in condition_frame.groupby("device_id", sort=True):
-        # IGN High/Low are deliberately taken from the UNFILTERED group: in an
-        # ignition-ON condition subset IGN Low is structurally always zero.
-        unfiltered = full_frame[full_frame["device_id"] == device_id]
+        high = low = 0
+        if device_id in ign_counts.index:
+            counts = ign_counts.loc[device_id]
+            high, low = int(counts["high"]), int(counts["low"])
         rows.append(
-            _aggregate_group(group, unfiltered, date_range_label, device_id, tenant_map)
+            _aggregate_group(group, high, low, date_range_label, device_id, tenant_map)
         )
-
-    return pd.DataFrame(rows, columns=OBS_COLUMNS)
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -497,23 +578,29 @@ def build_observation_report(
 # ---------------------------------------------------------------------------
 
 def build_summary_report(frame: pd.DataFrame) -> pd.DataFrame:
+    """One row per observation file, in the query's device/start_time order.
+
+    No re-sort here: the query already orders by device_id, start_time,
+    file_name, and device chunks are issued in sorted device order, so the
+    appended CSV comes out globally sorted without a full-frame sort copy.
+    """
     if frame.empty:
         return pd.DataFrame(columns=SUMMARY_COLUMNS)
 
-    out = pd.DataFrame(
+    return pd.DataFrame(
         {
             "Device ID": frame["device_id"],
             "File Name": frame["file_name"],
-            "Videometadata_Accuracy_Count": _num(frame["acc_count"]).fillna(0).astype(int),
+            "Videometadata_Accuracy_Count": _num(frame["acc_count"]).fillna(0).astype("int64"),
             "Videometadata_Invalid_Accuracy_Count": _num(frame["invalid_acc_count"])
             .fillna(0)
-            .astype(int),
+            .astype("int64"),
             "Start Time": pd.to_datetime(frame["start_time"], errors="coerce"),
             "Duration": _num(frame["duration_ms"]).fillna(0).astype("int64"),
             "Uptime": _num(frame["uptime"]),
             "Ignition_Status": _num(frame["ignition_status"]),
             "Nw_Recordedtime_Epoch": _num(frame["nw_recorded_time"]),
-            "Nw_Recordedtime": frame["nw_recorded_time"].map(_epoch_to_gmt),
+            "Nw_Recordedtime": _epoch_ms_to_gmt(frame["nw_recorded_time"]),
             "Nwsource": frame["nw_source"],
             "Rssi": _num(frame["rssi"]),
             "Sinr": _num(frame["sinr"]),
@@ -531,182 +618,71 @@ def build_summary_report(frame: pd.DataFrame) -> pd.DataFrame:
         },
         columns=SUMMARY_COLUMNS,
     )
-    return out.sort_values(["Device ID", "Start Time", "File Name"], kind="stable")
 
 
 # ---------------------------------------------------------------------------
-# Step 5 - Excel formatting (spec section 4)
+# Step 5 - append-only CSV writers
 #
-# Cells are written individually rather than via DataFrame.to_excel so that the
-# centre/middle alignment, the yellow bold header and the per-column number
-# formats apply to every cell.
+# Every report file is opened once, its header written immediately (so a run
+# with no data still produces header-only CSVs) and each buffered chunk is
+# appended and dropped. Nothing accumulates in RAM waiting for a final write.
 # ---------------------------------------------------------------------------
 
-HEADER_COLOR = "#FFFF00"
-DATETIME_FORMAT = "yyyy-mm-dd hh.mm.ss"
-PERCENT_FORMAT = "0.00"
-DEVICE_ID_FORMAT = "0"
-DATETIME_COLUMNS = {"Start Time", "Timestamp"}
-DEVICE_ID_COLUMNS = {"Device ID"}
-MAX_COLUMN_WIDTH = 40
-WIDTH_SAMPLE_ROWS = 5000
+class CsvAppender:
+    """One CSV file, header written up front, rows appended chunk by chunk."""
 
-# Excel's hard sheet limit is 1,048,576 rows; one is spent on the header.
-# xlsxwriter only *warns* on out-of-range writes and drops the data, so the
-# GPS Summary (one row per video file) is split across sheets instead.
-EXCEL_MAX_DATA_ROWS = 1_048_575
+    def __init__(self, path: Path, columns: list[str]) -> None:
+        self.path = path
+        self.columns = columns
+        self.rows = 0
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = open(path, "w", newline="", encoding="utf-8")
+        csv.writer(self._handle).writerow(columns)
 
-
-def _build_formats(workbook) -> dict[str, Any]:
-    base = {"align": "center", "valign": "vcenter"}
-    return {
-        "header": workbook.add_format({**base, "bold": True, "bg_color": HEADER_COLOR, "border": 1}),
-        "body": workbook.add_format(base),
-        "percent": workbook.add_format({**base, "num_format": PERCENT_FORMAT}),
-        "device_id": workbook.add_format({**base, "num_format": DEVICE_ID_FORMAT}),
-        "datetime": workbook.add_format({**base, "num_format": DATETIME_FORMAT}),
-    }
-
-
-def _column_format(column: str, formats: dict[str, Any]):
-    if column in DEVICE_ID_COLUMNS:
-        return formats["device_id"]
-    if column.strip().endswith("%"):
-        return formats["percent"]
-    if column in DATETIME_COLUMNS:
-        return formats["datetime"]
-    return formats["body"]
-
-
-def _column_width(frame: pd.DataFrame, column: str) -> int:
-    width = len(str(column))
-    if not frame.empty:
-        if column in DATETIME_COLUMNS:
-            width = max(width, len(DATETIME_FORMAT))
-        else:
-            # Sample rather than scan: on a summary sheet with hundreds of
-            # thousands of files, measuring every cell costs more than the
-            # column width is worth.
-            sample = frame[column].head(WIDTH_SAMPLE_ROWS).astype(str).str.len()
-            width = max(width, int(sample.max()) if sample.notna().any() else width)
-    return min(width + 2, MAX_COLUMN_WIDTH)
-
-
-def _is_missing(value: Any) -> bool:
-    """True for None, NaN and NaT.
-
-    np.isscalar() is not usable as the guard here: it returns False for pd.NaT,
-    which is itself an instance of datetime and would otherwise reach
-    write_datetime and raise "NaTType does not support isocalendar".
-    """
-    if value is None:
-        return True
-    try:
-        missing = pd.isna(value)
-    except (TypeError, ValueError):
-        return False
-    return bool(missing) if np.ndim(missing) == 0 else False
-
-
-def _write_cell(worksheet, row: int, col: int, value: Any, cell_format, column: str) -> None:
-    if _is_missing(value):
-        worksheet.write_blank(row, col, None, cell_format)
-        return
-
-    if column in DEVICE_ID_COLUMNS:
-        try:
-            worksheet.write_number(row, col, int(str(value).strip()), cell_format)
+    def append_rows(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
             return
-        except (TypeError, ValueError):
-            pass
-
-    if isinstance(value, (pd.Timestamp, datetime)):
-        stamp = pd.Timestamp(value)
-        if stamp.tz is not None:
-            stamp = stamp.tz_localize(None)
-        worksheet.write_datetime(row, col, stamp.to_pydatetime(), cell_format)
-        return
-
-    if isinstance(value, (bool, np.bool_)):
-        worksheet.write_string(row, col, str(bool(value)), cell_format)
-        return
-
-    if isinstance(value, (int, np.integer)):
-        worksheet.write_number(row, col, int(value), cell_format)
-        return
-
-    if isinstance(value, (float, np.floating)):
-        if not np.isfinite(value):
-            worksheet.write_blank(row, col, None, cell_format)
-            return
-        worksheet.write_number(row, col, float(value), cell_format)
-        return
-
-    worksheet.write_string(row, col, str(value), cell_format)
-
-
-def _write_sheet(writer, frame: pd.DataFrame, sheet_name: str) -> None:
-    workbook = writer.book
-    formats = _build_formats(workbook)
-    worksheet = workbook.add_worksheet(_sanitize_sheet_name(sheet_name))
-    writer.sheets[sheet_name] = worksheet
-
-    columns = list(frame.columns)
-
-    for col_index, column in enumerate(columns):
-        worksheet.write_string(0, col_index, str(column), formats["header"])
-        worksheet.set_column(
-            col_index,
-            col_index,
-            _column_width(frame, column),
-            _column_format(column, formats),
+        writer = csv.DictWriter(
+            self._handle, fieldnames=self.columns, extrasaction="ignore"
         )
+        writer.writerows(rows)
+        self.rows += len(rows)
 
-    # Column-wise extraction: frame.iterrows() builds a Series per row, which
-    # dominates runtime on a summary sheet with hundreds of thousands of files.
-    values = [frame[column].tolist() for column in columns]
-    cell_formats = [_column_format(column, formats) for column in columns]
+    def append_frame(self, frame: pd.DataFrame) -> None:
+        if frame.empty:
+            return
+        frame.to_csv(
+            self._handle,
+            header=False,
+            index=False,
+            date_format=DATETIME_FORMAT,
+            lineterminator="\n",
+        )
+        self.rows += len(frame)
 
-    for row_index in range(len(frame)):
-        for col_index, column in enumerate(columns):
-            _write_cell(
-                worksheet,
-                row_index + 1,
-                col_index,
-                values[col_index][row_index],
-                cell_formats[col_index],
-                column,
-            )
+    def close(self) -> None:
+        self._handle.close()
 
-    worksheet.freeze_panes(1, 0)
-    if columns:
-        worksheet.autofilter(0, 0, max(len(frame), 1), len(columns) - 1)
+    def __enter__(self) -> "CsvAppender":
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        self.close()
 
 
-def _split_for_excel(sheet_name: str, frame: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
-    """Chunk a frame that would overflow one worksheet into _2, _3, ... sheets."""
-    if len(frame) <= EXCEL_MAX_DATA_ROWS:
-        return [(sheet_name, frame)]
+def write_device_csv(directory: Path, device_id: Any, frame: pd.DataFrame) -> None:
+    """Write one device's summary rows to its own CSV.
 
-    parts: list[tuple[str, pd.DataFrame]] = []
-    for offset in range(0, len(frame), EXCEL_MAX_DATA_ROWS):
-        index = offset // EXCEL_MAX_DATA_ROWS + 1
-        name = sheet_name if index == 1 else f"{sheet_name}_{index}"
-        parts.append((name, frame.iloc[offset : offset + EXCEL_MAX_DATA_ROWS]))
-    logger.log_warning(
-        f"{sheet_name}: {len(frame)} rows exceeds the Excel sheet limit; "
-        f"split across {len(parts)} sheets"
+    Safe as a single 'w' write: buffered frames are cut on device boundaries,
+    so a device's rows are never split across two chunks.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(
+        directory / f"{_sanitize_name(device_id, 'device')}.csv",
+        index=False,
+        date_format=DATETIME_FORMAT,
+        lineterminator="\n",
     )
-    return parts
-
-
-def write_workbook(path: Path, sheets: list[tuple[str, pd.DataFrame]]) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
-        for sheet_name, frame in sheets:
-            for part_name, part in _split_for_excel(sheet_name, frame):
-                _write_sheet(writer, part, part_name)
-    return path
 
 
 # ---------------------------------------------------------------------------
@@ -715,8 +691,8 @@ def write_workbook(path: Path, sheets: list[tuple[str, pd.DataFrame]]) -> Path:
 
 def _report_path(output_dir: Path, custom_stem: str | None, tag: str, timestamp: str) -> Path:
     if custom_stem:
-        return output_dir / f"{custom_stem}_{tag}.xlsx"
-    return output_dir / f"GPS_Obs_{tag}_{timestamp}.xlsx"
+        return output_dir / f"{custom_stem}_{tag}.csv"
+    return output_dir / f"GPS_Obs_{tag}_{timestamp}.csv"
 
 
 def generate_reports(
@@ -727,42 +703,70 @@ def generate_reports(
     device_ids: list[str] | None,
     section: str,
     custom_stem: str | None,
-    per_device_sheets: bool,
+    per_device_files: bool,
+    max_buffer_rows: int,
 ) -> list[Path]:
-    frame = fetch_per_file_frame(start, end, device_ids, section)
-
-    if not frame.empty:
-        frame = frame.copy()
-        frame["device_id"] = frame["device_id"].astype(str)
-        frame["report_date"] = pd.to_datetime(frame["start_time"], errors="coerce").dt.date
-    else:
-        logger.log_warning("No observation data in range; writing header-only workbooks")
-        frame["report_date"] = pd.Series(dtype="object")
-
     timestamp = time.strftime("%Y-%m-%d-%H_%M")
     date_range_label = f"{start.date()} to {end.date()}"
-    written: list[Path] = []
 
-    for _key, label, tag, condition in CONDITIONS:
-        subset = condition(frame) if not frame.empty else frame
-        report = build_observation_report(subset, frame, date_range_label, tenant_map)
-        path = _report_path(output_dir, custom_stem, tag, timestamp)
-        write_workbook(path, [("GPS_Observation", report)])
-        logger.log_info(f"{label}: {len(subset)} files -> {len(report)} rows")
-        written.append(path)
-
-    summary = build_summary_report(frame)
-    sheets: list[tuple[str, pd.DataFrame]] = [("GPS_Summary", summary)]
-    if per_device_sheets and not summary.empty:
-        for device_id, group in summary.groupby("Device ID", sort=True):
-            sheets.append((_sanitize_sheet_name(device_id, "Device"), group))
-
-    summary_name = (
-        f"{custom_stem}_Summary.xlsx" if custom_stem else f"GPS_Summary_{timestamp}.xlsx"
+    summary_name = f"{custom_stem}_Summary.csv" if custom_stem else f"GPS_Summary_{timestamp}.csv"
+    device_dir = output_dir / (
+        f"{custom_stem}_Summary_by_device" if custom_stem else f"GPS_Summary_{timestamp}_by_device"
     )
-    summary_path = write_workbook(output_dir / summary_name, sheets)
-    logger.log_info(f"GPS Summary: {len(summary)} rows across {len(sheets)} sheet(s)")
-    written.append(summary_path)
+
+    total_files = 0
+    devices_seen: set[str] = set()
+    device_files = 0
+    condition_files = {key: 0 for key, _label, _tag, _fn in CONDITIONS}
+
+    with ExitStack() as stack:
+        obs_writers = {
+            key: stack.enter_context(
+                CsvAppender(_report_path(output_dir, custom_stem, tag, timestamp), OBS_COLUMNS)
+            )
+            for key, _label, tag, _fn in CONDITIONS
+        }
+        summary_writer = stack.enter_context(
+            CsvAppender(output_dir / summary_name, SUMMARY_COLUMNS)
+        )
+
+        for frame in iter_per_file_frames(start, end, device_ids, section, max_buffer_rows):
+            total_files += len(frame)
+            devices_seen.update(frame["device_id"].unique().tolist())
+
+            for key, _label, _tag, condition in CONDITIONS:
+                subset = condition(frame)
+                condition_files[key] += len(subset)
+                obs_writers[key].append_rows(
+                    build_observation_rows(subset, frame, date_range_label, tenant_map)
+                )
+                del subset
+
+            summary = build_summary_report(frame)
+            summary_writer.append_frame(summary)
+            if per_device_files:
+                for device_id, group in summary.groupby("Device ID", sort=True):
+                    write_device_csv(device_dir, device_id, group)
+                    device_files += 1
+            del summary, frame
+
+        if total_files == 0:
+            logger.log_warning("No observation data in range; wrote header-only CSVs")
+        else:
+            logger.log_info(
+                f"Fetched {total_files} observation files for {len(devices_seen)} device(s)"
+            )
+
+        for key, label, _tag, _fn in CONDITIONS:
+            logger.log_info(
+                f"{label}: {condition_files[key]} files -> {obs_writers[key].rows} rows"
+            )
+        logger.log_info(f"GPS Summary: {summary_writer.rows} rows")
+        if per_device_files:
+            logger.log_info(f"Per-device summaries: {device_files} CSV file(s) in {device_dir}")
+
+        written = [obs_writers[key].path for key, _label, _tag, _fn in CONDITIONS]
+        written.append(summary_writer.path)
 
     return written
 
@@ -778,8 +782,8 @@ def parse_args() -> argparse.Namespace:
         "--filename",
         default=None,
         help=(
-            "Custom Excel filename stem. Each report keeps its discriminator, so "
-            "--filename GPS_Wk25.xlsx yields GPS_Wk25_Cond1.xlsx ... GPS_Wk25_Summary.xlsx"
+            "Custom CSV filename stem. Each report keeps its discriminator, so "
+            "--filename GPS_Wk25.csv yields GPS_Wk25_Cond1.csv ... GPS_Wk25_Summary.csv"
         ),
     )
     parser.add_argument(
@@ -808,9 +812,20 @@ def parse_args() -> argparse.Namespace:
         help=f"db_credentials.ini section. Default: {DEFAULT_CLICKHOUSE_SECTION}",
     )
     parser.add_argument(
+        "--per-device-files",
         "--per-device-sheets",
+        dest="per_device_files",
         action="store_true",
-        help="Also add one sheet per device to the GPS Summary workbook",
+        help="Also write one summary CSV per device into a <summary>_by_device/ directory",
+    )
+    parser.add_argument(
+        "--max-buffer-rows",
+        type=int,
+        default=DEFAULT_MAX_BUFFER_ROWS,
+        help=(
+            "Rows held in RAM before a flush. Lower it on a memory-tight host, "
+            f"raise it for speed. Default: {DEFAULT_MAX_BUFFER_ROWS}"
+        ),
     )
     return parser.parse_args()
 
@@ -822,6 +837,9 @@ def main() -> int:
     end = _parse_dt(args.end)
     if end <= start:
         print(f"error: --end ({args.end}) must be after --start ({args.start})", file=sys.stderr)
+        return 2
+    if args.max_buffer_rows < 1:
+        print("error: --max-buffer-rows must be at least 1", file=sys.stderr)
         return 2
 
     span = end - start
@@ -868,7 +886,8 @@ def main() -> int:
             device_ids=device_ids,
             section=args.clickhouse_section,
             custom_stem=custom_stem,
-            per_device_sheets=args.per_device_sheets,
+            per_device_files=args.per_device_files,
+            max_buffer_rows=args.max_buffer_rows,
         )
     except Exception as exc:
         logger.log_error(f"Report generation failed: {exc}")
