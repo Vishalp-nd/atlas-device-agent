@@ -51,6 +51,15 @@ from .critical_events_dashboard_service import (
     load_ota_type_counts,
 )
 from .critical_events_agent_graph import run_critical_events_agent
+from .gps_summary_service import (
+    GpsDataAccessError,
+    GpsSummaryConfig,
+    discover_product_lines as load_gps_product_lines,
+    ensure_reports as ensure_gps_reports,
+    is_cached as gps_reports_cached,
+    load_available_days as load_gps_available_days,
+    report_context as gps_report_context,
+)
 from .jenkins_agent_graph import run_jenkins_agent
 from .observations_agent_graph import run_observations_agent
 from .result_store import result_store
@@ -71,6 +80,11 @@ from .models import (
     CriticalEventsDashboardSummaryRequest,
     CriticalEventsQueryRequest,
     DownloadRef,
+    GpsAvailabilityResponse,
+    GpsProductLinesResponse,
+    GpsReportRequest,
+    GpsReportResponse,
+    GpsReportStatusResponse,
     IndexStatsResponse,
     ObservationsAgentQueryResponse,
     ObservationsQueryRequest,
@@ -80,6 +94,7 @@ from .session_store import session_store
 
 router = APIRouter(prefix="/atlas", tags=["atlas"])
 _DASHBOARD_CONFIG = DashboardConfig(repo_root=REPO_ROOT)
+_GPS_CONFIG = GpsSummaryConfig(repo_root=REPO_ROOT)
 _ALLOWED_OTA_ENV_KEY = "ALLOWED_OTA_VERSIONS"
 _ALLOWED_OTA_LIMIT = 30
 
@@ -89,6 +104,25 @@ def _dashboard_or_503(loader):
         return loader()
     except DashboardDataAccessError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _gps_or_503(loader):
+    """Same 503-on-data-access-failure contract as _dashboard_or_503.
+
+    ClickHouse being unreachable, or the report generator blowing up mid-query,
+    is a backend availability problem -- not a bad request from the page.
+    """
+    try:
+        return loader()
+    except GpsDataAccessError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _parse_gps_date(value: str, field: str):
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        raise HTTPException(status_code=422, detail=f"Invalid {field} date: {value}")
+    return parsed.date()
 
 
 def _parse_dashboard_ts(value: str | None):
@@ -513,6 +547,129 @@ def observations_download(result_id: str):
         content=data,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── GPS Summary dashboard ─────────────────────────────────────────────────────
+#
+# The Streamlit page holds no ClickHouse client and no copy of OUTPUT/: it picks
+# a range here, POSTs it, and downloads the zip this service built. Report
+# generation is a long blocking ClickHouse job, so these stay plain `def` and
+# FastAPI runs them in its worker thread pool.
+
+@router.get("/dashboard/gps/availability", response_model=GpsAvailabilityResponse)
+def gps_dashboard_availability() -> GpsAvailabilityResponse:
+    """Calendar days observation_data holds, with a file count per day."""
+    frame = _gps_or_503(lambda: load_gps_available_days(_GPS_CONFIG))
+    rows = _frame_rows(frame)
+    for row in rows:
+        day = row.get("day")
+        if day is not None and not isinstance(day, str):
+            row["day"] = day.isoformat()
+        files = row.get("files")
+        if files is not None:
+            row["files"] = int(files)
+    days = [row["day"] for row in rows if row.get("day")]
+    return GpsAvailabilityResponse(
+        rows=rows,
+        min_day=min(days) if days else None,
+        max_day=max(days) if days else None,
+    )
+
+
+@router.get("/dashboard/gps/product-lines", response_model=GpsProductLinesResponse)
+def gps_dashboard_product_lines() -> GpsProductLinesResponse:
+    """Product lines with polled device data on the backend's OUTPUT/ tree."""
+    return GpsProductLinesResponse(
+        product_lines=_gps_or_503(lambda: load_gps_product_lines(_GPS_CONFIG))
+    )
+
+
+@router.post("/dashboard/gps/reports", response_model=GpsReportResponse)
+def gps_dashboard_reports(req: GpsReportRequest) -> GpsReportResponse:
+    """Generate (or reuse) the GPS reports for a range and register the zip.
+
+    Both dates are inclusive UTC. Only the download reference comes back -- the
+    archive itself is fetched from the download route below, so a large zip is
+    never carried in this JSON response.
+    """
+    start = _parse_gps_date(req.start, "start")
+    end = _parse_gps_date(req.end, "end")
+    if start > end:
+        raise HTTPException(status_code=422, detail="start must be on or before end")
+    if not req.product_line.strip():
+        raise HTTPException(status_code=422, detail="product_line is required")
+
+    try:
+        context, reused = _gps_or_503(
+            lambda: ensure_gps_reports(
+                _GPS_CONFIG, req.product_line, start, end, force=req.force
+            )
+        )
+    except FileNotFoundError as exc:
+        # No polling device_data CSVs for this product line: a bad request
+        # against the backend's data, not a backend outage.
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    zip_path = context["zip_path"]
+    result_id = result_store.put_file(zip_path)
+    return GpsReportResponse(
+        download=DownloadRef(
+            id=result_id,
+            filename=zip_path.name,
+            url=f"/atlas/dashboard/gps/reports/download/{result_id}",
+        ),
+        reused=reused,
+        output_dir=str(context["output_dir"]),
+        folder_name=context["folder_name"],
+        report_names=[p.name for p in context["reports"]],
+        size_bytes=zip_path.stat().st_size,
+    )
+
+
+@router.get("/dashboard/gps/reports/status", response_model=GpsReportStatusResponse)
+def gps_dashboard_reports_status(
+    product_line: str, start: str, end: str
+) -> GpsReportStatusResponse:
+    """Has this range already been generated? Cheap: pure path check, no query.
+
+    Lets the page show the "reports already exist" hint and enable Force
+    regenerate without committing to a ClickHouse run first.
+    """
+    start_date = _parse_gps_date(start, "start")
+    end_date = _parse_gps_date(end, "end")
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="start must be on or before end")
+
+    context = gps_report_context(_GPS_CONFIG, product_line, start_date, end_date)
+    cached = gps_reports_cached(context)
+    zip_path = context["zip_path"]
+    return GpsReportStatusResponse(
+        cached=cached,
+        output_dir=str(context["output_dir"]),
+        folder_name=context["folder_name"],
+        report_names=[p.name for p in context["reports"]],
+        size_bytes=zip_path.stat().st_size if cached else None,
+    )
+
+
+@router.get("/dashboard/gps/reports/download/{result_id}")
+def gps_dashboard_reports_download(result_id: str):
+    """Stream the zip off disk.
+
+    FileResponse rather than the read_bytes() that the agent download routes
+    use: a multi-day GPS archive can be large, and there is no reason to hold a
+    full copy in the service's memory to hand it over.
+    """
+    from fastapi.responses import FileResponse
+    entry = result_store.get_path(result_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Result not found or expired")
+    path, filename = entry
+    return FileResponse(
+        path,
+        media_type=mimetypes.guess_type(filename)[0] or "application/zip",
+        filename=filename,
     )
 
 

@@ -796,9 +796,9 @@ def expected_report_paths(
 
     All three ignition conditions share one Observation CSV, laid out side by
     side -- see write_observation_report(). Single source of truth for report
-    filenames, shared with the Streamlit page's "already generated" check so the
-    two cannot drift apart. Only meaningful for a custom_stem; the default names
-    carry a run timestamp and are not predictable.
+    filenames, shared with atlas/gps_summary_service.py's "already generated"
+    check so the two cannot drift apart. Only meaningful for a custom_stem; the
+    default names carry a run timestamp and are not predictable.
     """
     return [
         _observation_path(output_dir, custom_stem, timestamp),

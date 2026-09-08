@@ -54,6 +54,29 @@ class ResultStore:
                 return None
             return path.read_bytes(), filename
 
+    def get_path(self, result_id: str) -> tuple[Path, str] | None:
+        """The on-disk path for a file entry, so large results can be streamed.
+
+        Returns None for bytes-backed entries (use get()), for an expired id, or
+        when the file has since been removed. Lets a route hand the path to
+        FileResponse instead of reading the whole archive into memory.
+        """
+        with self._lock:
+            entry = self._store.get(result_id)
+            if entry is None:
+                return None
+            kind, payload, filename, ts = entry
+            if time.time() - ts > self._ttl:
+                del self._store[result_id]
+                return None
+            if kind != "file":
+                return None
+            path = Path(payload)
+            if not path.is_file():
+                del self._store[result_id]
+                return None
+            return path, filename
+
     def _purge_locked(self) -> None:
         cutoff = time.time() - self._ttl
         stale = [k for k, (_, _, _, ts) in self._store.items() if ts < cutoff]

@@ -1,141 +1,129 @@
 """GPS Summary page — pick a date range and product line, get a zip of both reports.
 
-Wraps scripts/gps_performance_report.py. The date picker is bounded to the range
-ClickHouse actually holds observation data for, reports for a range that has
-already been generated are reused rather than re-queried, and the resulting zip
-auto-downloads once it is ready (with a visible button as fallback, since
-browsers may block a scripted download).
+A pure HTTP client for /atlas/dashboard/gps/*, exactly like
+pages/3_Critical_Events_Monitor.py. ClickHouse, the OUTPUT/ device-list tree and
+the report generator itself all live in the backend
+(atlas/gps_summary_service.py), so the Streamlit host needs neither
+clickhouse_connect nor a copy of the data -- it only needs to reach the API.
+
+The date picker is bounded to the range ClickHouse actually holds observation
+data for, reports for a range the backend has already generated are reused
+rather than re-queried, and the resulting zip auto-downloads once it is ready
+(with a visible button as fallback, since browsers may block a scripted
+download).
 """
 
 from __future__ import annotations
 
 import json
-import sys
-import zipfile
 from datetime import date, timedelta
-from pathlib import Path
 
 import pandas as pd
+import requests
 import streamlit as st
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT
 
-from scripts import gps_performance_report as G
-
-OUTPUT_ROOT = REPO_ROOT / "OUTPUT"
-REPORT_ROOT = OUTPUT_ROOT / "gps_performance_reports"
-FALLBACK_PRODUCT_LINES = ["octo"]
 DOWNLOAD_LABEL = "Download GPS reports (.zip)"
 AVAILABILITY_TTL = 300
+# Report generation is a multi-day ClickHouse scan; the shared REQUEST_TIMEOUT
+# (15 min) is the budget for it, while the metadata calls should fail fast.
+METADATA_TIMEOUT = 30
+
+
+class GpsApiError(RuntimeError):
+    pass
 
 
 # ---------------------------------------------------------------------------
-# Data availability + product lines
+# API client
 # ---------------------------------------------------------------------------
+
+def _raise_gps_api_error(response: requests.Response) -> None:
+    detail = ""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        raw_detail = payload.get("detail")
+        if isinstance(raw_detail, str):
+            detail = raw_detail.strip()
+    if not detail:
+        detail = response.text.strip() or response.reason or "GPS API request failed"
+    raise GpsApiError(f"GPS backend returned {response.status_code}: {detail}")
+
+
+def _gps_api_get(path: str, params: dict | None = None, timeout: int = METADATA_TIMEOUT) -> dict:
+    response = requests.get(f"{API_BASE_URL}{path}", params=params, timeout=timeout)
+    if not response.ok:
+        _raise_gps_api_error(response)
+    return response.json()
+
+
+def _gps_api_post(path: str, payload: dict, timeout: int = REQUEST_TIMEOUT) -> dict:
+    response = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=timeout)
+    if not response.ok:
+        _raise_gps_api_error(response)
+    return response.json()
+
 
 @st.cache_data(show_spinner=True, ttl=AVAILABILITY_TTL)
-def load_available_days(section: str) -> pd.DataFrame:
+def load_available_days() -> pd.DataFrame:
     """One row per calendar day that has observation data, with its file count."""
-    client = G._clickhouse_client(section)
-    frame = client.query_df(
-        "SELECT toDate(start_time) AS day, count() AS files "
-        "FROM observation_data WHERE start_time IS NOT NULL "
-        "GROUP BY day ORDER BY day"
-    )
-    if frame is None or frame.empty:
+    payload = _gps_api_get("/atlas/dashboard/gps/availability")
+    rows = payload.get("rows") or []
+    if not rows:
         return pd.DataFrame(columns=["day", "files"])
+    frame = pd.DataFrame(rows)
     frame["day"] = pd.to_datetime(frame["day"]).dt.date
-    return frame
+    frame["files"] = pd.to_numeric(frame["files"], errors="coerce").fillna(0).astype(int)
+    return frame.sort_values("day").reset_index(drop=True)
 
 
-def discover_product_lines() -> list[str]:
-    """Product lines that actually have polled device data on disk.
-
-    Mirrors the layout load_installed_devices() globs:
-    OUTPUT/<product_line>/<ota>/polling/<date>/device_data_<ota>.csv
-    """
-    if not OUTPUT_ROOT.is_dir():
-        return list(FALLBACK_PRODUCT_LINES)
-
-    found = [
-        entry.name
-        for entry in sorted(OUTPUT_ROOT.iterdir())
-        if entry.is_dir() and any(entry.glob("*/polling/*/device_data_*.csv"))
-    ]
-    return found or list(FALLBACK_PRODUCT_LINES)
+@st.cache_data(show_spinner=False, ttl=AVAILABILITY_TTL)
+def load_product_lines() -> list[str]:
+    payload = _gps_api_get("/atlas/dashboard/gps/product-lines")
+    return list(payload.get("product_lines") or [])
 
 
-# ---------------------------------------------------------------------------
-# Report locations and reuse
-# ---------------------------------------------------------------------------
-
-def report_context(product_line: str, start: date, end_inclusive: date) -> dict:
-    """Deterministic output paths for one (product line, range) request.
-
-    Both dates are INCLUSIVE and in UTC, matching the script's --start/--end, so
-    the same dates typed at the CLI and picked here produce the same window and
-    the same output directory. The whole of end_inclusive is covered, which is
-    why the exclusive SQL bound is that day plus one -- exactly what
-    _inclusive_end_to_exclusive() does for a date-only --end.
-
-    A fixed stem — rather than the CLI's run-timestamped default — is what makes
-    the "already generated?" check possible.
-    """
-    slug = G._date_range_slug(start.isoformat(), end_inclusive.isoformat())
-    stem = G._sanitize_name(f"GPS_{product_line}_{slug}")
-    output_dir = REPORT_ROOT / product_line / slug
-    reports = G.expected_report_paths(output_dir, stem)
-    return {
-        "slug": slug,
-        "stem": stem,
-        "output_dir": output_dir,
-        "reports": reports,
-        "zip_path": output_dir / f"{stem}.zip",
-        "folder_name": stem,
-        "start_dt": pd.Timestamp(start).to_pydatetime(),
-        "end_dt": pd.Timestamp(end_inclusive + timedelta(days=1)).to_pydatetime(),
-    }
-
-
-def is_cached(context: dict) -> bool:
-    return context["zip_path"].is_file() and all(p.is_file() for p in context["reports"])
-
-
-def build_zip(context: dict) -> Path:
-    """Zip the four reports into a single folder inside the archive."""
-    zip_path = context["zip_path"]
-    zip_path.parent.mkdir(parents=True, exist_ok=True)
-    folder = context["folder_name"]
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for report in context["reports"]:
-            archive.write(report, arcname=f"{folder}/{report.name}")
-    return zip_path
-
-
-def generate(context: dict, product_line: str, section: str) -> Path:
-    """Run the report generator for this range, then zip the output."""
-    device_list_root = OUTPUT_ROOT / product_line
-    tenant_map = G.load_installed_devices(device_list_root)
-    device_ids = sorted(tenant_map)
-    if not device_ids:
-        raise RuntimeError(
-            f"No {G.INSTALLED_STATE} devices found under {device_list_root}"
-        )
-
-    G.generate_reports(
-        start=context["start_dt"],
-        end=context["end_dt"],
-        output_dir=context["output_dir"],
-        tenant_map=tenant_map,
-        device_ids=device_ids,
-        section=section,
-        custom_stem=context["stem"],
-        per_device_files=False,
-        max_buffer_rows=G.DEFAULT_MAX_BUFFER_ROWS,
+def load_report_status(product_line: str, start: date, end_inclusive: date) -> dict:
+    return _gps_api_get(
+        "/atlas/dashboard/gps/reports/status",
+        params={
+            "product_line": product_line,
+            "start": start.isoformat(),
+            "end": end_inclusive.isoformat(),
+        },
     )
-    return build_zip(context)
+
+
+def request_reports(product_line: str, start: date, end_inclusive: date, force: bool) -> dict:
+    return _gps_api_post(
+        "/atlas/dashboard/gps/reports",
+        {
+            "product_line": product_line,
+            "start": start.isoformat(),
+            "end": end_inclusive.isoformat(),
+            "force": force,
+        },
+    )
+
+
+def _download_url(url: str) -> str:
+    return f"{API_BASE_URL.rstrip('/')}{url}" if url.startswith("/") else url
+
+
+def fetch_zip_bytes(url: str) -> bytes:
+    """Pull the archive from the backend. Called only when the button is clicked.
+
+    Streamlit's deferred data generation means this does not run on every rerun,
+    so the archive is not held in the frontend for the life of the connection.
+    """
+    response = requests.get(_download_url(url), timeout=REQUEST_TIMEOUT)
+    if not response.ok:
+        _raise_gps_api_error(response)
+    return response.content
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +138,7 @@ def _auto_download(token: str) -> None:
     components.v1.html (deprecated) because it is *not* iframed -- the script
     runs in the app document, so the button is reachable without a window.parent
     hop. Keyed on a token so an ordinary rerun, or the user returning to the
-    page, does not re-trigger a download; only a freshly written archive does.
+    page, does not re-trigger a download; only a fresh report request does.
     Polling covers the button not having painted yet, which is also what lets
     this fire after the user has switched to another browser tab.
     """
@@ -209,6 +197,21 @@ def _render_availability(days: pd.DataFrame, start: date, end_inclusive: date) -
         st.warning(f"No observation data on {len(missing)} day(s): {shown}{more}")
 
 
+def _render_unreachable(exc: Exception) -> None:
+    st.error(f"Could not load GPS data availability: {exc}")
+    st.info(
+        "This page reads everything over the Atlas API — it does not talk to "
+        "ClickHouse itself. Check that the backend is running and reachable:\n\n"
+        f"- API base URL: `{API_BASE_URL}`\n"
+        "- Start it with `python -m atlas serve --host 0.0.0.0 --port 8501`\n"
+        "- Point this page elsewhere with the `ATLAS_API_URL` environment variable\n\n"
+        "If the API is up but this still fails, check the CLICKHOUSE_DB section "
+        "of `db_credentials.ini` **on the backend host** and that "
+        "`observation_data` has been populated.",
+        icon=":material/cloud_off:",
+    )
+
+
 def render_gps_summary_page() -> None:
     st.title("GPS Summary")
     st.caption(
@@ -216,34 +219,21 @@ def render_gps_summary_page() -> None:
         "by side) and the GPS Summary report for a UTC date range, bundled as a zip."
     )
 
-    section = G.DEFAULT_CLICKHOUSE_SECTION
-
     try:
-        days = load_available_days(section)
-    except ImportError as exc:
-        # Not a credentials problem: the app is on an interpreter without the
-        # project dependencies. Blaming db_credentials.ini here sends people
-        # looking in the wrong place.
-        st.error(f"A required package is missing: {exc}")
-        st.info(
-            "Streamlit is running on an interpreter that does not have this "
-            "project's dependencies. Launch it from the project venv:\n\n"
-            "`.venv/bin/python -m streamlit run streamlit_app.py`\n\n"
-            "or install them into the interpreter you are using: "
-            "`pip install -r requirements.txt`",
-            icon=":material/deployed_code_alert:",
-        )
-        return
-    except Exception as exc:
-        st.error(f"Could not read observation data availability from ClickHouse: {exc}")
-        st.info(
-            "Check the CLICKHOUSE_DB section of db_credentials.ini and that "
-            "observation_data has been populated."
-        )
+        days = load_available_days()
+        product_lines = load_product_lines()
+    except (GpsApiError, requests.RequestException) as exc:
+        _render_unreachable(exc)
         return
 
     if days.empty:
         st.warning("observation_data is empty — there is nothing to report on yet.")
+        return
+    if not product_lines:
+        st.warning(
+            "No product lines with polled device data on the backend. Run "
+            "`pipeline/data_polling.py` there first."
+        )
         return
 
     min_date, max_date = min(days["day"]), max(days["day"])
@@ -273,7 +263,6 @@ def render_gps_summary_page() -> None:
             help="Inclusive — through 23:59:59 UTC on this day, so all of it is covered.",
         )
     with controls[2]:
-        product_lines = discover_product_lines()
         product_line = st.selectbox("Product line", product_lines, index=0)
 
     if start_date > end_date:
@@ -282,8 +271,12 @@ def render_gps_summary_page() -> None:
 
     _render_availability(days, start_date, end_date)
 
-    context = report_context(product_line, start_date, end_date)
-    cached = is_cached(context)
+    try:
+        status = load_report_status(product_line, start_date, end_date)
+    except (GpsApiError, requests.RequestException) as exc:
+        st.error(f"Could not check for existing reports: {exc}")
+        return
+    cached = bool(status.get("cached"))
 
     action = st.columns([1, 1, 2])
     with action[0]:
@@ -292,61 +285,58 @@ def render_gps_summary_page() -> None:
         force = st.checkbox("Force regenerate", value=False, disabled=not cached)
 
     if cached and not submitted:
-        st.info(f"Reports for this range already exist in `{context['output_dir']}`.")
+        st.info(f"Reports for this range already exist in `{status['output_dir']}`.")
 
     if submitted:
         try:
             if cached and not force:
-                zip_path = context["zip_path"]
-                st.success(f"Reused existing reports from `{context['output_dir']}`.")
+                result = request_reports(product_line, start_date, end_date, force=False)
+                st.success(f"Reused existing reports from `{result['output_dir']}`.")
             else:
-                with st.spinner("Querying ClickHouse and building reports…"):
-                    zip_path = generate(context, product_line, section)
-                st.success(f"Generated 4 reports in `{context['output_dir']}`.")
-
-            # Only the path is kept: the archive itself is never read into
-            # memory here, so a large zip does not sit in session state for the
-            # life of the connection.
-            st.session_state["gps_zip"] = {
-                "path": str(zip_path),
-                "name": zip_path.name,
-                # mtime in the token so a regenerate re-fires the auto-download
-                # but an ordinary rerun does not.
-                "token": f"{zip_path}:{zip_path.stat().st_mtime_ns}",
-            }
-        except FileNotFoundError as exc:
-            st.error(str(exc))
-            return
-        except Exception as exc:
+                with st.spinner("Backend is querying ClickHouse and building reports…"):
+                    result = request_reports(product_line, start_date, end_date, force=force)
+                if result.get("reused"):
+                    st.success(f"Reused existing reports from `{result['output_dir']}`.")
+                else:
+                    st.success(
+                        f"Generated {len(result['report_names'])} reports in "
+                        f"`{result['output_dir']}`."
+                    )
+        except (GpsApiError, requests.RequestException) as exc:
             st.error(f"Report generation failed: {exc}")
             return
 
+        download = result["download"]
+        # Only the reference is kept -- the archive stays on the backend until
+        # the download button is actually clicked.
+        st.session_state["gps_zip"] = {
+            "url": download["url"],
+            "name": download["filename"],
+            "size_bytes": result.get("size_bytes") or 0,
+            "folder_name": result.get("folder_name", ""),
+            "report_names": result.get("report_names", []),
+            # The result id changes on every request, so a regenerate re-fires
+            # the auto-download but an ordinary rerun does not.
+            "token": download["id"],
+        }
+
     payload = st.session_state.get("gps_zip")
     if payload:
-        zip_file = Path(payload["path"])
-        if not zip_file.is_file():
-            st.session_state.pop("gps_zip", None)
-            st.warning(
-                "The generated archive is no longer on disk. Generate the reports again."
-            )
-            return
-
-        size_mb = zip_file.stat().st_size / (1024 * 1024)
+        size_mb = payload["size_bytes"] / (1024 * 1024)
         st.download_button(
             DOWNLOAD_LABEL,
-            # Deferred data generation: the callable runs only when the button is
-            # clicked, on its own thread, and returns an open handle so the
-            # archive streams off disk. Passing bytes instead would read the
-            # whole file into memory on every rerun and hold it there.
-            data=lambda path=zip_file: path.open("rb"),
+            # Deferred data generation: the callable runs only when the button
+            # is clicked, on its own thread. Passing bytes instead would fetch
+            # the whole archive from the backend on every rerun and hold it.
+            data=lambda url=payload["url"]: fetch_zip_bytes(url),
             file_name=payload["name"],
             mime="application/zip",
             use_container_width=True,
         )
         st.caption(
             f"`{payload['name']}` · {size_mb:.1f} MB · contains "
-            f"`{context['folder_name']}/` with {len(context['reports'])} CSV reports. "
-            "Streamed from disk on click. The download starts automatically; use "
-            "the button if your browser blocks it."
+            f"`{payload['folder_name']}/` with {len(payload['report_names'])} CSV reports. "
+            "Fetched from the backend on click. The download starts automatically; "
+            "use the button if your browser blocks it."
         )
         _auto_download(payload["token"])

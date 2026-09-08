@@ -82,6 +82,46 @@ class AllowedOtaVersionRemoveRequest(BaseModel):
     ota_version: str
 
 
+class GpsAvailabilityResponse(BaseModel):
+    """Days that observation_data actually holds, oldest first."""
+    rows: list[dict[str, object]]
+    min_day: str | None = None
+    max_day: str | None = None
+
+
+class GpsProductLinesResponse(BaseModel):
+    product_lines: list[str]
+
+
+class GpsReportRequest(BaseModel):
+    product_line: str
+    start: str
+    """Inclusive UTC start date, YYYY-MM-DD."""
+    end: str
+    """Inclusive UTC end date, YYYY-MM-DD -- the whole day is covered."""
+    force: bool = False
+    """Regenerate even when reports for this range already exist on the backend."""
+
+
+class GpsReportResponse(BaseModel):
+    download: DownloadRef
+    reused: bool
+    """True when an already-generated report set was served instead of re-querying."""
+    output_dir: str
+    folder_name: str
+    report_names: list[str]
+    size_bytes: int
+
+
+class GpsReportStatusResponse(BaseModel):
+    """Whether the backend already holds a zip for a (product line, range)."""
+    cached: bool
+    output_dir: str
+    folder_name: str
+    report_names: list[str]
+    size_bytes: int | None = None
+
+
 class ObservationsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None
