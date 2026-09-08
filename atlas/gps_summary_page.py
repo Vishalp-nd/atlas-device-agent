@@ -293,7 +293,7 @@ def render_gps_summary_page() -> None:
                 result = request_reports(product_line, start_date, end_date, force=False)
                 st.success(f"Reused existing reports from `{result['output_dir']}`.")
             else:
-                with st.spinner("Backend is querying ClickHouse and building reports…"):
+                with st.spinner("building reports…"):
                     result = request_reports(product_line, start_date, end_date, force=force)
                 if result.get("reused"):
                     st.success(f"Reused existing reports from `{result['output_dir']}`.")
