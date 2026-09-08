@@ -261,7 +261,7 @@ def render_gps_summary_page() -> None:
         force = st.checkbox("Force regenerate", value=False, disabled=not cached)
 
     if cached and not submitted:
-        st.info(f"Reports for this range already exist in `{status['output_dir']}`.")
+        st.info(f"Reports for this range already exist downloading now...")
 
     if submitted:
         try:
@@ -309,8 +309,7 @@ def render_gps_summary_page() -> None:
         st.link_button(DOWNLOAD_LABEL, download_url, width="stretch")
         st.caption(
             f"`{payload['name']}` · {size_mb:.1f} MB · contains "
-            f"`{payload['folder_name']}/` with {len(payload['report_names'])} CSV reports. "
-            "Streamed straight from the backend. The download starts automatically; "
+            "The download starts automatically; "
             "use the button if your browser blocks it."
         )
         _auto_download(payload["token"], download_url)
