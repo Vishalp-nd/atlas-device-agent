@@ -215,8 +215,7 @@ def _render_unreachable(exc: Exception) -> None:
 def render_gps_summary_page() -> None:
     st.title("GPS Summary")
     st.caption(
-        "Generate the GPS Observation report (all three ignition conditions, side "
-        "by side) and the GPS Summary report for a UTC date range, bundled as a zip."
+        "Generate the GPS Observation report"
     )
 
     try:
@@ -238,13 +237,10 @@ def render_gps_summary_page() -> None:
 
     min_date, max_date = min(days["day"]), max(days["day"])
     st.caption(
-        f"Observation data available from **{min_date}** to **{max_date}** (UTC). "
-        "Both dates below are **inclusive**, matching the script's `--start`/`--end`."
+        f"Observation data available from **2026-08-31** to **{max_date}** (UTC). "
     )
     st.info(
-        "All dates and times are **UTC** — `observation_data.start_time` and "
-        "`video_metadata.timestamp` are stored in UTC, and the reports are "
-        "generated in UTC. They are not converted to local time.",
+        "All dates and times are **UTC**",
         icon=":material/schedule:",
     )
 
