@@ -220,6 +220,20 @@ def render_gps_summary_page() -> None:
 
     try:
         days = load_available_days(section)
+    except ImportError as exc:
+        # Not a credentials problem: the app is on an interpreter without the
+        # project dependencies. Blaming db_credentials.ini here sends people
+        # looking in the wrong place.
+        st.error(f"A required package is missing: {exc}")
+        st.info(
+            "Streamlit is running on an interpreter that does not have this "
+            "project's dependencies. Launch it from the project venv:\n\n"
+            "`.venv/bin/python -m streamlit run streamlit_app.py`\n\n"
+            "or install them into the interpreter you are using: "
+            "`pip install -r requirements.txt`",
+            icon=":material/deployed_code_alert:",
+        )
+        return
     except Exception as exc:
         st.error(f"Could not read observation data availability from ClickHouse: {exc}")
         st.info(
@@ -290,8 +304,11 @@ def render_gps_summary_page() -> None:
                     zip_path = generate(context, product_line, section)
                 st.success(f"Generated 4 reports in `{context['output_dir']}`.")
 
+            # Only the path is kept: the archive itself is never read into
+            # memory here, so a large zip does not sit in session state for the
+            # life of the connection.
             st.session_state["gps_zip"] = {
-                "bytes": zip_path.read_bytes(),
+                "path": str(zip_path),
                 "name": zip_path.name,
                 # mtime in the token so a regenerate re-fires the auto-download
                 # but an ordinary rerun does not.
@@ -306,10 +323,22 @@ def render_gps_summary_page() -> None:
 
     payload = st.session_state.get("gps_zip")
     if payload:
-        size_mb = len(payload["bytes"]) / (1024 * 1024)
+        zip_file = Path(payload["path"])
+        if not zip_file.is_file():
+            st.session_state.pop("gps_zip", None)
+            st.warning(
+                "The generated archive is no longer on disk. Generate the reports again."
+            )
+            return
+
+        size_mb = zip_file.stat().st_size / (1024 * 1024)
         st.download_button(
             DOWNLOAD_LABEL,
-            data=payload["bytes"],
+            # Deferred data generation: the callable runs only when the button is
+            # clicked, on its own thread, and returns an open handle so the
+            # archive streams off disk. Passing bytes instead would read the
+            # whole file into memory on every rerun and hold it there.
+            data=lambda path=zip_file: path.open("rb"),
             file_name=payload["name"],
             mime="application/zip",
             use_container_width=True,
@@ -317,6 +346,7 @@ def render_gps_summary_page() -> None:
         st.caption(
             f"`{payload['name']}` · {size_mb:.1f} MB · contains "
             f"`{context['folder_name']}/` with {len(context['reports'])} CSV reports. "
-            "The download starts automatically; use the button if your browser blocks it."
+            "Streamed from disk on click. The download starts automatically; use "
+            "the button if your browser blocks it."
         )
         _auto_download(payload["token"])
