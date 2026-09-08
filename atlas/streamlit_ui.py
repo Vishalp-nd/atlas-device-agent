@@ -697,6 +697,7 @@ def _render_sidebar_nav() -> None:
         st.page_link("pages/1_Atlas.py", label="Atlas", icon=":material/precision_manufacturing:")
         st.page_link("pages/2_Cypher.py", label="Cypher", icon=":material/account_tree:")
         st.page_link("pages/3_Critical_Events_Monitor.py", label="Critical Events Monitor", icon=":material/monitoring:")
+        st.page_link("pages/4_GPS_Summary.py", label="GPS Summary", icon=":material/satellite_alt:")
 
 
 def render_dashboard() -> None:
@@ -747,6 +748,16 @@ def render_dashboard() -> None:
                     <span class="chip">priority split</span>
                 </div>
                 <div class="dashboard-link"><a href="./Critical_Events_Monitor" target="_self">Open Monitor</a></div>
+            </section>
+            <section class="agent-card">
+                <h3>GPS Summary</h3>
+                <p>Generate the GPS Observation report (all three ignition conditions) and the GPS Summary report for a date range, bundled as one zip.</p>
+                <div class="chip-row">
+                    <span class="chip">gps accuracy</span>
+                    <span class="chip">observation data</span>
+                    <span class="chip">csv export</span>
+                </div>
+                <div class="dashboard-link"><a href="./GPS_Summary" target="_self">Open GPS Summary</a></div>
             </section>
         </div>
         """,

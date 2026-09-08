@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """Generate GPS Performance CSV reports for installed OCTA devices from ClickHouse.
 
-Emits four CSV files per run:
+Emits two CSV files per run:
 
-  1. GPS Observation Report - Condition 1  (ignition ON and uptime > 300 s)
-  2. GPS Observation Report - Condition 2  (ignition ON and max speed > 5 mph)
-  3. GPS Observation Report - Condition 3  (ignition ON)
-  4. GPS Summary Report                    (one row per video file)
+  1. GPS Observation Report - all three ignition conditions in one file, laid
+     out side by side with OBS_BLOCK_GAP blank columns between them:
+       Condition 1  ignition ON and uptime > 300 s
+       Condition 2  ignition ON and max speed > 5 mph
+       Condition 3  ignition ON
+     Each block carries a heading row naming the condition, then its own header
+     row. Rows are one per device for the requested date range; the blocks are
+     independent, since a device qualifying for one condition need not qualify
+     for another.
+  2. GPS Summary Report - one row per observation/video file, with the GPS
+     samples inside each file collapsed into counts, joined value lists, a mean
+     and the first valid fix.
 
-Reports 1-3 are aggregated per device for the requested date range. Report 4
-is one row per observation/video file, with the GPS
-samples inside each file collapsed into counts, joined value lists, a mean and
-the first valid fix.
+The five accuracy-range columns are percentages of Actual Accuracy Count, not
+counts. The ranges are cumulative, so "0-6 m %" means "% of valid fixes within
+6 metres" and 0-10 m % + Above 10 m % == 100.
 
 Data comes from the ClickHouse `observation_data` and `video_metadata` tables
 (see clickhouse_schema.sql), joined on file_name. Device scope and tenant
@@ -25,10 +32,14 @@ query is ordered by device_id and buffers are cut on a device boundary, every
 device's rows are complete inside exactly one buffer, which is what lets the
 per-device aggregation and the per-device files be written incrementally.
 
-Note: --end is EXCLUSIVE. A 7-day week is --start 2026-06-15 --end 2026-06-22.
+Times are UTC: observation_data.start_time and video_metadata.timestamp are
+stored in UTC, and --start/--end are interpreted in UTC.
+
+Note: --start and --end are both INCLUSIVE. A date-only --end covers that
+whole day, so a 7-day week is --start 2026-06-15 --end 2026-06-21.
 
 Usage:
-    python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-22
+    python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-21
     python scripts/gps_performance_report.py --start 2026-06-15 --end 2026-06-16 \
         --devices 125072600091 --filename QA_Smoke.csv
 """
@@ -41,7 +52,7 @@ import glob
 import sys
 import time
 from contextlib import ExitStack
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -78,17 +89,20 @@ NO_GPS_LABEL = "No GPS"
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 PERCENT_DECIMALS = 2
 
+# Blank columns separating the three condition blocks in the Observation CSV.
+OBS_BLOCK_GAP = 5
+
 OBS_COLUMNS = [
     "Given Date Range",
     "Device ID",
     "Tenant Display Name",
     "OTA Version",
     "ObsCount",
-    "0-2 m",
-    "0-3.5 m",
-    "0-6 m",
-    "0-10 m",
-    "Above 10 m",
+    "0-2 m %",
+    "0-3.5 m %",
+    "0-6 m %",
+    "0-10 m %",
+    "Above 10 m %",
     "GPS Loss %",
     "No GPS %",
     "Expected Accuracy Count",
@@ -150,6 +164,13 @@ def _pct(value: float) -> float:
     return round(float(value), PERCENT_DECIMALS)
 
 
+def _bucket_pct(series: pd.Series, actual: int) -> float:
+    """An accuracy bucket as a percentage of the valid-fix count."""
+    if actual <= 0:
+        return 0.0
+    return _pct(_isum(series) * 100.0 / actual)
+
+
 def _epoch_ms_to_gmt(series: pd.Series) -> pd.Series:
     """Epoch milliseconds -> 'YYYY-MM-DD HH:MM:SS' GMT, '' when absent or 0.
 
@@ -173,6 +194,22 @@ def _sanitize_name(name: Any, fallback: str = "part") -> str:
         text = fallback
     cleaned = "".join("_" if ch in set("[]:*?/\\") else ch for ch in text)
     return cleaned.strip("'")[:64] or fallback
+
+
+def _inclusive_end_to_exclusive(value: str) -> datetime:
+    """Turn an inclusive --end into the exclusive bound the SQL compares against.
+
+    A date-only end means "through the end of that day", so it advances a whole
+    day; an end carrying a time means "through that instant", so it advances by
+    one DateTime64(3) tick. The SQL keeps `start_time < end` either way, which
+    avoids boundary ambiguity at millisecond precision.
+
+    All times are UTC -- observation_data.start_time is stored in UTC.
+    """
+    parsed = _parse_dt(value)
+    if " " not in value.strip():
+        return parsed + timedelta(days=1)
+    return parsed + timedelta(milliseconds=1)
 
 
 def _parse_dt(value: str) -> datetime:
@@ -529,11 +566,15 @@ def _aggregate_group(
         "Tenant Display Name": tenant_map.get(str(device_id), ""),
         "OTA Version": _ota_label(group["ota"]),
         "ObsCount": obs_count,
-        "0-2 m": _isum(group["acc_le_2"]),
-        "0-3.5 m": _isum(group["acc_le_3_5"]),
-        "0-6 m": _isum(group["acc_le_6"]),
-        "0-10 m": _isum(group["acc_le_10"]),
-        "Above 10 m": _isum(group["acc_gt_10"]),
+        # Buckets are cumulative (0-2 is a subset of 0-3.5, ...), so the
+        # denominator is Actual Accuracy Count rather than the sum of the
+        # buckets, which would double-count. Reads as "% of valid fixes within
+        # N metres"; 0-10 % + Above 10 % == 100.
+        "0-2 m %": _bucket_pct(group["acc_le_2"], actual),
+        "0-3.5 m %": _bucket_pct(group["acc_le_3_5"], actual),
+        "0-6 m %": _bucket_pct(group["acc_le_6"], actual),
+        "0-10 m %": _bucket_pct(group["acc_le_10"], actual),
+        "Above 10 m %": _bucket_pct(group["acc_gt_10"], actual),
         "GPS Loss %": _pct(invalid * 100.0 / expected) if expected > 0 else 0.0,
         "No GPS %": _pct(no_gps_files * 100.0 / obs_count) if obs_count > 0 else 0.0,
         "Expected Accuracy Count": expected,
@@ -685,14 +726,84 @@ def write_device_csv(directory: Path, device_id: Any, frame: pd.DataFrame) -> No
     )
 
 
+def write_observation_report(
+    path: Path, blocks: list[tuple[str, list[dict[str, Any]]]]
+) -> Path:
+    """Write the condition blocks side by side into one CSV.
+
+    Each block is a heading row naming the condition, then the OBS_COLUMNS
+    header row, then its data rows. Blocks are separated by OBS_BLOCK_GAP blank
+    columns. Blocks are padded to equal depth rather than zipped: a device that
+    qualifies for one condition need not qualify for another, so row N of one
+    block is not the same device as row N of the next.
+    """
+    width = len(OBS_COLUMNS)
+    gap = [""] * OBS_BLOCK_GAP
+
+    heading: list[Any] = []
+    header: list[Any] = []
+    for index, (label, _rows) in enumerate(blocks):
+        if index:
+            heading += gap
+            header += gap
+        heading += [label] + [""] * (width - 1)
+        header += list(OBS_COLUMNS)
+
+    depth = max((len(rows) for _label, rows in blocks), default=0)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(heading)
+        writer.writerow(header)
+        for offset in range(depth):
+            line: list[Any] = []
+            for index, (_label, rows) in enumerate(blocks):
+                if index:
+                    line += gap
+                if offset < len(rows):
+                    row = rows[offset]
+                    line += [
+                        "" if row.get(column) is None else row.get(column, "")
+                        for column in OBS_COLUMNS
+                    ]
+                else:
+                    line += [""] * width
+            writer.writerow(line)
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Step 6 - CLI
 # ---------------------------------------------------------------------------
 
-def _report_path(output_dir: Path, custom_stem: str | None, tag: str, timestamp: str) -> Path:
+def _observation_path(output_dir: Path, custom_stem: str | None, timestamp: str) -> Path:
     if custom_stem:
-        return output_dir / f"{custom_stem}_{tag}.csv"
-    return output_dir / f"GPS_Obs_{tag}_{timestamp}.csv"
+        return output_dir / f"{custom_stem}_Observation.csv"
+    return output_dir / f"GPS_Observation_{timestamp}.csv"
+
+
+def _summary_path(output_dir: Path, custom_stem: str | None, timestamp: str) -> Path:
+    if custom_stem:
+        return output_dir / f"{custom_stem}_Summary.csv"
+    return output_dir / f"GPS_Summary_{timestamp}.csv"
+
+
+def expected_report_paths(
+    output_dir: Path, custom_stem: str | None, timestamp: str = ""
+) -> list[Path]:
+    """The report paths, in report order: combined Observation, then Summary.
+
+    All three ignition conditions share one Observation CSV, laid out side by
+    side -- see write_observation_report(). Single source of truth for report
+    filenames, shared with the Streamlit page's "already generated" check so the
+    two cannot drift apart. Only meaningful for a custom_stem; the default names
+    carry a run timestamp and are not predictable.
+    """
+    return [
+        _observation_path(output_dir, custom_stem, timestamp),
+        _summary_path(output_dir, custom_stem, timestamp),
+    ]
 
 
 def generate_reports(
@@ -707,9 +818,11 @@ def generate_reports(
     max_buffer_rows: int,
 ) -> list[Path]:
     timestamp = time.strftime("%Y-%m-%d-%H_%M")
-    date_range_label = f"{start.date()} to {end.date()}"
+    # `end` is exclusive, so the label must show the last day actually covered,
+    # otherwise a 31 Aug -> 7 Sep request reads as "to 2026-09-08".
+    date_range_label = f"{start.date()} to {(end - timedelta(seconds=1)).date()}"
 
-    summary_name = f"{custom_stem}_Summary.csv" if custom_stem else f"GPS_Summary_{timestamp}.csv"
+    summary_path = _summary_path(output_dir, custom_stem, timestamp)
     device_dir = output_dir / (
         f"{custom_stem}_Summary_by_device" if custom_stem else f"GPS_Summary_{timestamp}_by_device"
     )
@@ -718,17 +831,15 @@ def generate_reports(
     devices_seen: set[str] = set()
     device_files = 0
     condition_files = {key: 0 for key, _label, _tag, _fn in CONDITIONS}
+    # Observation rows are accumulated rather than streamed: the three blocks sit
+    # side by side, so column N of a line depends on all three. Bounded by the
+    # device count (one row per device per condition), not the file count.
+    obs_rows: dict[str, list[dict[str, Any]]] = {
+        key: [] for key, _label, _tag, _fn in CONDITIONS
+    }
 
     with ExitStack() as stack:
-        obs_writers = {
-            key: stack.enter_context(
-                CsvAppender(_report_path(output_dir, custom_stem, tag, timestamp), OBS_COLUMNS)
-            )
-            for key, _label, tag, _fn in CONDITIONS
-        }
-        summary_writer = stack.enter_context(
-            CsvAppender(output_dir / summary_name, SUMMARY_COLUMNS)
-        )
+        summary_writer = stack.enter_context(CsvAppender(summary_path, SUMMARY_COLUMNS))
 
         for frame in iter_per_file_frames(start, end, device_ids, section, max_buffer_rows):
             total_files += len(frame)
@@ -737,7 +848,7 @@ def generate_reports(
             for key, _label, _tag, condition in CONDITIONS:
                 subset = condition(frame)
                 condition_files[key] += len(subset)
-                obs_writers[key].append_rows(
+                obs_rows[key].extend(
                     build_observation_rows(subset, frame, date_range_label, tenant_map)
                 )
                 del subset
@@ -759,16 +870,24 @@ def generate_reports(
 
         for key, label, _tag, _fn in CONDITIONS:
             logger.log_info(
-                f"{label}: {condition_files[key]} files -> {obs_writers[key].rows} rows"
+                f"{label}: {condition_files[key]} files -> {len(obs_rows[key])} rows"
             )
         logger.log_info(f"GPS Summary: {summary_writer.rows} rows")
         if per_device_files:
             logger.log_info(f"Per-device summaries: {device_files} CSV file(s) in {device_dir}")
 
-        written = [obs_writers[key].path for key, _label, _tag, _fn in CONDITIONS]
-        written.append(summary_writer.path)
+    observation_path = write_observation_report(
+        _observation_path(output_dir, custom_stem, timestamp),
+        [
+            (f"Condition {index} - {label}", obs_rows[key])
+            for index, (key, label, _tag, _fn) in enumerate(CONDITIONS, start=1)
+        ],
+    )
+    logger.log_info(
+        f"GPS Observation: 3 condition blocks side by side in {observation_path.name}"
+    )
 
-    return written
+    return [observation_path, summary_path]
 
 
 def parse_args() -> argparse.Namespace:
@@ -776,14 +895,24 @@ def parse_args() -> argparse.Namespace:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--start", required=True, help="Start datetime, inclusive (YYYY-MM-DD)")
-    parser.add_argument("--end", required=True, help="End datetime, EXCLUSIVE (YYYY-MM-DD)")
+    parser.add_argument(
+        "--start", required=True,
+        help="Start datetime, INCLUSIVE, UTC (YYYY-MM-DD or 'YYYY-MM-DD HH:MM:SS')",
+    )
+    parser.add_argument(
+        "--end", required=True,
+        help=(
+            "End datetime, INCLUSIVE, UTC. A date-only value covers that whole "
+            "day, so --start 2026-08-31 --end 2026-09-07 is 8 days"
+        ),
+    )
     parser.add_argument(
         "--filename",
         default=None,
         help=(
             "Custom CSV filename stem. Each report keeps its discriminator, so "
-            "--filename GPS_Wk25.csv yields GPS_Wk25_Cond1.csv ... GPS_Wk25_Summary.csv"
+            "--filename GPS_Wk25.csv yields GPS_Wk25_Observation.csv and "
+            "GPS_Wk25_Summary.csv"
         ),
     )
     parser.add_argument(
@@ -834,9 +963,13 @@ def main() -> int:
     args = parse_args()
 
     start = _parse_dt(args.start)
-    end = _parse_dt(args.end)
+    # --end is inclusive; the SQL bound is exclusive, so advance past it.
+    end = _inclusive_end_to_exclusive(args.end)
     if end <= start:
-        print(f"error: --end ({args.end}) must be after --start ({args.start})", file=sys.stderr)
+        print(
+            f"error: --end ({args.end}) must be on or after --start ({args.start})",
+            file=sys.stderr,
+        )
         return 2
     if args.max_buffer_rows < 1:
         print("error: --max-buffer-rows must be at least 1", file=sys.stderr)
@@ -844,7 +977,7 @@ def main() -> int:
 
     span = end - start
     logger.log_info(
-        f"Window: {start} <= start_time < {end} "
+        f"Window (UTC): {start} <= start_time < {end} "
         f"({span.days} day(s) {span.seconds // 3600}h)"
     )
 
