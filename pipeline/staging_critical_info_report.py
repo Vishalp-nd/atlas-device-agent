@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import html
 import os
-import pickle
 import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -23,13 +22,14 @@ from dotenv import load_dotenv
 import pandas as pd
 
 from cinfo_classifier import CinfoClassifier, DEFAULT_JSON_PATH, append_new_patterns_to_json
+from type_model import load_type_model
 from fetch_device_config import connect_to_snowflake
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = REPO_ROOT / ".env"
 DB_CREDENTIALS_PATH = REPO_ROOT / "db_credentials.ini"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "OUTPUT" / "staging_critical_info_reports"
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "svm_type_classifier.pkl"
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "minilm_ft"
 SNOWFLAKE_SECTION = "SNOWFLAKE_STAG_DB"
 SNOWFLAKE_TABLE = "STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT"
 DRIVE_MINUTES_TABLE = "IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW"
@@ -104,16 +104,14 @@ def _connect_staging_snowflake(aws_profile: str | None):
     return conn
 
 
-def _load_svm_model(model_path: Path = DEFAULT_MODEL_PATH):
+def _load_type_model(model_path: Path = DEFAULT_MODEL_PATH):
     if not model_path.exists():
-        raise FileNotFoundError(f"SVM model file not found: {model_path}")
-    with model_path.open("rb") as handle:
-        return pickle.load(handle)
+        raise FileNotFoundError(f"Type model not found: {model_path}")
+    return load_type_model(model_path)
 
 
 def _build_classifier(json_path: Path = DEFAULT_JSON_PATH, model_path: Path = DEFAULT_MODEL_PATH) -> CinfoClassifier:
-    svm_model = _load_svm_model(model_path)
-    return CinfoClassifier(json_path=json_path, svm_model=svm_model)
+    return CinfoClassifier(json_path=json_path, svm_model=_load_type_model(model_path))
 
 
 def _fetch_rows(
