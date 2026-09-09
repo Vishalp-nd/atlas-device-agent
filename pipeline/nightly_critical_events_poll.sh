@@ -6,6 +6,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VENV_DIR="${REPO_ROOT}/.venv"
+VENV_ACTIVATE="${VENV_DIR}/bin/activate"
 LOG_DIR="${SCRIPT_DIR}/logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${LOG_DIR}/nightly_obs_poll_${TIMESTAMP}.log"
@@ -24,6 +26,15 @@ echo "Log file: ${LOG_FILE}" | tee -a "${LOG_FILE}"
 echo "" | tee -a "${LOG_FILE}"
 
 cd "${REPO_ROOT}"
+if [[ ! -f "${VENV_ACTIVATE}" ]]; then
+  echo "Virtual environment activation script not found: ${VENV_ACTIVATE}" | tee -a "${LOG_FILE}"
+  exit 1
+fi
+
+source "${VENV_ACTIVATE}"
+echo "Using virtual environment: ${VENV_DIR}" | tee -a "${LOG_FILE}"
+echo "Python executable: $(command -v python)" | tee -a "${LOG_FILE}"
+
 python3 pipeline/data_polling.py obs \
   --start-dt "${START_DT}" \
   --end-dt "${END_DT}" \
