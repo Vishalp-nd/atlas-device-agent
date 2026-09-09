@@ -22,6 +22,8 @@ import csv
 import configparser
 import io
 import os
+import socket
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +32,12 @@ from typing import Iterable
 import pandas as pd
 from dotenv import load_dotenv
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.append(str(REPO_ROOT))
+
+from lib.logger import Logger
 from cinfo_classifier import (
     CinfoClassifier,
     DEFAULT_JSON_PATH,
@@ -39,12 +47,13 @@ from cinfo_classifier import (
 from type_model import load_type_model
 from fetch_device_config import connect_to_snowflake
 
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "minilm_ft"
+DEFAULT_MODEL_PATH = SCRIPT_DIR / "models" / "minilm_ft"
 DEFAULT_TABLE_NAME = "criticalinfo_snowflakes_data"
-DEFAULT_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+DEFAULT_ENV_PATH = REPO_ROOT / ".env"
 DEFAULT_PRIORITY_MAP_TABLE = "unique_cinfo_priority_map"
 DEFAULT_REGISTRY_TABLE = "criticalinfo_poll_runs"
-LOCK_FILE = Path(__file__).resolve().parent / "OUTPUT" / ".critical_events_pipeline.lock"
+LOCK_FILE = SCRIPT_DIR / "OUTPUT" / ".critical_events_pipeline.lock"
+logging = Logger("critical_events_pipeline")
 
 
 def _parse_csv_env(value: str) -> list[str]:
@@ -109,8 +118,9 @@ def _acquire_lock():
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        print("Another critical_events_pipeline instance is running. Waiting for it to finish...")
+        logging.log_info("Another critical_events_pipeline instance is running. Waiting for it to finish...")
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    logging.log_info(f"Lock acquired (pid {os.getpid()})")
     return lock_fd
 
 
@@ -119,10 +129,31 @@ def _release_lock(lock_fd) -> None:
 
     fcntl.flock(lock_fd, fcntl.LOCK_UN)
     lock_fd.close()
+    logging.log_info("Lock released")
 
 
 def _to_clickhouse_datetime(value: str) -> str:
     return str(value).replace("T", " ")[:19]
+
+
+def _resolve_db_host(host: str, section: str) -> str:
+    if host != "host.docker.internal":
+        return host
+
+    override_env = f"{section.upper()}_HOST"
+    override_host = os.environ.get(override_env) or os.environ.get("DB_HOST_OVERRIDE")
+    if override_host:
+        return override_host
+
+    try:
+        socket.gethostbyname(host)
+        return host
+    except socket.gaierror:
+        logging.log_warning(
+            f"{host} is not resolvable on this host; using fallback 127.0.0.1 for section {section}. "
+            f"Set {override_env} or DB_HOST_OVERRIDE to control this explicitly."
+        )
+        return "127.0.0.1"
 
 
 def _read_clickhouse_config(config_file: str, section: str) -> dict[str, object]:
@@ -131,8 +162,10 @@ def _read_clickhouse_config(config_file: str, section: str) -> dict[str, object]
     if not parser.has_section(section):
         raise ValueError(f"Section '{section}' not found in {config_file}")
 
+    host = _resolve_db_host(parser.get(section, "host", fallback="127.0.0.1"), section)
+
     return {
-        "host": parser.get(section, "host", fallback="127.0.0.1"),
+        "host": host,
         "port": parser.getint(section, "port", fallback=9000),
         "user": parser.get(section, "user", fallback="default"),
         "password": parser.get(section, "password", fallback=""),
@@ -476,15 +509,15 @@ def _run_pipeline_body(args: argparse.Namespace, classifier: CinfoClassifier, ch
     selected_columns = [col for col in SOURCE_COLUMNS if col in available_columns]
     missing_columns = [col for col in SOURCE_COLUMNS if col not in selected_columns]
     if missing_columns:
-        print(
+        logging.log_info(
             "Snowflake columns not present and will be inserted as NULL: "
             + ", ".join(missing_columns)
         )
-    print(
+    logging.log_info(
         "Ignoring Snowflake rows for CODE values: "
         + ", ".join(str(code) for code in IGNORED_CODES)
     )
-    print(
+    logging.log_info(
         "Restricting Snowflake rows to OTA versions: "
         + ", ".join(ALLOWED_OTA_VERSIONS)
     )
@@ -522,7 +555,7 @@ def _run_pipeline_body(args: argparse.Namespace, classifier: CinfoClassifier, ch
             total_insert_seconds += insert_seconds
 
             batch_seconds = time.perf_counter() - batch_started
-            print(
+            logging.log_info(
                 f"Batch {batches}: fetched={fetched}, attempted={attempted}, inserted={inserted}, "
                 f"predict={predict_seconds:.2f}s ({_format_rate(fetched, predict_seconds)}), "
                 f"insert={insert_seconds:.2f}s ({_format_rate(attempted, insert_seconds)} attempted/s), "
@@ -533,15 +566,15 @@ def _run_pipeline_body(args: argparse.Namespace, classifier: CinfoClassifier, ch
         sf_conn.close()
 
     total_seconds = time.perf_counter() - run_started
-    print("Done.")
-    print(f"Target clickhouse table: {table_name}")
-    print(f"Total fetched from Snowflake: {total_fetched}")
-    print(f"Total inserted into clickhouse: {total_inserted}")
-    print(f"Rows matched in JSON map: {classifier.json_matched_rows}")
-    print(f"Rows missed in JSON map (SVM + similarity fallback): {classifier.json_missed_rows}")
-    print(f"Total predict time: {total_predict_seconds:.2f}s")
-    print(f"Total insert time: {total_insert_seconds:.2f}s")
-    print(f"Total runtime: {total_seconds:.2f}s ({_format_rate(total_fetched, total_seconds)})")
+    logging.log_info("Done.")
+    logging.log_info(f"Target clickhouse table: {table_name}")
+    logging.log_info(f"Total fetched from Snowflake: {total_fetched}")
+    logging.log_info(f"Total inserted into clickhouse: {total_inserted}")
+    logging.log_info(f"Rows matched in JSON map: {classifier.json_matched_rows}")
+    logging.log_info(f"Rows missed in JSON map (SVM + similarity fallback): {classifier.json_missed_rows}")
+    logging.log_info(f"Total predict time: {total_predict_seconds:.2f}s")
+    logging.log_info(f"Total insert time: {total_insert_seconds:.2f}s")
+    logging.log_info(f"Total runtime: {total_seconds:.2f}s ({_format_rate(total_fetched, total_seconds)})")
 
     return total_fetched, total_inserted
 
@@ -561,7 +594,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         _ensure_registry_table(ch_params, args.registry_table)
         latest_status = _latest_run_status(ch_params, args.registry_table, window_start, window_end, ota_signature)
         if latest_status == "completed" and not args.force:
-            print(
+            logging.log_info(
                 f"Window {args.start_ts} -> {args.end_ts} for OTA versions [{ota_signature}] "
                 f"already completed in {args.registry_table}; skipping (use --force to redo)."
             )
@@ -569,7 +602,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         _insert_registry_row(ch_params, args.registry_table, window_start, window_end, ota_signature, "running", 0, 0)
 
         model = load_type_model(model_path)
-        print(f"Type model: {model.name} ({model_path})")
+        logging.log_info(f"Type model: {model.name} ({model_path})")
         classifier = CinfoClassifier(json_path=Path(args.json_map_path), svm_model=model)
 
         try:
@@ -585,7 +618,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         if new_rows:
             appended = append_new_patterns_to_json(Path(args.json_map_path), new_rows)
             upserted = upsert_new_patterns_to_clickhouse(ch_params, args.priority_map_table, new_rows)
-            print(
+            logging.log_info(
                 f"Appended {appended} new pattern(s) to {args.json_map_path}; "
                 f"upserted {upserted} into {args.priority_map_table}"
             )
