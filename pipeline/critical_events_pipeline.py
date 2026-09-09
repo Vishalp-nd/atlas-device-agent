@@ -22,7 +22,6 @@ import csv
 import configparser
 import io
 import os
-import pickle
 import time
 from datetime import datetime
 from pathlib import Path
@@ -37,9 +36,10 @@ from cinfo_classifier import (
     append_new_patterns_to_json,
     upsert_new_patterns_to_clickhouse,
 )
+from type_model import load_type_model
 from fetch_device_config import connect_to_snowflake
 
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "svm_type_classifier.pkl"
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "minilm_ft"
 DEFAULT_TABLE_NAME = "criticalinfo_snowflakes_data"
 DEFAULT_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 DEFAULT_PRIORITY_MAP_TABLE = "unique_cinfo_priority_map"
@@ -566,8 +566,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
             return
         _insert_registry_row(ch_params, args.registry_table, window_start, window_end, ota_signature, "running", 0, 0)
 
-        with model_path.open("rb") as f:
-            model = pickle.load(f)
+        model = load_type_model(model_path)
+        print(f"Type model: {model.name} ({model_path})")
         classifier = CinfoClassifier(json_path=Path(args.json_map_path), svm_model=model)
 
         try:
@@ -639,7 +639,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default=str(DEFAULT_MODEL_PATH),
-        help="Path to trained SVM model pickle",
+        help="Path to the fine-tuned MiniLM TYPE model directory",
     )
     parser.add_argument(
         "--clickhouse-section",
