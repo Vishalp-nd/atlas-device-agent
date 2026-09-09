@@ -6579,9 +6579,14 @@
     "TYPE": "ERROR",
     "priority": "P1"
   },
-    {
+  {
     "description_pattern": "Installer active \u2014 ignored AWS_HOTSPOT_UPDATE",
     "TYPE": "INFO",
     "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:REBOOT_REASON_COLD_BOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
   }
 ]
