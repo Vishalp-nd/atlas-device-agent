@@ -24,6 +24,9 @@ ERROR_PRIORITIES = {
     "P4": "minor/no immediate loss",
 }
 PRIORITY_BREAKDOWN_LABEL_LIMIT = 24
+# Home pies are sized to fit alongside the title and OTA manager inside the first viewport.
+HOME_PIE_HEIGHT = 360
+
 CHART_CARD_STYLE_BLOCK = """
 <style>
 .chart-card-caption {
@@ -51,6 +54,54 @@ div[data-testid="stPlotlyChart"] > div {
 [data-testid="stMetricDelta"],
 [data-testid="stMetricDelta"] * {
     color: rgb(49, 51, 63) !important;
+}
+</style>
+"""
+
+
+# Keeps the landing-page hero (title -> OTA manager -> overview pies) inside the first
+# viewport so both home pie charts are fully visible without scrolling. The global CSS
+# reserves 4.75rem above the main container for Streamlit's fixed toolbar; 2.6rem still
+# clears it while reclaiming vertical space, and the rest trims heading/caption gaps.
+COMPACT_LAYOUT_STYLE_BLOCK = """
+<style>
+[data-testid="stMainBlockContainer"] {
+    padding-top: 2.6rem !important;
+    padding-bottom: 2rem !important;
+}
+/* Only the top-level stack is tightened; nested containers keep their own spacing. */
+[data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {
+    gap: 0.6rem;
+}
+[data-testid="stMainBlockContainer"] h1 {
+    margin-top: 0;
+    padding-top: 0;
+    margin-bottom: 0.15rem;
+    line-height: 1.15;
+}
+[data-testid="stMainBlockContainer"] h2,
+[data-testid="stMainBlockContainer"] h3 {
+    margin-top: 0.35rem;
+    padding-top: 0;
+    margin-bottom: 0.2rem;
+}
+[data-testid="stMainBlockContainer"] [data-testid="stCaptionContainer"],
+[data-testid="stMainBlockContainer"] .stCaption {
+    margin-bottom: 0.1rem;
+}
+.chart-card-caption {
+    margin-bottom: 0.3rem !important;
+}
+/* The OTA manager row sits between the title and the pies, so keep it shallow. */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.ota-manager-meta),
+[data-testid="stVerticalBlockBorderWrapper"]:has(form[data-testid="stForm"]) {
+    padding: 0.7rem 0.9rem !important;
+}
+[data-testid="stForm"] {
+    padding: 0.7rem 0.9rem 0.25rem !important;
+}
+.ota-manager-meta {
+    margin-bottom: 0.5rem !important;
 }
 </style>
 """
@@ -626,10 +677,19 @@ def _load_ota_page_data(ota_version: str, device_ids: tuple[str, ...], start_dat
     return {name: future.result() for name, future in futures.items()}
 
 
-def _pie(data: pd.DataFrame, names: str, values: str, title: str, hole: float = 0.45):
+def _pie(
+    data: pd.DataFrame,
+    names: str,
+    values: str,
+    title: str,
+    hole: float = 0.45,
+    height: int | None = None,
+):
     fig = px.pie(data, names=names, values=values, hole=hole)
     fig.update_traces(textposition="inside", textinfo="percent+label")
-    fig.update_layout(title=title, margin=dict(l=10, r=10, t=50, b=10), legend_title_text="")
+    fig.update_layout(title=title, margin=dict(l=10, r=10, t=44, b=10), legend_title_text="")
+    if height is not None:
+        fig.update_layout(height=height)
     return fig
 
 
@@ -722,7 +782,7 @@ def _render_home(summary: pd.DataFrame, ota_versions: list[str]) -> None:
     col1, col2 = st.columns([1.2, 1])
     with col1:
         _render_chart_card(
-            _pie(summary, "DEVICE_VERSION", "events", "Event share by OTA"),
+            _pie(summary, "DEVICE_VERSION", "events", "Event share by OTA", height=HOME_PIE_HEIGHT),
             "Event share by OTA",
             "Distribution of weighted events across configured OTA versions.",
             key="home_event_share_by_ota",
@@ -730,7 +790,7 @@ def _render_home(summary: pd.DataFrame, ota_versions: list[str]) -> None:
     with col2:
         type_totals = summary.groupby("type", as_index=False)["events"].sum()
         _render_chart_card(
-            _pie(type_totals, "type", "events", "Error vs Info split"),
+            _pie(type_totals, "type", "events", "Error vs Info split", height=HOME_PIE_HEIGHT),
             "Error vs Info split",
             "Overall production mix for the currently monitored OTA set.",
             key="home_error_info_split",
@@ -942,6 +1002,7 @@ def _render_priority_breakdown_page(ota_version: str) -> None:
 
 def main() -> None:
     configure_app()
+    st.markdown(COMPACT_LAYOUT_STYLE_BLOCK, unsafe_allow_html=True)
     _render_sidebar_nav()
     st.title("Critical Events Monitor")
     st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
