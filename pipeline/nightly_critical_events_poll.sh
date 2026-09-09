@@ -44,6 +44,17 @@ OBS_EXIT_CODE=${PIPESTATUS[0]}
 
 echo "" | tee -a "${LOG_FILE}"
 echo "=== Critical Events Poll ===" | tee -a "${LOG_FILE}"
+echo "Refreshing allowed OTA versions" | tee -a "${LOG_FILE}"
+python3 scripts/update_allowed_ota_versions.py \
+  2>&1 | tee -a "${LOG_FILE}"
+OTA_UPDATE_EXIT_CODE=${PIPESTATUS[0]}
+
+if [[ ${OTA_UPDATE_EXIT_CODE} -ne 0 ]]; then
+  echo "Allowed OTA version refresh failed with exit code ${OTA_UPDATE_EXIT_CODE}" | tee -a "${LOG_FILE}"
+  set -e
+  exit ${OTA_UPDATE_EXIT_CODE}
+fi
+
 python3 pipeline/critical_events_pipeline.py \
   --start-ts "${START_DT}" \
   --end-ts "${END_DT}" \
