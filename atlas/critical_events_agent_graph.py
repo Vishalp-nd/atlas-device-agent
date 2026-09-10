@@ -1,7 +1,7 @@
 """
 critical_events_agent_graph.py — Atlas sub-agent for local critical-event analytics.
 
-This agent reads from a local PostgreSQL table populated by
+This agent reads from a local ClickHouse table populated by
 pipeline/critical_events_pipeline.py and combines query results
 with SKILL.md knowledge for richer insights.
 
@@ -15,6 +15,7 @@ Expected operating pattern:
 
 from __future__ import annotations
 
+import configparser
 import json
 import logging
 import os
@@ -51,7 +52,7 @@ def _setup_logger() -> logging.Logger:
 
 logger = _setup_logger()
 
-import psycopg2
+import clickhouse_connect
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -64,7 +65,7 @@ PIPELINE_ROOT = Path(__file__).resolve().parents[1] / "pipeline"
 if str(PIPELINE_ROOT) not in sys.path:
     sys.path.insert(0, str(PIPELINE_ROOT))
 
-from fetch_device_config import connect_to_snowflake, read_db_config
+from fetch_device_config import connect_to_snowflake
 from atlas.result_store import result_store
 from staging_critical_info_report import generate_reports
 
@@ -151,7 +152,7 @@ def _current_ist_payload() -> str:
 def _make_tools(
     repo_root: Path,
     table_name: str,
-    postgres_section: str,
+    clickhouse_section: str,
     include_db_overview: bool = False,
 ) -> list:
     skills_root = repo_root / "skills" / "cinfo-skills"
@@ -163,10 +164,19 @@ def _make_tools(
                 f"DB config not found: {db_config_path}. "
                 "Expected db_credentials.ini at repo root."
             )
-        params = read_db_config(str(db_config_path), postgres_section)
-        conn = psycopg2.connect(**params)
-        conn.autocommit = True
-        return conn
+        parser = configparser.ConfigParser()
+        parser.read(db_config_path)
+        if not parser.has_section(clickhouse_section):
+            raise ValueError(f"Section '{clickhouse_section}' not found in {db_config_path}")
+        # db_credentials.ini carries the native port; clickhouse_connect speaks HTTP.
+        port = int(parser.get(clickhouse_section, "port", fallback="9000"))
+        return clickhouse_connect.get_client(
+            host=parser.get(clickhouse_section, "host", fallback="127.0.0.1"),
+            port=8123 if port == 9000 else port,
+            username=parser.get(clickhouse_section, "user", fallback="default"),
+            password=parser.get(clickhouse_section, "password", fallback=""),
+            database=parser.get(clickhouse_section, "database", fallback="default"),
+        )
 
     def _connect_staging_snowflake():
         if not db_config_path.exists():
@@ -197,46 +207,42 @@ def _make_tools(
 
     @tool
     def db_overview() -> str:
-        """Return high-level stats from local PostgreSQL critical-events table.
+        """Return high-level stats from the local ClickHouse critical-events table.
 
         Use this first to understand data size, date range, label split, and top codes.
         """
-        logger.info("[tool:db_overview] called — table=%s section=%s", table_name, postgres_section)
+        logger.info("[tool:db_overview] called — table=%s section=%s", table_name, clickhouse_section)
+        client = None
         try:
-            conn = _connect_ro()
-            cur = conn.cursor()
-            cur.execute(f'SELECT COUNT(*) FROM "{table_name}"')
-            total_rows = cur.fetchone()[0]
+            client = _connect_ro()
+            total_rows = client.query(f'SELECT count() FROM "{table_name}"').result_rows[0][0]
 
-            cur.execute(
-                f'SELECT MIN("TIMESTAMP"), MAX("TIMESTAMP") FROM "{table_name}"'
-            )
-            min_ts, max_ts = cur.fetchone()
+            min_ts, max_ts = client.query(
+                f'SELECT min("TIMESTAMP"), max("TIMESTAMP") FROM "{table_name}"'
+            ).result_rows[0]
 
-            cur.execute(
+            label_dist = client.query(
                 f'''
-                SELECT type, COUNT(*) AS cnt
+                SELECT type, count() AS cnt
                 FROM "{table_name}"
                 GROUP BY type
                 ORDER BY cnt DESC
                 '''
-            )
-            label_dist = cur.fetchall()
+            ).result_rows
 
-            cur.execute(
+            top_codes = client.query(
                 f'''
-                SELECT "CODE", COUNT(*) AS cnt
+                SELECT "CODE", count() AS cnt
                 FROM "{table_name}"
                 GROUP BY "CODE"
                 ORDER BY cnt DESC
                 LIMIT 10
                 '''
-            )
-            top_codes = cur.fetchall()
+            ).result_rows
 
-            conn.close()
             payload = {
-                "postgres_section": postgres_section,
+                "backend": "clickhouse",
+                "clickhouse_section": clickhouse_section,
                 "table_name": table_name,
                 "total_rows": total_rows,
                 "time_range": {
@@ -247,18 +253,22 @@ def _make_tools(
                 "top_codes": top_codes,
             }
             logger.debug("[tool:db_overview] result — total_rows=%s time_range=%s..%s", total_rows, min_ts, max_ts)
-            return json.dumps(payload, indent=2)
+            return json.dumps(payload, indent=2, default=str)
         except Exception as exc:
             logger.error("[tool:db_overview] failed: %s", exc)
             return f"db_overview failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
     def query_critical_events(sql: str, limit: int = 200) -> str:
-        """Run a read-only SELECT query on the PostgreSQL critical-events table.
+        """Run a read-only SELECT query on the ClickHouse critical-events table.
 
         Requirements:
         - SQL must begin with SELECT
         - No semicolons
+        - Use ClickHouse SQL syntax
         - Use LIMIT in SQL for large queries (or use limit argument)
         """
         logger.info("[tool:query_critical_events] called — limit=%d sql=%s", limit, sql)
@@ -266,14 +276,15 @@ def _make_tools(
             logger.warning("[tool:query_critical_events] rejected unsafe SQL: %s", sql)
             return "Rejected. Only a single read-only SELECT statement without ';' is allowed."
 
+        client = None
         try:
-            conn = _connect_ro()
-            cur = conn.cursor()
-            cur.execute(sql)
-            columns = [d[0] for d in cur.description]
-            rows = cur.fetchmany(max(1, min(limit, 1000)))
-            conn.close()
+            client = _connect_ro()
+            query_result = client.query(sql)
+            columns = list(query_result.column_names)
+            rows = query_result.result_rows[: max(1, min(limit, 1000))]
             result = {
+                "backend": "clickhouse",
+                "table_name": table_name,
                 "columns": columns,
                 "rows": rows,
                 "returned_rows": len(rows),
@@ -283,6 +294,9 @@ def _make_tools(
         except Exception as exc:
             logger.error("[tool:query_critical_events] failed: %s", exc)
             return f"query_critical_events failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
     def query_staging_critical_events(sql: str, limit: int = 200) -> str:
@@ -470,10 +484,10 @@ class CriticalEventsAgentState(TypedDict):
 def build_critical_events_graph(
     repo_root: Path,
     table_name: str = "criticalinfo_snowflakes_data",
-    postgres_section: str = "IRAVATH_DB",
+    clickhouse_section: str = "CLICKHOUSE_DB",
     include_db_overview: bool = False,
 ):
-    tools = _make_tools(repo_root, table_name, postgres_section, include_db_overview=include_db_overview)
+    tools = _make_tools(repo_root, table_name, clickhouse_section, include_db_overview=include_db_overview)
     llm = _get_llm().bind_tools(tools)
     tool_node = ToolNode(tools)
 
@@ -522,7 +536,7 @@ def run_critical_events_agent(
     system_prompt: str,
     repo_root: Path,
     table_name: str = "criticalinfo_snowflakes_data",
-    postgres_section: str = "IRAVATH_DB",
+    clickhouse_section: str = "CLICKHOUSE_DB",
     include_db_overview: bool = False,
     history: list[BaseMessage] | None = None,
 ) -> str:
@@ -535,14 +549,14 @@ def run_critical_events_agent(
     logger.info(
         "[run] starting agent — table=%s section=%s query_preview=%r",
         table_name,
-        postgres_section,
+        clickhouse_section,
         query[:200],
     )
     logger.debug("[run] system_prompt_preview=%r", system_prompt[:300])
     graph = build_critical_events_graph(
         repo_root,
         table_name,
-        postgres_section,
+        clickhouse_section,
         include_db_overview=include_db_overview,
     )
     initial_state: CriticalEventsAgentState = {

@@ -285,7 +285,7 @@ def critical_events_agent(req: CriticalEventsQueryRequest) -> AgentQueryWithDown
         get_critical_prompt(),
         REPO_ROOT,
         table_name=req.table_name,
-        postgres_section=req.postgres_section,
+        clickhouse_section=req.clickhouse_section,
         history=history,
     )
     if req.session_id:

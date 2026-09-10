@@ -60,8 +60,8 @@ atlas-device-agent/
 ├── skills/                         # Skill namespaces read by the sub-agents
 │   ├── cinfo-skills/               #   Used only by critical_events agent
 │   └── device-skills/              #   Used only by coverage agent
-├── pipeline/                       # Nightly Snowflake → Postgres critical-events pipeline
-│   ├── critical_events_pipeline.py #   Pull rolling 24h window, classify (SVM), upsert to Postgres
+├── pipeline/                       # Nightly Snowflake → ClickHouse critical-events pipeline
+│   ├── critical_events_pipeline.py #   Pull rolling 24h window, classify (SVM), upsert to ClickHouse
 │   ├── nightly_priority_pipeline.py#   Cluster + prioritize error descriptions
 │   ├── nightly_critical_events_poll.sh # Cron entry point (01:00 IST)
 │   ├── fetch_device_config.py      #   Postgres/Snowflake connection helpers

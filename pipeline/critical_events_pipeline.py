@@ -437,7 +437,7 @@ def _predict_batch(
     classified = classifier.assign_missing_priorities(classified)
 
     # Snowflake numeric columns may arrive as floats when NULLs are present.
-    # Coerce bigint-like columns back to true integers for PostgreSQL COPY.
+    # Coerce bigint-like columns back to true integers for the ClickHouse insert.
     for column in INT_LIKE_COLUMNS:
         numeric_series = pd.to_numeric(classified[column], errors="coerce")
         fractional_mask = numeric_series.notna() & (numeric_series % 1 != 0)

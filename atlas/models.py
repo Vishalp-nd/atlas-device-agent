@@ -41,7 +41,7 @@ class CriticalEventsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None
     table_name: str = "criticalinfo_snowflakes_data"
-    postgres_section: str = "IRAVATH_DB"
+    clickhouse_section: str = "CLICKHOUSE_DB"
 
 
 class CriticalEventsDashboardFilterRequest(BaseModel):

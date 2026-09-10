@@ -2,7 +2,7 @@
 
 Hosts the Atlas chat agent (supervisor routing to coverage, Jenkins, and
 critical-events sub-agents) as a FastAPI service, plus a Streamlit chat UI.
-The critical-events data pipeline that feeds the local Postgres lives in
+The critical-events data pipeline that feeds the local ClickHouse lives in
 pipeline/ at the repo root.
 
 Contains:
