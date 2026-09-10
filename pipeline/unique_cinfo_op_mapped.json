@@ -6933,5 +6933,215 @@
     "description_pattern": "Linux signal",
     "TYPE": "ERROR",
     "priority": "P1"
+  },
+  {
+    "description_pattern": "DIAGNOSTIC : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:P",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Booted up in MISC Low power wakeup mode",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Sep  <N> <N> tegra-ubuntu kernel: <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Cloud fail although internet <N> : <N> : Peer certificate cannot be authenticated with given CA certificates",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [   <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: D OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E OFF, IMU: E OFF, GPS: D OFF, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_LOWPOWER:SHUTDOWN (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Haptic health check skipped, source: alert_trigger, status: skipped, uuid: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_INSTALLER_APP:REBOOT (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Sep  <N> <N> tegra-ubuntu kernel: [   <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_AWSIOT:REBOOT (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERC",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPER",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:Offtherunwire",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: WAKEonMOTION -- RESET_REASON: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "ADSM File create table failed during load",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:S",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  <N> POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SUPERCAP_DI",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonIGNITIONPOWER_UP -- RESET_REASON: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB  -- RESET_REASON:  <N> SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Nov <N> <N> tegra-ubuntu kernel: [   <N> nvme <N> I/O <N> QID <N> timeout, compl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  -- RESET_REASON: POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB  -- RESET_REASON:  <N> POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Thehousebythesideoftheroad",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  TEGRA_BCCPLEX_WATCHDOG EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Sep  <N> <N> tegra-ubuntu bagheera: <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SLEEP_STATE:SUPERCAP_DISCHARGE:TEGRA_BCCPLEX_WATCHDOG (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonRTC -- RESET_REASON:  <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
   }
 ]
