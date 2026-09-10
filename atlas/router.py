@@ -519,7 +519,7 @@ def observations_agent(req: ObservationsQueryRequest) -> ObservationsAgentQueryR
         get_observations_prompt(),
         REPO_ROOT,
         table_name=req.table_name,
-        postgres_section=req.postgres_section,
+        clickhouse_section=req.clickhouse_section,
         history=history,
     )
     if req.session_id:

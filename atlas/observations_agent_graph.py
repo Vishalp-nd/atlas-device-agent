@@ -1,24 +1,27 @@
 """observations_agent_graph.py — Atlas sub-agent for observations analytics.
 
-This agent reads from PostgreSQL observations data in public.extracteddata and
-answers analytics questions using guarded, read-only SQL tools.
+This agent reads observations data from ClickHouse and answers analytics
+questions using guarded, read-only SQL tools.
+
+Two tables back this agent:
+- `observation_data`: one row per recorded file/session.
+- `video_metadata`: per-GPS-sample rows, joined to observations on
+  (device_id, file_name). This is the flattened form of what used to be the
+  `videometadata` JSONB column.
 """
 
 from __future__ import annotations
 
+import configparser
 import json
 import logging
 import os
 import re
-import subprocess
-import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Annotated, TypedDict
 from zoneinfo import ZoneInfo
-
-import pandas as pd
 
 
 def _setup_logger() -> logging.Logger:
@@ -44,7 +47,7 @@ def _setup_logger() -> logging.Logger:
 
 logger = _setup_logger()
 
-import psycopg2
+import clickhouse_connect
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -53,19 +56,10 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-PIPELINE_ROOT = Path(__file__).resolve().parents[1] / "pipeline"
-if str(PIPELINE_ROOT) not in sys.path:
-    sys.path.insert(0, str(PIPELINE_ROOT))
-
-from fetch_device_config import read_db_config
 from atlas.result_store import result_store, rows_to_csv_bytes
-from atlas.gps_oh_summary_generator import (
-    DEFAULT_OUTPUT_ROOT,
-    FAMILY_CONFIG,
-    _build_output_dir,
-)
 
 MAX_ITERATIONS = 12
+VIDEO_METADATA_TABLE = "video_metadata"
 
 # Per-agent-run download accumulator; populated by tools, consumed by run_observations_agent.
 _run_ctx = __import__('threading').local()
@@ -132,12 +126,12 @@ def _current_ist_payload() -> str:
 def _make_tools(
     repo_root: Path,
     table_name: str,
-    postgres_section: str,
+    clickhouse_section: str,
     include_db_overview: bool = True,
 ) -> list:
     db_config_path = repo_root / "db_credentials.ini"
     table_ident = _quote_table_identifier(table_name)
-    summary_output_root = Path(DEFAULT_OUTPUT_ROOT)
+    video_ident = _quote_table_identifier(VIDEO_METADATA_TABLE)
 
     def _parse_iso_datetime(value: str, field_name: str) -> datetime:
         try:
@@ -157,194 +151,25 @@ def _make_tools(
                 parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=0)
         return parsed.strftime("%Y-%m-%d %H:%M:%S")
 
-    def _normalize_summary_window(
-        start_dt: str,
-        end_dt: str,
-        hours: int,
-    ) -> tuple[str, str, str]:
-        if start_dt.strip() or end_dt.strip():
-            if not (start_dt.strip() and end_dt.strip()):
-                raise ValueError("Both start_dt and end_dt are required for weekly summary tools.")
-            start_value = _parse_iso_datetime(_normalize_explicit_bound(start_dt, "start_dt"), "start_dt")
-            end_value = _parse_iso_datetime(_normalize_explicit_bound(end_dt, "end_dt"), "end_dt")
-        else:
-            safe_hours = max(1, min(hours, 24 * 90))
-            end_value = datetime.utcnow()
-            start_value = end_value - timedelta(hours=safe_hours)
-
-        if end_value < start_value:
-            raise ValueError("end_dt must be greater than or equal to start_dt.")
-
-        return (
-            start_value.strftime("%Y-%m-%d"),
-            end_value.strftime("%Y-%m-%d"),
-            f"{start_value.strftime('%Y-%m-%d')} to {end_value.strftime('%Y-%m-%d')}",
-        )
-
-    def _normalize_product_family(product_family: str) -> str:
-        family = product_family.strip().lower()
-        if not family:
-            env_value = os.getenv("PRODUCT_LINES", "")
-            family = env_value.split(",", 1)[0].strip().lower()
-        if not family:
-            raise ValueError("product_family is required.")
-        if family not in FAMILY_CONFIG:
-            valid = ", ".join(sorted(FAMILY_CONFIG.keys()))
-            raise ValueError(f"Invalid product_family: {product_family!r}. Allowed values: {valid}")
-        return family
-
-    def _normalize_group_by(group_by: str) -> str:
-        normalized = group_by.strip().lower() or "product_family"
-        allowed = {"product_family", "device_id", "ota", "product_family+device_id", "product_family+ota"}
-        if normalized not in allowed:
-            raise ValueError(
-                "Invalid group_by. Allowed values: product_family, device_id, ota, "
-                "product_family+device_id, product_family+ota"
-            )
-        return normalized
-
-    def _summary_metadata_suffix(device_id: str, ota: str, group_by: str) -> str:
-        parts: list[str] = []
-        if device_id.strip():
-            parts.append(f"device_{re.sub(r'[^A-Za-z0-9_.-]+', '-', device_id.strip())}")
-        if ota.strip():
-            parts.append(f"ota_{re.sub(r'[^A-Za-z0-9_.-]+', '-', ota.strip())}")
-        normalized_group = group_by.strip().lower()
-        if normalized_group and normalized_group != "product_family":
-            parts.append(f"group_{normalized_group.replace('+', '_')}")
-        return "__".join(parts)
-
-    def _find_summary_artifacts(
-        product_family: str,
-        start_date: str,
-        end_date: str,
-        device_id: str,
-        ota: str,
-        group_by: str,
-    ) -> list[Path]:
-        output_dir = Path(_build_output_dir(str(summary_output_root), product_family, start_date, end_date))
-        if not output_dir.is_dir():
-            return []
-
-        suffix = _summary_metadata_suffix(device_id, ota, group_by)
-        matches: list[Path] = []
-        for path in sorted(output_dir.glob("*.xlsx"), key=lambda item: item.stat().st_mtime, reverse=True):
-            if suffix and suffix not in path.stem:
-                continue
-            matches.append(path)
-        return matches
-
-    def _register_summary_downloads(paths: list[Path]) -> list[dict[str, str]]:
-        downloads: list[dict[str, str]] = []
-        for path in paths:
-            rid = result_store.put_file(path)
-            _collect_download(rid, path.name)
-            downloads.append({"id": rid, "filename": path.name})
-        return downloads
-
-    def _parse_csv_list(raw_value: str) -> list[str]:
-        return [item.strip() for item in raw_value.split(",") if item.strip()]
-
-    def _load_cached_workbook_frames(path: Path) -> dict[str, pd.DataFrame]:
-        return pd.read_excel(path, sheet_name=None)
-
-    def _filter_sheet_frame(
-        frame: pd.DataFrame,
-        device_ids: list[str],
-        columns: list[str],
-    ) -> pd.DataFrame:
-        filtered = frame.copy()
-
-        if device_ids:
-            device_col = next(
-                (col for col in filtered.columns if str(col).strip().lower() in {"device id", "device_id", "deviceid"}),
-                None,
-            )
-            if device_col is not None:
-                normalized = {item.strip() for item in device_ids}
-                filtered = filtered[filtered[device_col].astype(str).isin(normalized)]
-
-        if columns:
-            missing = [col for col in columns if col not in filtered.columns]
-            if missing:
-                raise ValueError(f"Requested columns not found: {', '.join(missing)}")
-            filtered = filtered.loc[:, columns]
-
-        return filtered
-
-    def _rename_generated_artifacts(
-        output_dir: Path,
-        generated_paths: list[Path],
-        device_id: str,
-        ota: str,
-        group_by: str,
-    ) -> list[Path]:
-        suffix = _summary_metadata_suffix(device_id, ota, group_by)
-        if not suffix:
-            return generated_paths
-
-        renamed: list[Path] = []
-        for path in generated_paths:
-            target = output_dir / f"{path.stem}__{suffix}{path.suffix}"
-            if target != path:
-                path.rename(target)
-                renamed.append(target)
-            else:
-                renamed.append(path)
-        return renamed
-
-    def _generate_weekly_summary_files(
-        product_family: str,
-        start_date: str,
-        end_date: str,
-        device_id: str,
-        ota: str,
-        group_by: str,
-    ) -> list[Path]:
-        output_dir = Path(_build_output_dir(str(summary_output_root), product_family, start_date, end_date))
-        output_dir.mkdir(parents=True, exist_ok=True)
-        before = {path.resolve() for path in output_dir.glob("*.xlsx")}
-
-        command = [
-            sys.executable,
-            str(repo_root / "atlas" / "gps_oh_summary_generator.py"),
-            "--start",
-            start_date,
-            "--end",
-            end_date,
-            "--product-family",
-            product_family,
-            "--output",
-            str(summary_output_root),
-        ]
-        completed = subprocess.run(command, cwd=repo_root, capture_output=True, text=True)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                "weekly summary generation failed: "
-                f"{completed.stderr.strip() or completed.stdout.strip() or 'unknown error'}"
-            )
-
-        after = sorted(
-            (path.resolve() for path in output_dir.glob("*.xlsx") if path.resolve() not in before),
-            key=lambda item: item.stat().st_mtime,
-            reverse=True,
-        )
-        if not after:
-            after = _find_summary_artifacts(product_family, start_date, end_date, "", "", "product_family")
-        if not after:
-            raise FileNotFoundError(f"No weekly summary files were generated in {output_dir}")
-        return _rename_generated_artifacts(output_dir, after, device_id, ota, group_by)
-
     def _connect_ro():
         if not db_config_path.exists():
             raise FileNotFoundError(
                 f"DB config not found: {db_config_path}. "
                 "Expected db_credentials.ini at repo root."
             )
-        params = read_db_config(str(db_config_path), postgres_section)
-        conn = psycopg2.connect(**params)
-        conn.autocommit = True
-        return conn
+        parser = configparser.ConfigParser()
+        parser.read(db_config_path)
+        if not parser.has_section(clickhouse_section):
+            raise ValueError(f"Section '{clickhouse_section}' not found in {db_config_path}")
+        # db_credentials.ini carries the native port; clickhouse_connect speaks HTTP.
+        port = int(parser.get(clickhouse_section, "port", fallback="9000"))
+        return clickhouse_connect.get_client(
+            host=parser.get(clickhouse_section, "host", fallback="127.0.0.1"),
+            port=8123 if port == 9000 else port,
+            username=parser.get(clickhouse_section, "user", fallback="default"),
+            password=parser.get(clickhouse_section, "password", fallback=""),
+            database=parser.get(clickhouse_section, "database", fallback="default"),
+        )
 
     def _build_filter_clause(
         hours: int,
@@ -352,31 +177,36 @@ def _make_tools(
         ota: str = "",
         start_dt: str = "",
         end_dt: str = "",
-    ) -> tuple[str, list]:
-        """Build WHERE clause. start_dt/end_dt (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) take priority over hours."""
-        from datetime import datetime as _dt
+        alias: str = "",
+    ) -> tuple[str, dict]:
+        """Build a ClickHouse WHERE clause plus named parameters.
+
+        start_dt/end_dt (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) take priority over hours.
+        `alias` optionally qualifies the columns for joined queries.
+        """
+        prefix = f"{alias}." if alias else ""
         where: list[str] = []
-        params: list = []
+        params: dict = {}
 
         if start_dt.strip() or end_dt.strip():
             if start_dt.strip():
-                where.append("start_time >= %s")
-                params.append(_normalize_explicit_bound(start_dt, "start_dt"))
+                where.append(f"{prefix}start_time >= {{start_dt:DateTime64(3)}}")
+                params["start_dt"] = _normalize_explicit_bound(start_dt, "start_dt")
             if end_dt.strip():
-                where.append("start_time <= %s")
-                params.append(_normalize_explicit_bound(end_dt, "end_dt"))
+                where.append(f"{prefix}start_time <= {{end_dt:DateTime64(3)}}")
+                params["end_dt"] = _normalize_explicit_bound(end_dt, "end_dt")
         else:
             safe_hours = max(1, min(hours, 24 * 90))
-            where.append("start_time >= NOW() - (%s * INTERVAL '1 hour')")
-            params.append(safe_hours)
+            where.append(f"{prefix}start_time >= now() - INTERVAL {{hours:UInt32}} HOUR")
+            params["hours"] = safe_hours
 
         if device_id.strip():
-            where.append("device_id = %s")
-            params.append(device_id.strip())
+            where.append(f"{prefix}device_id = {{device_id:String}}")
+            params["device_id"] = device_id.strip()
         if ota.strip():
-            where.append("ota = %s")
-            params.append(ota.strip())
-        return " AND ".join(where) if where else "TRUE", params
+            where.append(f"{prefix}ota = {{ota:String}}")
+            params["ota"] = ota.strip()
+        return " AND ".join(where) if where else "1", params
 
     @tool
     def current_date_time() -> str:
@@ -406,36 +236,31 @@ def _make_tools(
         explicit range, or hours (default 24) for a rolling window from now.
         Filter by device_id or ota to narrow results.
         """
-        logger.info("[tool:db_overview] called — table=%s section=%s", table_name, postgres_section)
+        logger.info("[tool:db_overview] called — table=%s section=%s", table_name, clickhouse_section)
+        client = None
         try:
             where_sql, params = _build_filter_clause(
                 hours=hours, device_id=device_id, ota=ota, start_dt=start_dt, end_dt=end_dt
             )
-            conn = _connect_ro()
-            cur = conn.cursor()
-            cur.execute(
+            client = _connect_ro()
+            row = client.query(
                 f"""
                 SELECT
-                    COUNT(*) AS total_rows,
-                    MIN(start_time) AS min_start_time,
-                    MAX(start_time) AS max_start_time,
-                    COUNT(*) FILTER (
-                        WHERE jsonb_typeof(videometadata) = 'array'
-                        AND jsonb_array_length(videometadata) > 0
-                    ) AS rows_with_videometadata,
-                    COUNT(*) FILTER (WHERE num_frames_out IS NOT NULL) AS rows_with_num_frames_out,
-                    COUNT(DISTINCT device_id) AS devices_count,
-                    COUNT(DISTINCT ota) AS ota_count
+                    count() AS total_rows,
+                    min(start_time) AS min_start_time,
+                    max(start_time) AS max_start_time,
+                    countIf(num_frames_out IS NOT NULL) AS rows_with_num_frames_out,
+                    uniqExact(device_id) AS devices_count,
+                    uniqExact(ota) AS ota_count
                 FROM {table_ident}
                 WHERE {where_sql}
                 """,
-                params,
-            )
-            row = cur.fetchone()
-            conn.close()
+                parameters=params,
+            ).result_rows[0]
 
             payload = {
-                "postgres_section": postgres_section,
+                "backend": "clickhouse",
+                "clickhouse_section": clickhouse_section,
                 "table_name": table_name,
                 "window": {"start_dt": start_dt.strip() or None, "end_dt": end_dt.strip() or None, "hours": hours if not (start_dt.strip() or end_dt.strip()) else None},
                 "filters": {
@@ -447,54 +272,54 @@ def _make_tools(
                     "min": row[1].isoformat() if row[1] else None,
                     "max": row[2].isoformat() if row[2] else None,
                 },
-                "rows_with_videometadata": row[3],
-                "rows_with_num_frames_out": row[4],
-                "distinct_devices": row[5],
-                "distinct_ota": row[6],
+                "rows_with_num_frames_out": row[3],
+                "distinct_devices": row[4],
+                "distinct_ota": row[5],
+                "note": (
+                    "GPS/video sample counts live in the separate "
+                    f"{VIDEO_METADATA_TABLE} table; use video_metadata_overview "
+                    "or query_observations_with_video for those."
+                ),
             }
-            return json.dumps(payload, indent=2)
+            return json.dumps(payload, indent=2, default=str)
         except Exception as exc:
             logger.error("[tool:db_overview] failed: %s", exc)
             return f"db_overview failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
     def table_stats(limit_devices: int = 20) -> str:
         """Return compact table health stats and top active devices."""
         logger.info("[tool:table_stats] called — table=%s", table_name)
+        client = None
         try:
             safe_limit = max(1, min(limit_devices, 100))
-            conn = _connect_ro()
-            cur = conn.cursor()
+            client = _connect_ro()
 
-            cur.execute(
+            health = client.query(
                 f"""
                 SELECT
-                    COUNT(*) AS total_rows,
-                    COUNT(*) FILTER (WHERE start_time IS NULL) AS null_start_time,
-                    COUNT(*) FILTER (WHERE device_id IS NULL OR device_id = '') AS null_device_id,
-                    COUNT(*) FILTER (
-                        WHERE jsonb_typeof(videometadata) <> 'array'
-                        OR jsonb_array_length(videometadata) = 0
-                    ) AS empty_or_missing_videometadata,
-                    COUNT(*) FILTER (WHERE num_frames_out IS NULL) AS null_num_frames_out
+                    count() AS total_rows,
+                    countIf(start_time IS NULL) AS null_start_time,
+                    countIf(device_id = '') AS null_device_id,
+                    countIf(num_frames_out IS NULL) AS null_num_frames_out
                 FROM {table_ident}
                 """
-            )
-            health = cur.fetchone()
+            ).result_rows[0]
 
-            cur.execute(
+            top_devices = client.query(
                 f"""
-                SELECT device_id, COUNT(*) AS rows_count
+                SELECT device_id, count() AS rows_count
                 FROM {table_ident}
-                WHERE device_id IS NOT NULL AND device_id <> ''
+                WHERE device_id <> ''
                 GROUP BY device_id
                 ORDER BY rows_count DESC
-                LIMIT %s
+                LIMIT {{limit:UInt32}}
                 """,
-                (safe_limit,),
-            )
-            top_devices = cur.fetchall()
-            conn.close()
+                parameters={"limit": safe_limit},
+            ).result_rows
 
             payload = {
                 "table_name": table_name,
@@ -502,41 +327,37 @@ def _make_tools(
                     "total_rows": health[0],
                     "null_start_time": health[1],
                     "null_device_id": health[2],
-                    "empty_or_missing_videometadata": health[3],
-                    "null_num_frames_out": health[4],
+                    "null_num_frames_out": health[3],
                 },
                 "top_devices": top_devices,
             }
-            return json.dumps(payload, indent=2)
+            return json.dumps(payload, indent=2, default=str)
         except Exception as exc:
             logger.error("[tool:table_stats] failed: %s", exc)
             return f"table_stats failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
-    @tool
-    def query_observations(sql: str, limit: int = 200) -> str:
-        """Run a read-only SELECT query on observations data.
-
-        Requirements:
-        - SQL must begin with SELECT
-        - No semicolons
-        - Use LIMIT in SQL for large scans (or use limit argument)
-        """
-        logger.info("[tool:query_observations] called — limit=%d sql=%s", limit, sql)
+    def _run_select(tool_name: str, sql: str, limit: int, sources: list[str]) -> str:
+        """Shared read-only SELECT runner for the three query tools."""
+        logger.info("[tool:%s] called — limit=%d sql=%s", tool_name, limit, sql)
         if not _safe_query(sql):
-            logger.warning("[tool:query_observations] rejected unsafe SQL: %s", sql)
+            logger.warning("[tool:%s] rejected unsafe SQL: %s", tool_name, sql)
             return "Rejected. Only a single read-only SELECT statement without ';' is allowed."
 
+        client = None
         try:
-            conn = _connect_ro()
-            cur = conn.cursor()
-            cur.execute(sql)
-            columns = [d[0] for d in cur.description]
-            rows = cur.fetchmany(max(1, min(limit, 1000)))
-            conn.close()
+            client = _connect_ro()
+            query_result = client.query(sql)
+            columns = list(query_result.column_names)
+            rows = query_result.result_rows[: max(1, min(limit, 1000))]
             csv_bytes = rows_to_csv_bytes(columns, rows)
             rid = result_store.put(csv_bytes, "query_results.csv")
             _collect_download(rid, "query_results.csv")
             result = {
+                "backend": "clickhouse",
+                "sources": sources,
                 "columns": columns,
                 "rows": rows,
                 "returned_rows": len(rows),
@@ -544,258 +365,157 @@ def _make_tools(
             }
             return json.dumps(result, indent=2, default=str)
         except Exception as exc:
-            logger.error("[tool:query_observations] failed: %s", exc)
-            return f"query_observations failed: {exc}"
+            logger.error("[tool:%s] failed: %s", tool_name, exc)
+            return f"{tool_name} failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
-    def list_cached_weekly_summaries(
-        product_family: str,
-        start_dt: str = "",
-        end_dt: str = "",
-        hours: int = 24 * 7,
-        device_id: str = "",
-        ota: str = "",
-        group_by: str = "product_family",
-    ) -> str:
-        """List cached OH/GPS weekly Excel summaries for a date window and grouping/filter shape."""
-        logger.info(
-            "[tool:list_cached_weekly_summaries] called — family=%r start=%r end=%r device=%r ota=%r group_by=%r",
-            product_family,
-            start_dt,
-            end_dt,
-            device_id,
-            ota,
-            group_by,
-        )
-        try:
-            family = _normalize_product_family(product_family)
-            normalized_group = _normalize_group_by(group_by)
-            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
-            artifacts = _find_summary_artifacts(family, start_date, end_date, device_id, ota, normalized_group)
-            downloads = _register_summary_downloads(artifacts)
-            payload = {
-                "product_family": family,
-                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
-                "filters": {
-                    "device_id": device_id.strip() or None,
-                    "ota": ota.strip() or None,
-                    "group_by": normalized_group,
-                },
-                "cache_hit": bool(artifacts),
-                "artifact_count": len(artifacts),
-                "artifacts": [
-                    {
-                        "filename": path.name,
-                        "path": str(path.relative_to(repo_root)),
-                        "modified_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
-                    }
-                    for path in artifacts
-                ],
-                "downloads": downloads,
-            }
-            return json.dumps(payload, indent=2)
-        except Exception as exc:
-            logger.error("[tool:list_cached_weekly_summaries] failed: %s", exc)
-            return f"list_cached_weekly_summaries failed: {exc}"
+    def query_observations(sql: str, limit: int = 200) -> str:
+        """Run a read-only SELECT on the per-session observations table only.
+
+        Use this for questions about files/sessions themselves: counts by device or
+        OTA, uptime, voltage, processing flags, alert counts, frame counts.
+
+        Requirements:
+        - SQL must begin with SELECT, no semicolons
+        - ClickHouse SQL syntax
+        - Query `observation_data` (one row per recorded file)
+        - Use LIMIT in SQL for large scans (or use the limit argument)
+        """
+        return _run_select("query_observations", sql, limit, [table_name])
 
     @tool
-    def get_or_create_weekly_summary(
-        product_family: str,
-        start_dt: str = "",
-        end_dt: str = "",
-        hours: int = 24 * 7,
+    def query_video_metadata(sql: str, limit: int = 200) -> str:
+        """Run a read-only SELECT on the per-GPS-sample video metadata table only.
+
+        Use this for questions answerable from GPS samples alone: sample counts,
+        speed/altitude/bearing/accuracy distributions, GPS validity, lat/long.
+
+        Columns: file_name, device_id, start_time, end_time, seq_no, valid,
+        altitude, bearing, accuracy, lat, long, speed, raw_timestamp,
+        altitudeMSL, timestamp.
+
+        Requirements:
+        - SQL must begin with SELECT, no semicolons
+        - ClickHouse SQL syntax
+        - Query `video_metadata`; it has no `ota` column, so filter OTA via
+          query_observations_with_video instead
+        - Use LIMIT in SQL for large scans (or use the limit argument)
+        """
+        return _run_select("query_video_metadata", sql, limit, [VIDEO_METADATA_TABLE])
+
+    @tool
+    def query_observations_with_video(sql: str, limit: int = 200) -> str:
+        """Run a read-only SELECT joining observations to their GPS samples.
+
+        Use this only when a question needs both sides, for example GPS sample
+        counts per OTA, or speed stats filtered by device attributes.
+
+        Join the two tables on (device_id, file_name); `video_metadata` averages
+        roughly 60 rows per observation row, so aggregate the video side in a
+        subquery before joining rather than joining raw and grouping afterwards.
+
+        `observation_data` contains duplicate (device_id, file_name) rows, so
+        de-duplicate the observations side before joining or GPS totals will be
+        inflated:
+
+            SELECT o.ota, sum(v.pts) AS gps_points
+            FROM (
+                SELECT DISTINCT device_id, file_name, ota
+                FROM observation_data
+            ) AS o
+            LEFT JOIN (
+                SELECT device_id, file_name, count() AS pts
+                FROM video_metadata
+                GROUP BY device_id, file_name
+            ) AS v USING (device_id, file_name)
+            GROUP BY o.ota
+
+        Requirements:
+        - SQL must begin with SELECT, no semicolons
+        - ClickHouse SQL syntax
+        - Use LIMIT in SQL for large scans (or use the limit argument)
+        """
+        return _run_select(
+            "query_observations_with_video", sql, limit, [table_name, VIDEO_METADATA_TABLE]
+        )
+
+    @tool
+    def video_metadata_overview(
+        hours: int = 24,
         device_id: str = "",
         ota: str = "",
-        group_by: str = "product_family",
-        force_regenerate: bool = False,
+        start_dt: str = "",
+        end_dt: str = "",
     ) -> str:
-        """Return cached weekly OH/GPS Excel summaries or generate them and register downloads."""
-        logger.info(
-            "[tool:get_or_create_weekly_summary] called — family=%r start=%r end=%r force=%s",
-            product_family,
-            start_dt,
-            end_dt,
-            force_regenerate,
-        )
-        try:
-            family = _normalize_product_family(product_family)
-            normalized_group = _normalize_group_by(group_by)
-            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
+        """Return high-level GPS-sample stats from the video metadata table.
 
-            artifacts = [] if force_regenerate else _find_summary_artifacts(
-                family,
-                start_date,
-                end_date,
-                device_id,
-                ota,
-                normalized_group,
+        Reports sample counts, how many observation files have samples, and GPS
+        validity/speed ranges for the window. Filters are applied on the
+        observations side, so this joins both tables.
+        """
+        logger.info("[tool:video_metadata_overview] called — hours=%s device=%r ota=%r", hours, device_id, ota)
+        client = None
+        try:
+            where_sql, params = _build_filter_clause(
+                hours=hours, device_id=device_id, ota=ota, start_dt=start_dt, end_dt=end_dt, alias="o"
             )
-            cache_hit = bool(artifacts)
-            if not artifacts:
-                artifacts = _generate_weekly_summary_files(
-                    family,
-                    start_date,
-                    end_date,
-                    device_id,
-                    ota,
-                    normalized_group,
-                )
+            client = _connect_ro()
+            # observation_data holds duplicate (device_id, file_name) rows, so the
+            # file list is de-duplicated before joining or the GPS totals fan out.
+            row = client.query(
+                f"""
+                SELECT
+                    count() AS observation_files,
+                    countIf(v.pts > 0) AS files_with_video_metadata,
+                    sum(v.pts) AS total_gps_samples,
+                    sum(v.valid_pts) AS valid_gps_samples,
+                    minIf(v.min_speed, v.pts > 0) AS min_speed,
+                    maxIf(v.max_speed, v.pts > 0) AS max_speed
+                FROM (
+                    SELECT DISTINCT device_id, file_name
+                    FROM {table_ident} AS o
+                    WHERE {where_sql}
+                ) AS f
+                LEFT JOIN (
+                    SELECT
+                        device_id,
+                        file_name,
+                        count() AS pts,
+                        countIf(valid = 1) AS valid_pts,
+                        min(speed) AS min_speed,
+                        max(speed) AS max_speed
+                    FROM {video_ident}
+                    GROUP BY device_id, file_name
+                ) AS v USING (device_id, file_name)
+                """,
+                parameters=params,
+            ).result_rows[0]
 
-            downloads = _register_summary_downloads(artifacts)
             payload = {
-                "product_family": family,
-                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
-                "filters": {
-                    "device_id": device_id.strip() or None,
-                    "ota": ota.strip() or None,
-                    "group_by": normalized_group,
+                "backend": "clickhouse",
+                "tables": [table_name, VIDEO_METADATA_TABLE],
+                "window": {
+                    "start_dt": start_dt.strip() or None,
+                    "end_dt": end_dt.strip() or None,
+                    "hours": hours if not (start_dt.strip() or end_dt.strip()) else None,
                 },
-                "cache_hit": cache_hit,
-                "generated": not cache_hit,
-                "artifact_count": len(artifacts),
-                "artifacts": [path.name for path in artifacts],
-                "downloads": downloads,
-                "note": "Weekly OH/GPS summaries remain Excel workbooks; downloads are registered from disk-backed cache.",
+                "filters": {"device_id": device_id.strip() or None, "ota": ota.strip() or None},
+                "observation_files": row[0],
+                "files_with_video_metadata": row[1],
+                "total_gps_samples": row[2],
+                "valid_gps_samples": row[3],
+                "speed_range": {"min": row[4], "max": row[5]},
             }
-            return json.dumps(payload, indent=2)
+            return json.dumps(payload, indent=2, default=str)
         except Exception as exc:
-            logger.error("[tool:get_or_create_weekly_summary] failed: %s", exc)
-            return f"get_or_create_weekly_summary failed: {exc}"
-
-    @tool
-    def inspect_cached_summary_schema(
-        product_family: str,
-        start_dt: str = "",
-        end_dt: str = "",
-        hours: int = 24 * 7,
-        device_id: str = "",
-        ota: str = "",
-        group_by: str = "product_family",
-    ) -> str:
-        """Inspect cached weekly workbook sheets and columns before requesting a subset extraction."""
-        logger.info(
-            "[tool:inspect_cached_summary_schema] called — family=%r start=%r end=%r",
-            product_family,
-            start_dt,
-            end_dt,
-        )
-        try:
-            family = _normalize_product_family(product_family)
-            normalized_group = _normalize_group_by(group_by)
-            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
-            artifacts = _find_summary_artifacts(family, start_date, end_date, device_id, ota, normalized_group)
-            if not artifacts:
-                return (
-                    "inspect_cached_summary_schema failed: no cached weekly summary found for the requested "
-                    "window and filters. Generate or fetch the workbook first."
-                )
-
-            workbook = artifacts[0]
-            frames = _load_cached_workbook_frames(workbook)
-            payload = {
-                "product_family": family,
-                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
-                "source_workbook": workbook.name,
-                "sheets": [
-                    {
-                        "sheet_name": sheet_name,
-                        "row_count": int(len(frame.index)),
-                        "columns": [str(col) for col in frame.columns],
-                    }
-                    for sheet_name, frame in frames.items()
-                ],
-            }
-            return json.dumps(payload, indent=2)
-        except Exception as exc:
-            logger.error("[tool:inspect_cached_summary_schema] failed: %s", exc)
-            return f"inspect_cached_summary_schema failed: {exc}"
-
-    @tool
-    def extract_cached_summary_subset(
-        product_family: str,
-        start_dt: str = "",
-        end_dt: str = "",
-        hours: int = 24 * 7,
-        sheet_names: str = "",
-        device_ids: str = "",
-        columns: str = "",
-        ota: str = "",
-        group_by: str = "product_family",
-    ) -> str:
-        """Extract selected sheets, devices, and columns from a cached weekly workbook into CSV downloads."""
-        logger.info(
-            "[tool:extract_cached_summary_subset] called — family=%r sheets=%r devices=%r columns=%r",
-            product_family,
-            sheet_names,
-            device_ids,
-            columns,
-        )
-        try:
-            family = _normalize_product_family(product_family)
-            normalized_group = _normalize_group_by(group_by)
-            start_date, end_date, window_label = _normalize_summary_window(start_dt, end_dt, hours)
-            requested_sheets = _parse_csv_list(sheet_names)
-            requested_devices = _parse_csv_list(device_ids)
-            requested_columns = _parse_csv_list(columns)
-
-            artifacts = _find_summary_artifacts(
-                family,
-                start_date,
-                end_date,
-                requested_devices[0] if len(requested_devices) == 1 else "",
-                ota,
-                normalized_group,
-            )
-            if not artifacts:
-                return (
-                    "extract_cached_summary_subset failed: no cached weekly summary found for the requested "
-                    "window and filters. Generate or fetch the workbook first."
-                )
-
-            workbook = artifacts[0]
-            frames = _load_cached_workbook_frames(workbook)
-            selected_sheet_names = requested_sheets or list(frames.keys())
-            missing_sheets = [sheet for sheet in selected_sheet_names if sheet not in frames]
-            if missing_sheets:
-                raise ValueError(f"Requested sheets not found: {', '.join(missing_sheets)}")
-
-            downloads: list[dict[str, str]] = []
-            sheet_summaries: list[dict[str, object]] = []
-            for sheet_name in selected_sheet_names:
-                filtered = _filter_sheet_frame(frames[sheet_name], requested_devices, requested_columns)
-                csv_bytes = filtered.to_csv(index=False).encode("utf-8")
-                safe_sheet = re.sub(r"[^A-Za-z0-9_.-]+", "_", sheet_name).strip("_") or "sheet"
-                filename = f"{workbook.stem}__{safe_sheet}.csv"
-                rid = result_store.put(csv_bytes, filename)
-                _collect_download(rid, filename)
-                downloads.append({"id": rid, "filename": filename})
-                sheet_summaries.append(
-                    {
-                        "sheet_name": sheet_name,
-                        "row_count": int(len(filtered.index)),
-                        "columns": [str(col) for col in filtered.columns],
-                        "download_id": rid,
-                        "filename": filename,
-                    }
-                )
-
-            payload = {
-                "product_family": family,
-                "window": {"start_dt": start_date, "end_dt": end_date, "label": window_label},
-                "source_workbook": workbook.name,
-                "filters": {
-                    "device_ids": requested_devices or None,
-                    "ota": ota.strip() or None,
-                    "group_by": normalized_group,
-                    "columns": requested_columns or None,
-                },
-                "sheets": sheet_summaries,
-                "downloads": downloads,
-            }
-            return json.dumps(payload, indent=2)
-        except Exception as exc:
-            logger.error("[tool:extract_cached_summary_subset] failed: %s", exc)
-            return f"extract_cached_summary_subset failed: {exc}"
+            logger.error("[tool:video_metadata_overview] failed: %s", exc)
+            return f"video_metadata_overview failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
     def gps_kpi_summary(
@@ -812,6 +532,9 @@ def _make_tools(
     ) -> str:
         """Return GPS quality KPIs (loss %, accuracy buckets, avg accuracy).
 
+        Reads GPS accuracy from the `video_metadata` samples belonging to each
+        observation file.
+
         Time window: provide start_dt/end_dt (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) for an
         explicit range, or hours (default 24) for a rolling window from now.
         Filter by device_id or ota to narrow results.
@@ -820,8 +543,8 @@ def _make_tools(
         - fleet_level: aggregate all filtered rows into one fleet summary
         - device_level: aggregate per device_id (top max_groups by file_count)
         - ota_level: aggregate per ota (top max_groups by file_count)
-                - max_groups: max rows returned in JSON for device/ota levels (capped at 200).
-                    CSV exports still include all rows for the filtered data.
+        - max_groups: max rows returned in JSON for device/ota levels (capped at 200).
+          CSV exports still include all rows for the filtered data.
 
         Any combination of level switches is supported.
         """
@@ -834,6 +557,7 @@ def _make_tools(
             device_level,
             ota_level,
         )
+        client = None
         try:
             safe_expected = max(1, min(expected_samples_per_file, 600))
             safe_groups = max(1, min(max_groups, 200))
@@ -843,13 +567,150 @@ def _make_tools(
             where_sql, params = _build_filter_clause(
                 hours=hours, device_id=device_id, ota=ota, start_dt=start_dt, end_dt=end_dt
             )
+            params = {**params, "expected": safe_expected}
 
-            conn = _connect_ro()
-            cur = conn.cursor()
+            def _kpi_sql(group_col: str | None) -> str:
+                """Build the KPI query; group_col=None aggregates the whole fleet.
+
+                observation_data holds duplicate (device_id, file_name) rows, so files
+                are collapsed to one row per key before joining the GPS samples.
+                """
+                # CTE aggregates are aliased with an f_ prefix so they never shadow the
+                # source columns that the filter clause references.
+                group_expr = {"device_id": "f.device_id", "ota": "f.f_ota"}.get(group_col or "")
+                select_group = f"{group_expr} AS group_key," if group_expr else ""
+                group_clause = f"GROUP BY {group_expr}" if group_expr else ""
+                order_clause = "ORDER BY file_count DESC, group_key" if group_expr else ""
+                group_filter = f"WHERE {group_expr} <> ''" if group_expr else ""
+                return f"""
+                WITH files AS (
+                    SELECT
+                        device_id,
+                        file_name,
+                        any(ota) AS f_ota,
+                        min(start_time) AS f_min_start,
+                        max(start_time) AS f_max_start
+                    FROM {table_ident} AS o
+                    WHERE {where_sql}
+                    GROUP BY device_id, file_name
+                ),
+                vagg AS (
+                    SELECT
+                        device_id,
+                        file_name,
+                        count() AS pts,
+                        countIf(accuracy > 0) AS valid_acc,
+                        countIf(accuracy IS NULL OR accuracy <= 0) AS invalid_acc,
+                        countIf(accuracy > 0 AND accuracy <= 2.0) AS le_2m,
+                        countIf(accuracy > 0 AND accuracy <= 3.5) AS le_3_5m,
+                        countIf(accuracy > 0 AND accuracy <= 6.0) AS le_6m,
+                        countIf(accuracy > 0 AND accuracy <= 10.0) AS le_10m,
+                        countIf(accuracy > 10.0) AS gt_10m,
+                        sumIf(accuracy, accuracy > 0) AS acc_sum
+                    FROM {video_ident}
+                    GROUP BY device_id, file_name
+                )
+                SELECT
+                    {select_group}
+                    count() AS file_count,
+                    countIf(v.pts > 0) AS files_with_video_metadata,
+                    min(f.f_min_start) AS min_start_time,
+                    max(f.f_max_start) AS max_start_time,
+                    sum(v.pts) AS parsed_sample_rows,
+                    sum(v.valid_acc) AS valid_accuracy_count,
+                    sum(v.invalid_acc) AS invalid_accuracy_in_samples,
+                    sum(v.le_2m) AS le_2m,
+                    sum(v.le_3_5m) AS le_3_5m,
+                    sum(v.le_6m) AS le_6m,
+                    sum(v.le_10m) AS le_10m,
+                    sum(v.gt_10m) AS gt_10m,
+                    sum(v.acc_sum) / nullIf(sum(v.valid_acc), 0) AS avg_accuracy_m,
+                    toInt64(count() * {{expected:UInt32}}) AS expected_accuracy_count,
+                    greatest(toInt64(count() * {{expected:UInt32}}) - toInt64(sum(v.valid_acc)), 0) AS invalid_or_missing_accuracy_count,
+                    (greatest(toInt64(count() * {{expected:UInt32}}) - toInt64(sum(v.valid_acc)), 0) * 100.0)
+                        / nullIf(toInt64(count() * {{expected:UInt32}}), 0) AS gps_loss_percent
+                FROM files AS f
+                LEFT JOIN vagg AS v USING (device_id, file_name)
+                {group_filter}
+                {group_clause}
+                {order_clause}
+                """
+
+            def _kpi_record(row: tuple, offset: int) -> dict:
+                """Map one result row to the KPI payload shape.
+
+                offset is 1 when the row carries a leading group key column.
+                """
+                return {
+                    "file_count": row[offset],
+                    "files_with_video_metadata": row[offset + 1],
+                    "time_range": {
+                        "min": row[offset + 2].isoformat() if row[offset + 2] else None,
+                        "max": row[offset + 3].isoformat() if row[offset + 3] else None,
+                    },
+                    "parsed_sample_rows": row[offset + 4],
+                    "valid_accuracy_count": row[offset + 5],
+                    "invalid_accuracy_in_samples": row[offset + 6],
+                    "expected_accuracy_count": row[offset + 13],
+                    "invalid_or_missing_accuracy_count": row[offset + 14],
+                    "gps_loss_percent": float(row[offset + 15]) if row[offset + 15] is not None else None,
+                    "accuracy_buckets_cumulative": {
+                        "le_2m": row[offset + 7],
+                        "le_3_5m": row[offset + 8],
+                        "le_6m": row[offset + 9],
+                        "le_10m": row[offset + 10],
+                        "gt_10m": row[offset + 11],
+                    },
+                    "avg_accuracy_m": float(row[offset + 12]) if row[offset + 12] is not None else None,
+                }
+
+            def _csv_row(record: dict, group_value: str | None) -> tuple:
+                buckets = record["accuracy_buckets_cumulative"]
+                leading = (group_value,) if group_value is not None else ()
+                return leading + (
+                    record["file_count"],
+                    record["files_with_video_metadata"],
+                    record["time_range"]["min"],
+                    record["time_range"]["max"],
+                    record["expected_accuracy_count"],
+                    record["valid_accuracy_count"],
+                    record["invalid_or_missing_accuracy_count"],
+                    record["gps_loss_percent"],
+                    record["avg_accuracy_m"],
+                    buckets["le_2m"],
+                    buckets["le_3_5m"],
+                    buckets["le_6m"],
+                    buckets["le_10m"],
+                    buckets["gt_10m"],
+                )
+
+            base_csv_cols = [
+                "file_count",
+                "files_with_video_metadata",
+                "min_start_time",
+                "max_start_time",
+                "expected_accuracy_count",
+                "valid_accuracy_count",
+                "invalid_or_missing_accuracy_count",
+                "gps_loss_percent",
+                "avg_accuracy_m",
+                "le_2m",
+                "le_3_5m",
+                "le_6m",
+                "le_10m",
+                "gt_10m",
+            ]
+
+            client = _connect_ro()
             payload = {
-                "table_name": table_name,
-                "postgres_section": postgres_section,
-                "window": {"start_dt": start_dt.strip() or None, "end_dt": end_dt.strip() or None, "hours": hours if not (start_dt.strip() or end_dt.strip()) else None},
+                "backend": "clickhouse",
+                "tables": [table_name, VIDEO_METADATA_TABLE],
+                "clickhouse_section": clickhouse_section,
+                "window": {
+                    "start_dt": start_dt.strip() or None,
+                    "end_dt": end_dt.strip() or None,
+                    "hours": hours if not (start_dt.strip() or end_dt.strip()) else None,
+                },
                 "filters": {
                     "device_id": device_id.strip() or None,
                     "ota": ota.strip() or None,
@@ -864,488 +725,48 @@ def _make_tools(
                 "coverage_notes": [
                     "gps_loss_percent uses (invalid_or_missing_accuracy_count * 100) / expected_accuracy_count",
                     "expected_accuracy_count defaults to file_count * expected_samples_per_file",
+                    "accuracy is read from the video_metadata GPS samples joined on (device_id, file_name)",
+                    "duplicate observation rows are collapsed to one row per (device_id, file_name)",
                     "device_level/ota_level JSON rows are capped by max_groups (<=200); CSV contains all matching rows",
                 ],
             }
 
             if fleet_level:
-                cur.execute(
-                    f"""
-                    WITH filtered AS (
-                        SELECT *
-                        FROM {table_ident}
-                        WHERE {where_sql}
-                    ),
-                    base AS (
-                        SELECT
-                            COUNT(*) AS file_count,
-                            MIN(start_time) AS min_start_time,
-                            MAX(start_time) AS max_start_time,
-                            COUNT(*) FILTER (
-                                WHERE jsonb_typeof(videometadata) = 'array'
-                                AND jsonb_array_length(videometadata) > 0
-                            ) AS files_with_videometadata
-                        FROM filtered
-                    ),
-                    samples AS (
-                        SELECT
-                            CASE
-                                WHEN COALESCE(
-                                    elem->>'accuracy',
-                                    elem->>'gpsAccuracy',
-                                    elem->>'gps_accuracy'
-                                ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                                    THEN COALESCE(
-                                        elem->>'accuracy',
-                                        elem->>'gpsAccuracy',
-                                        elem->>'gps_accuracy'
-                                    )::double precision
-                                ELSE NULL
-                            END AS acc
-                        FROM filtered f
-                        CROSS JOIN LATERAL jsonb_array_elements(
-                            CASE
-                                WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
-                                ELSE '[]'::jsonb
-                            END
-                        ) AS elem
-                    ),
-                    agg AS (
-                        SELECT
-                            COUNT(*) AS parsed_sample_rows,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
-                            COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
-                            AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
-                        FROM samples
-                    )
-                    SELECT
-                        b.file_count,
-                        b.files_with_videometadata,
-                        b.min_start_time,
-                        b.max_start_time,
-                        COALESCE(a.parsed_sample_rows, 0) AS parsed_sample_rows,
-                        COALESCE(a.valid_accuracy_count, 0) AS valid_accuracy_count,
-                        COALESCE(a.invalid_accuracy_in_samples, 0) AS invalid_accuracy_in_samples,
-                        COALESCE(a.le_2m, 0) AS le_2m,
-                        COALESCE(a.le_3_5m, 0) AS le_3_5m,
-                        COALESCE(a.le_6m, 0) AS le_6m,
-                        COALESCE(a.le_10m, 0) AS le_10m,
-                        COALESCE(a.gt_10m, 0) AS gt_10m,
-                        a.avg_accuracy_m,
-                        (b.file_count * %s)::bigint AS expected_accuracy_count,
-                        GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0)::bigint AS invalid_or_missing_accuracy_count,
-                        CASE
-                            WHEN (b.file_count * %s) > 0
-                            THEN (GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0) * 100.0) / (b.file_count * %s)
-                            ELSE NULL
-                        END AS gps_loss_percent
-                    FROM base b
-                    CROSS JOIN agg a
-                    """,
-                    [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
-                )
-                row = cur.fetchone()
-
-                payload["time_range"] = {
-                    "min": row[2].isoformat() if row[2] else None,
-                    "max": row[3].isoformat() if row[3] else None,
-                }
-                payload["file_count"] = row[0]
-                payload["files_with_videometadata"] = row[1]
-                payload["expected_accuracy_count"] = row[13]
-                payload["parsed_sample_rows"] = row[4]
-                payload["valid_accuracy_count"] = row[5]
-                payload["invalid_accuracy_in_samples"] = row[6]
-                payload["invalid_or_missing_accuracy_count"] = row[14]
-                payload["gps_loss_percent"] = float(row[15]) if row[15] is not None else None
-                payload["accuracy_buckets_cumulative"] = {
-                    "le_2m": row[7],
-                    "le_3_5m": row[8],
-                    "le_6m": row[9],
-                    "le_10m": row[10],
-                    "gt_10m": row[11],
-                }
-                payload["avg_accuracy_m"] = float(row[12]) if row[12] is not None else None
-
-                csv_cols = [
-                    "file_count",
-                    "files_with_videometadata",
-                    "expected_accuracy_count",
-                    "valid_accuracy_count",
-                    "invalid_or_missing_accuracy_count",
-                    "gps_loss_percent",
-                    "avg_accuracy_m",
-                    "le_2m",
-                    "le_3_5m",
-                    "le_6m",
-                    "le_10m",
-                    "gt_10m",
-                ]
-                csv_row = [
-                    payload["file_count"],
-                    payload["files_with_videometadata"],
-                    payload["expected_accuracy_count"],
-                    payload["valid_accuracy_count"],
-                    payload["invalid_or_missing_accuracy_count"],
-                    payload["gps_loss_percent"],
-                    payload["avg_accuracy_m"],
-                    payload["accuracy_buckets_cumulative"]["le_2m"],
-                    payload["accuracy_buckets_cumulative"]["le_3_5m"],
-                    payload["accuracy_buckets_cumulative"]["le_6m"],
-                    payload["accuracy_buckets_cumulative"]["le_10m"],
-                    payload["accuracy_buckets_cumulative"]["gt_10m"],
-                ]
-                csv_bytes = rows_to_csv_bytes(csv_cols, [csv_row])
+                row = client.query(_kpi_sql(None), parameters=params).result_rows[0]
+                record = _kpi_record(row, 0)
+                payload.update(record)
+                csv_bytes = rows_to_csv_bytes(base_csv_cols, [_csv_row(record, None)])
                 rid = result_store.put(csv_bytes, "gps_kpi_summary.csv")
                 _collect_download(rid, "gps_kpi_summary.csv")
                 payload["_download_id"] = rid
 
-            if device_level:
-                cur.execute(
-                    f"""
-                    WITH filtered AS (
-                        SELECT *
-                        FROM {table_ident}
-                        WHERE {where_sql}
-                    ),
-                    base AS (
-                        SELECT
-                            device_id,
-                            COUNT(*) AS file_count,
-                            MIN(start_time) AS min_start_time,
-                            MAX(start_time) AS max_start_time,
-                            COUNT(*) FILTER (
-                                WHERE jsonb_typeof(videometadata) = 'array'
-                                AND jsonb_array_length(videometadata) > 0
-                            ) AS files_with_videometadata
-                        FROM filtered
-                        WHERE device_id IS NOT NULL AND device_id <> ''
-                        GROUP BY device_id
-                    ),
-                    samples AS (
-                        SELECT
-                            f.device_id,
-                            CASE
-                                WHEN COALESCE(
-                                    elem->>'accuracy',
-                                    elem->>'gpsAccuracy',
-                                    elem->>'gps_accuracy'
-                                ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                                    THEN COALESCE(
-                                        elem->>'accuracy',
-                                        elem->>'gpsAccuracy',
-                                        elem->>'gps_accuracy'
-                                    )::double precision
-                                ELSE NULL
-                            END AS acc
-                        FROM filtered f
-                        CROSS JOIN LATERAL jsonb_array_elements(
-                            CASE
-                                WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
-                                ELSE '[]'::jsonb
-                            END
-                        ) AS elem
-                        WHERE f.device_id IS NOT NULL AND f.device_id <> ''
-                    ),
-                    agg AS (
-                        SELECT
-                            device_id,
-                            COUNT(*) AS parsed_sample_rows,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
-                            COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
-                            AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
-                        FROM samples
-                        GROUP BY device_id
-                    )
-                    SELECT
-                        b.device_id,
-                        b.file_count,
-                        b.files_with_videometadata,
-                        b.min_start_time,
-                        b.max_start_time,
-                        COALESCE(a.parsed_sample_rows, 0) AS parsed_sample_rows,
-                        COALESCE(a.valid_accuracy_count, 0) AS valid_accuracy_count,
-                        COALESCE(a.invalid_accuracy_in_samples, 0) AS invalid_accuracy_in_samples,
-                        COALESCE(a.le_2m, 0) AS le_2m,
-                        COALESCE(a.le_3_5m, 0) AS le_3_5m,
-                        COALESCE(a.le_6m, 0) AS le_6m,
-                        COALESCE(a.le_10m, 0) AS le_10m,
-                        COALESCE(a.gt_10m, 0) AS gt_10m,
-                        a.avg_accuracy_m,
-                        (b.file_count * %s)::bigint AS expected_accuracy_count,
-                        GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0)::bigint AS invalid_or_missing_accuracy_count,
-                        CASE
-                            WHEN (b.file_count * %s) > 0
-                            THEN (GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0) * 100.0) / (b.file_count * %s)
-                            ELSE NULL
-                        END AS gps_loss_percent
-                    FROM base b
-                    LEFT JOIN agg a ON a.device_id = b.device_id
-                    ORDER BY b.file_count DESC, b.device_id
-                    """,
-                    [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
-                )
-                device_rows = cur.fetchall()
-                llm_device_rows = device_rows[:safe_groups]
-
-                device_payload = []
-                for r in llm_device_rows:
-                    device_payload.append(
-                        {
-                            "device_id": r[0],
-                            "file_count": r[1],
-                            "files_with_videometadata": r[2],
-                            "time_range": {
-                                "min": r[3].isoformat() if r[3] else None,
-                                "max": r[4].isoformat() if r[4] else None,
-                            },
-                            "parsed_sample_rows": r[5],
-                            "valid_accuracy_count": r[6],
-                            "invalid_accuracy_in_samples": r[7],
-                            "expected_accuracy_count": r[14],
-                            "invalid_or_missing_accuracy_count": r[15],
-                            "gps_loss_percent": float(r[16]) if r[16] is not None else None,
-                            "accuracy_buckets_cumulative": {
-                                "le_2m": r[8],
-                                "le_3_5m": r[9],
-                                "le_6m": r[10],
-                                "le_10m": r[11],
-                                "gt_10m": r[12],
-                            },
-                            "avg_accuracy_m": float(r[13]) if r[13] is not None else None,
-                        }
-                    )
-
-                payload["device_level"] = {
-                    "total_groups": len(device_rows),
-                    "returned_groups": len(device_payload),
-                    "truncated_for_llm": len(device_rows) > len(device_payload),
-                    "rows": device_payload,
+            for enabled, group_col, key_name, level_name, filename in (
+                (device_level, "device_id", "device_id", "device_level", "gps_kpi_by_device.csv"),
+                (ota_level, "ota", "ota", "ota_level", "gps_kpi_by_ota.csv"),
+            ):
+                if not enabled:
+                    continue
+                rows = client.query(_kpi_sql(group_col), parameters=params).result_rows
+                records = [(r[0], _kpi_record(r, 1)) for r in rows]
+                payload[level_name] = {
+                    "total_groups": len(records),
+                    "returned_groups": min(len(records), safe_groups),
+                    "truncated_for_llm": len(records) > safe_groups,
+                    "rows": [{key_name: key, **rec} for key, rec in records[:safe_groups]],
                 }
-
-                device_cols = [
-                    "device_id",
-                    "file_count",
-                    "files_with_videometadata",
-                    "min_start_time",
-                    "max_start_time",
-                    "expected_accuracy_count",
-                    "valid_accuracy_count",
-                    "invalid_or_missing_accuracy_count",
-                    "gps_loss_percent",
-                    "avg_accuracy_m",
-                    "le_2m",
-                    "le_3_5m",
-                    "le_6m",
-                    "le_10m",
-                    "gt_10m",
-                ]
-                device_csv_rows = [
-                    (
-                        r[0],
-                        r[1],
-                        r[2],
-                        r[3],
-                        r[4],
-                        r[14],
-                        r[6],
-                        r[15],
-                        float(r[16]) if r[16] is not None else None,
-                        float(r[13]) if r[13] is not None else None,
-                        r[8],
-                        r[9],
-                        r[10],
-                        r[11],
-                        r[12],
-                    )
-                    for r in device_rows
-                ]
-                rid = result_store.put(rows_to_csv_bytes(device_cols, device_csv_rows), "gps_kpi_by_device.csv")
-                _collect_download(rid, "gps_kpi_by_device.csv")
-
-            if ota_level:
-                cur.execute(
-                    f"""
-                    WITH filtered AS (
-                        SELECT *
-                        FROM {table_ident}
-                        WHERE {where_sql}
-                    ),
-                    base AS (
-                        SELECT
-                            ota,
-                            COUNT(*) AS file_count,
-                            MIN(start_time) AS min_start_time,
-                            MAX(start_time) AS max_start_time,
-                            COUNT(*) FILTER (
-                                WHERE jsonb_typeof(videometadata) = 'array'
-                                AND jsonb_array_length(videometadata) > 0
-                            ) AS files_with_videometadata
-                        FROM filtered
-                        WHERE ota IS NOT NULL AND ota <> ''
-                        GROUP BY ota
-                    ),
-                    samples AS (
-                        SELECT
-                            f.ota,
-                            CASE
-                                WHEN COALESCE(
-                                    elem->>'accuracy',
-                                    elem->>'gpsAccuracy',
-                                    elem->>'gps_accuracy'
-                                ) ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                                    THEN COALESCE(
-                                        elem->>'accuracy',
-                                        elem->>'gpsAccuracy',
-                                        elem->>'gps_accuracy'
-                                    )::double precision
-                                ELSE NULL
-                            END AS acc
-                        FROM filtered f
-                        CROSS JOIN LATERAL jsonb_array_elements(
-                            CASE
-                                WHEN jsonb_typeof(f.videometadata) = 'array' THEN f.videometadata
-                                ELSE '[]'::jsonb
-                            END
-                        ) AS elem
-                        WHERE f.ota IS NOT NULL AND f.ota <> ''
-                    ),
-                    agg AS (
-                        SELECT
-                            ota,
-                            COUNT(*) AS parsed_sample_rows,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS valid_accuracy_count,
-                            COUNT(*) FILTER (WHERE acc IS NULL OR acc <= 0) AS invalid_accuracy_in_samples,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 2.0) AS le_2m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 3.5) AS le_3_5m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 6.0) AS le_6m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 0 AND acc <= 10.0) AS le_10m,
-                            COUNT(*) FILTER (WHERE acc IS NOT NULL AND acc > 10.0) AS gt_10m,
-                            AVG(acc) FILTER (WHERE acc IS NOT NULL AND acc > 0) AS avg_accuracy_m
-                        FROM samples
-                        GROUP BY ota
-                    )
-                    SELECT
-                        b.ota,
-                        b.file_count,
-                        b.files_with_videometadata,
-                        b.min_start_time,
-                        b.max_start_time,
-                        COALESCE(a.parsed_sample_rows, 0) AS parsed_sample_rows,
-                        COALESCE(a.valid_accuracy_count, 0) AS valid_accuracy_count,
-                        COALESCE(a.invalid_accuracy_in_samples, 0) AS invalid_accuracy_in_samples,
-                        COALESCE(a.le_2m, 0) AS le_2m,
-                        COALESCE(a.le_3_5m, 0) AS le_3_5m,
-                        COALESCE(a.le_6m, 0) AS le_6m,
-                        COALESCE(a.le_10m, 0) AS le_10m,
-                        COALESCE(a.gt_10m, 0) AS gt_10m,
-                        a.avg_accuracy_m,
-                        (b.file_count * %s)::bigint AS expected_accuracy_count,
-                        GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0)::bigint AS invalid_or_missing_accuracy_count,
-                        CASE
-                            WHEN (b.file_count * %s) > 0
-                            THEN (GREATEST((b.file_count * %s)::bigint - COALESCE(a.valid_accuracy_count, 0), 0) * 100.0) / (b.file_count * %s)
-                            ELSE NULL
-                        END AS gps_loss_percent
-                    FROM base b
-                    LEFT JOIN agg a ON a.ota = b.ota
-                    ORDER BY b.file_count DESC, b.ota
-                    """,
-                    [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
+                csv_rows = [_csv_row(rec, key) for key, rec in records]
+                rid = result_store.put(
+                    rows_to_csv_bytes([key_name, *base_csv_cols], csv_rows), filename
                 )
-                ota_rows = cur.fetchall()
-                llm_ota_rows = ota_rows[:safe_groups]
+                _collect_download(rid, filename)
 
-                ota_payload = []
-                for r in llm_ota_rows:
-                    ota_payload.append(
-                        {
-                            "ota": r[0],
-                            "file_count": r[1],
-                            "files_with_videometadata": r[2],
-                            "time_range": {
-                                "min": r[3].isoformat() if r[3] else None,
-                                "max": r[4].isoformat() if r[4] else None,
-                            },
-                            "parsed_sample_rows": r[5],
-                            "valid_accuracy_count": r[6],
-                            "invalid_accuracy_in_samples": r[7],
-                            "expected_accuracy_count": r[14],
-                            "invalid_or_missing_accuracy_count": r[15],
-                            "gps_loss_percent": float(r[16]) if r[16] is not None else None,
-                            "accuracy_buckets_cumulative": {
-                                "le_2m": r[8],
-                                "le_3_5m": r[9],
-                                "le_6m": r[10],
-                                "le_10m": r[11],
-                                "gt_10m": r[12],
-                            },
-                            "avg_accuracy_m": float(r[13]) if r[13] is not None else None,
-                        }
-                    )
-
-                payload["ota_level"] = {
-                    "total_groups": len(ota_rows),
-                    "returned_groups": len(ota_payload),
-                    "truncated_for_llm": len(ota_rows) > len(ota_payload),
-                    "rows": ota_payload,
-                }
-
-                ota_cols = [
-                    "ota",
-                    "file_count",
-                    "files_with_videometadata",
-                    "min_start_time",
-                    "max_start_time",
-                    "expected_accuracy_count",
-                    "valid_accuracy_count",
-                    "invalid_or_missing_accuracy_count",
-                    "gps_loss_percent",
-                    "avg_accuracy_m",
-                    "le_2m",
-                    "le_3_5m",
-                    "le_6m",
-                    "le_10m",
-                    "gt_10m",
-                ]
-                ota_csv_rows = [
-                    (
-                        r[0],
-                        r[1],
-                        r[2],
-                        r[3],
-                        r[4],
-                        r[14],
-                        r[6],
-                        r[15],
-                        float(r[16]) if r[16] is not None else None,
-                        float(r[13]) if r[13] is not None else None,
-                        r[8],
-                        r[9],
-                        r[10],
-                        r[11],
-                        r[12],
-                    )
-                    for r in ota_rows
-                ]
-                rid = result_store.put(rows_to_csv_bytes(ota_cols, ota_csv_rows), "gps_kpi_by_ota.csv")
-                _collect_download(rid, "gps_kpi_by_ota.csv")
-
-            conn.close()
-            return json.dumps(payload, indent=2)
+            return json.dumps(payload, indent=2, default=str)
         except Exception as exc:
             logger.error("[tool:gps_kpi_summary] failed: %s", exc)
             return f"gps_kpi_summary failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
     def video_loss_summary(
@@ -1358,126 +779,107 @@ def _make_tools(
     ) -> str:
         """Return video-loss KPIs (loss %, missing frames, per-session hotspots).
 
+        Observed frame counts come from `num_frames_out` where it is numeric, and
+        otherwise fall back to the number of `video_metadata` samples for the file.
+
         Time window: provide start_dt/end_dt (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS) for an
         explicit range, or hours (default 24) for a rolling window from now.
         Filter by device_id or ota to narrow results.
         """
         logger.info("[tool:video_loss_summary] called — hours=%d start_dt=%r end_dt=%r", hours, start_dt, end_dt)
+        client = None
         try:
             safe_expected = max(1, min(expected_frames_per_file, 600))
             where_sql, params = _build_filter_clause(
                 hours=hours, device_id=device_id, ota=ota, start_dt=start_dt, end_dt=end_dt
             )
+            params = {**params, "expected": safe_expected}
 
-            conn = _connect_ro()
-            cur = conn.cursor()
-
-            cur.execute(
-                f"""
-                WITH filtered AS (
-                    SELECT *
-                    FROM {table_ident}
+            # Duplicate observation rows are collapsed so frame totals are per file.
+            # CTE aggregates use an f_ prefix so they never shadow the source columns
+            # that the filter clause references.
+            per_file_cte = f"""
+                WITH files AS (
+                    SELECT
+                        device_id,
+                        file_name,
+                        any(s3_path) AS f_s3_path,
+                        min(start_time) AS f_start_time,
+                        any(num_frames_out) AS f_num_frames_out
+                    FROM {table_ident} AS o
                     WHERE {where_sql}
+                    GROUP BY device_id, file_name
+                ),
+                vagg AS (
+                    SELECT device_id, file_name, count() AS pts
+                    FROM {video_ident}
+                    GROUP BY device_id, file_name
                 ),
                 per_file AS (
                     SELECT
-                        device_id,
-                        s3_path,
-                        start_time,
-                        COALESCE(
-                            CASE
-                                WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint
-                                ELSE NULL
-                            END,
-                            CASE
-                                WHEN jsonb_typeof(videometadata) = 'array' THEN jsonb_array_length(videometadata)
-                                ELSE NULL
-                            END,
-                            0
-                        )::bigint AS observed_frames,
-                        CASE
-                               WHEN (num_frames_out IS NULL OR num_frames_out !~ '^\\d+$')
-                                 AND (jsonb_typeof(videometadata) <> 'array' OR jsonb_array_length(videometadata) = 0)
-                            THEN 1 ELSE 0
-                        END AS missing_frame_signal
-                    FROM filtered
-                ),
-                summary AS (
-                    SELECT
-                        COUNT(*) AS file_count,
-                        MIN(start_time) AS min_start_time,
-                        MAX(start_time) AS max_start_time,
-                        SUM(observed_frames) AS observed_frames_total,
-                        SUM(missing_frame_signal) AS rows_missing_frame_signal
-                    FROM per_file
+                        f.device_id AS device_id,
+                        f.f_s3_path AS s3_path,
+                        f.f_start_time AS start_time,
+                        coalesce(
+                            if(match(f.f_num_frames_out, '^[0-9]+$'), toInt64OrNull(f.f_num_frames_out), NULL),
+                            CAST(nullIf(v.pts, 0) AS Nullable(Int64)),
+                            toInt64(0)
+                        ) AS observed_frames,
+                        if(
+                            (f.f_num_frames_out IS NULL OR NOT match(f.f_num_frames_out, '^[0-9]+$'))
+                            AND coalesce(v.pts, 0) = 0,
+                            1, 0
+                        ) AS missing_frame_signal
+                    FROM files AS f
+                    LEFT JOIN vagg AS v USING (device_id, file_name)
                 )
+            """
+
+            client = _connect_ro()
+            summary_row = client.query(
+                f"""
+                {per_file_cte}
                 SELECT
-                    s.file_count,
-                    s.min_start_time,
-                    s.max_start_time,
-                    s.observed_frames_total,
-                    (s.file_count * %s)::bigint AS expected_frames_total,
-                    GREATEST((s.file_count * %s)::bigint - s.observed_frames_total, 0)::bigint AS missing_frames_total,
-                    s.rows_missing_frame_signal,
-                    CASE
-                        WHEN (s.file_count * %s) > 0
-                        THEN (GREATEST((s.file_count * %s)::bigint - s.observed_frames_total, 0) * 100.0) / (s.file_count * %s)
-                        ELSE NULL
-                    END AS video_loss_percent
-                FROM summary s
+                    count() AS file_count,
+                    min(start_time) AS min_start_time,
+                    max(start_time) AS max_start_time,
+                    sum(observed_frames) AS observed_frames_total,
+                    toInt64(count() * {{expected:UInt32}}) AS expected_frames_total,
+                    greatest(toInt64(count() * {{expected:UInt32}}) - toInt64(sum(observed_frames)), 0) AS missing_frames_total,
+                    sum(missing_frame_signal) AS rows_missing_frame_signal,
+                    (greatest(toInt64(count() * {{expected:UInt32}}) - toInt64(sum(observed_frames)), 0) * 100.0)
+                        / nullIf(toInt64(count() * {{expected:UInt32}}), 0) AS video_loss_percent
+                FROM per_file
                 """,
-                [*params, safe_expected, safe_expected, safe_expected, safe_expected, safe_expected],
-            )
-            summary_row = cur.fetchone()
+                parameters=params,
+            ).result_rows[0]
 
-            cur.execute(
+            top_hotspots = client.query(
                 f"""
-                WITH filtered AS (
-                    SELECT *
-                    FROM {table_ident}
-                    WHERE {where_sql}
-                ),
-                per_file AS (
-                    SELECT
-                        device_id,
-                        s3_path,
-                        start_time,
-                        COALESCE(
-                            CASE
-                                WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint
-                                ELSE NULL
-                            END,
-                            CASE
-                                WHEN jsonb_typeof(videometadata) = 'array' THEN jsonb_array_length(videometadata)
-                                ELSE NULL
-                            END,
-                            0
-                        )::bigint AS observed_frames
-                    FROM filtered
-                )
+                {per_file_cte}
                 SELECT
                     device_id,
                     s3_path,
                     start_time,
                     observed_frames,
-                    GREATEST(%s - observed_frames, 0)::bigint AS missing_frames,
-                    CASE
-                        WHEN %s > 0 THEN (GREATEST(%s - observed_frames, 0) * 100.0) / %s
-                        ELSE NULL
-                    END AS missing_percent
+                    greatest(toInt64({{expected:UInt32}}) - observed_frames, 0) AS missing_frames,
+                    (greatest(toInt64({{expected:UInt32}}) - observed_frames, 0) * 100.0) / {{expected:UInt32}} AS missing_percent
                 FROM per_file
                 ORDER BY missing_frames DESC, start_time DESC
                 LIMIT 10
                 """,
-                [*params, safe_expected, safe_expected, safe_expected, safe_expected],
-            )
-            top_hotspots = cur.fetchall()
-            conn.close()
+                parameters=params,
+            ).result_rows
 
             payload = {
-                "table_name": table_name,
-                "postgres_section": postgres_section,
-                "window": {"start_dt": start_dt.strip() or None, "end_dt": end_dt.strip() or None, "hours": hours if not (start_dt.strip() or end_dt.strip()) else None},
+                "backend": "clickhouse",
+                "tables": [table_name, VIDEO_METADATA_TABLE],
+                "clickhouse_section": clickhouse_section,
+                "window": {
+                    "start_dt": start_dt.strip() or None,
+                    "end_dt": end_dt.strip() or None,
+                    "hours": hours if not (start_dt.strip() or end_dt.strip()) else None,
+                },
                 "filters": {
                     "device_id": device_id.strip() or None,
                     "ota": ota.strip() or None,
@@ -1495,11 +897,11 @@ def _make_tools(
                 "video_loss_percent": float(summary_row[7]) if summary_row[7] is not None else None,
                 "top_loss_hotspots": top_hotspots,
                 "coverage_notes": [
-                    "observed_frames uses num_frames_out first, then falls back to videometadata length",
+                    "observed_frames uses num_frames_out first, then falls back to the video_metadata sample count",
                     "video_loss_percent uses (missing_frames_total * 100) / expected_frames_total",
+                    "duplicate observation rows are collapsed to one row per (device_id, file_name)",
                 ],
             }
-            # Store hotspot rows as downloadable CSV
             hotspot_cols = ["device_id", "s3_path", "start_time",
                             "observed_frames", "missing_frames", "missing_percent"]
             csv_bytes = rows_to_csv_bytes(hotspot_cols, top_hotspots)
@@ -1510,6 +912,9 @@ def _make_tools(
         except Exception as exc:
             logger.error("[tool:video_loss_summary] failed: %s", exc)
             return f"video_loss_summary failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     @tool
     def session_health_summary(
@@ -1530,73 +935,98 @@ def _make_tools(
         Filter by device_id or ota to narrow results.
         """
         logger.info("[tool:session_health_summary] called — hours=%d start_dt=%r end_dt=%r", hours, start_dt, end_dt)
+        client = None
         try:
             safe_n = max(1, min(top_n_devices, 100))
             where_sql, params = _build_filter_clause(
                 hours=hours, device_id=device_id, ota=ota, start_dt=start_dt, end_dt=end_dt
             )
+            params = {**params, "limit": safe_n}
 
-            conn = _connect_ro()
-            cur = conn.cursor()
+            # Duplicate observation rows are collapsed so counts are per file.
+            # CTE aggregates use an f_ prefix so they never shadow the source columns
+            # that the filter clause references.
+            files_cte = f"""
+                WITH files AS (
+                    SELECT
+                        device_id,
+                        file_name,
+                        any(ota) AS f_ota,
+                        min(start_time) AS f_start_time,
+                        any(ignition_status) AS f_ignition_status,
+                        any(num_frames_out) AS f_num_frames_out,
+                        any(metadatastatus) AS f_metadatastatus
+                    FROM {table_ident} AS o
+                    WHERE {where_sql}
+                    GROUP BY device_id, file_name
+                ),
+                vagg AS (
+                    SELECT device_id, file_name, count() AS pts
+                    FROM {video_ident}
+                    GROUP BY device_id, file_name
+                ),
+                joined AS (
+                    SELECT f.*, coalesce(v.pts, 0) AS pts
+                    FROM files AS f
+                    LEFT JOIN vagg AS v USING (device_id, file_name)
+                )
+            """
+            frames_expr = "if(match(f_num_frames_out, '^[0-9]+$'), toInt64OrNull(f_num_frames_out), NULL)"
 
-            # Fleet-level summary
-            cur.execute(
+            client = _connect_ro()
+            fleet = client.query(
                 f"""
+                {files_cte}
                 SELECT
-                    COUNT(*)                                                    AS total_files,
-                    COUNT(DISTINCT device_id)                                   AS distinct_devices,
-                    COUNT(DISTINCT ota)                                         AS distinct_ota_versions,
-                    MIN(start_time)                                             AS earliest_start,
-                    MAX(start_time)                                             AS latest_start,
-                    COUNT(*) FILTER (WHERE ignition_status = 1)                 AS ignition_on_files,
-                    COUNT(*) FILTER (WHERE ignition_status IS NULL)             AS null_ignition_files,
-                    COUNT(*) FILTER (
-                        WHERE jsonb_typeof(videometadata) = 'array'
-                        AND jsonb_array_length(videometadata) > 0
-                    )                                                           AS files_with_videometadata,
-                    COUNT(*) FILTER (WHERE num_frames_out ~ '^\\d+$')         AS files_with_frame_count,
-                    ROUND(AVG(COALESCE(CASE WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint END, 0))::numeric, 1) AS avg_frames_per_file,
-                    COUNT(*) FILTER (WHERE metadatastatus = 'full')             AS full_metadata_files,
-                    COUNT(*) FILTER (WHERE metadatastatus IS NULL)              AS null_metadatastatus_files
-                FROM {table_ident}
-                WHERE {where_sql}
+                    count() AS total_files,
+                    uniqExact(device_id) AS distinct_devices,
+                    uniqExact(f_ota) AS distinct_ota_versions,
+                    min(f_start_time) AS earliest_start,
+                    max(f_start_time) AS latest_start,
+                    countIf(f_ignition_status = 1) AS ignition_on_files,
+                    countIf(f_ignition_status IS NULL) AS null_ignition_files,
+                    countIf(pts > 0) AS files_with_video_metadata,
+                    countIf(match(f_num_frames_out, '^[0-9]+$')) AS files_with_frame_count,
+                    round(avg(coalesce({frames_expr}, 0)), 1) AS avg_frames_per_file,
+                    countIf(f_metadatastatus = 'full') AS full_metadata_files,
+                    countIf(f_metadatastatus = '') AS null_metadatastatus_files
+                FROM joined
                 """,
-                params,
-            )
-            fleet = cur.fetchone()
+                parameters=params,
+            ).result_rows[0]
 
-            # Per-device breakdown (top N by file count)
-            cur.execute(
+            per_device = client.query(
                 f"""
+                {files_cte}
                 SELECT
                     device_id,
-                    ota,
-                    COUNT(*)                                                        AS file_count,
-                    MIN(start_time)                                                 AS first_session,
-                    MAX(start_time)                                                 AS last_session,
-                    COUNT(*) FILTER (WHERE ignition_status = 1)                     AS ignition_on,
-                    COUNT(*) FILTER (
-                        WHERE jsonb_typeof(videometadata) = 'array'
-                        AND jsonb_array_length(videometadata) > 0
-                    )                                                               AS has_videometadata,
-                    COUNT(*) FILTER (WHERE num_frames_out ~ '^\\d+$')             AS has_frame_count,
-                    ROUND(AVG(COALESCE(CASE WHEN num_frames_out ~ '^\\d+$' THEN num_frames_out::bigint END, 0))::numeric, 1) AS avg_frames,
-                    COUNT(*) FILTER (WHERE metadatastatus = 'full')                 AS full_metadata
-                FROM {table_ident}
-                WHERE {where_sql}
-                  AND device_id IS NOT NULL AND device_id <> ''
-                GROUP BY device_id, ota
+                    f_ota AS ota,
+                    count() AS file_count,
+                    min(f_start_time) AS first_session,
+                    max(f_start_time) AS last_session,
+                    countIf(f_ignition_status = 1) AS ignition_on,
+                    countIf(pts > 0) AS has_video_metadata,
+                    countIf(match(f_num_frames_out, '^[0-9]+$')) AS has_frame_count,
+                    round(avg(coalesce({frames_expr}, 0)), 1) AS avg_frames,
+                    countIf(f_metadatastatus = 'full') AS full_metadata
+                FROM joined
+                WHERE device_id <> ''
+                GROUP BY device_id, f_ota
                 ORDER BY file_count DESC
-                LIMIT %s
+                LIMIT {{limit:UInt32}}
                 """,
-                [*params, safe_n],
-            )
-            per_device = cur.fetchall()
-            conn.close()
+                parameters=params,
+            ).result_rows
 
             payload = {
+                "backend": "clickhouse",
+                "tables": [table_name, VIDEO_METADATA_TABLE],
                 "table_name": table_name,
-                "window": {"start_dt": start_dt.strip() or None, "end_dt": end_dt.strip() or None, "hours": hours if not (start_dt.strip() or end_dt.strip()) else None},
+                "window": {
+                    "start_dt": start_dt.strip() or None,
+                    "end_dt": end_dt.strip() or None,
+                    "hours": hours if not (start_dt.strip() or end_dt.strip()) else None,
+                },
                 "filters": {
                     "device_id": device_id.strip() or None,
                     "ota": ota.strip() or None,
@@ -1611,7 +1041,7 @@ def _make_tools(
                     },
                     "ignition_on_files": fleet[5],
                     "null_ignition_files": fleet[6],
-                    "files_with_videometadata": fleet[7],
+                    "files_with_video_metadata": fleet[7],
                     "files_with_frame_count": fleet[8],
                     "avg_frames_per_file": float(fleet[9]) if fleet[9] is not None else None,
                     "full_metadata_files": fleet[10],
@@ -1625,7 +1055,7 @@ def _make_tools(
                         "first_session": r[3].isoformat() if r[3] else None,
                         "last_session": r[4].isoformat() if r[4] else None,
                         "ignition_on": r[5],
-                        "has_videometadata": r[6],
+                        "has_video_metadata": r[6],
                         "has_frame_count": r[7],
                         "avg_frames": float(r[8]) if r[8] is not None else None,
                         "full_metadata": r[9],
@@ -1634,12 +1064,11 @@ def _make_tools(
                 ],
                 "note": "All aggregation done in SQL. No raw rows returned regardless of table size.",
             }
-            # Store per-device breakdown as downloadable CSV
             device_cols = ["device_id", "ota", "file_count", "first_session", "last_session",
-                           "ignition_on", "has_videometadata", "has_frame_count", "avg_frames", "full_metadata"]
+                           "ignition_on", "has_video_metadata", "has_frame_count", "avg_frames", "full_metadata"]
             device_rows = [
                 (r["device_id"], r["ota"], r["file_count"], r["first_session"], r["last_session"],
-                 r["ignition_on"], r["has_videometadata"], r["has_frame_count"],
+                 r["ignition_on"], r["has_video_metadata"], r["has_frame_count"],
                  r["avg_frames"], r["full_metadata"])
                 for r in payload["top_devices"]
             ]
@@ -1651,14 +1080,16 @@ def _make_tools(
         except Exception as exc:
             logger.error("[tool:session_health_summary] failed: %s", exc)
             return f"session_health_summary failed: {exc}"
+        finally:
+            if client is not None:
+                client.close()
 
     tools = [
         current_date_time,
         query_observations,
-        list_cached_weekly_summaries,
-        get_or_create_weekly_summary,
-        inspect_cached_summary_schema,
-        extract_cached_summary_subset,
+        query_video_metadata,
+        query_observations_with_video,
+        video_metadata_overview,
         gps_kpi_summary,
         video_loss_summary,
         table_stats,
@@ -1695,11 +1126,11 @@ def _message_text(message: BaseMessage) -> str:
 
 def build_observations_graph(
     repo_root: Path,
-    table_name: str = "public.extracteddata",
-    postgres_section: str = "IRAVATH_DB",
+    table_name: str = "observation_data",
+    clickhouse_section: str = "CLICKHOUSE_DB",
     include_db_overview: bool = True,
 ):
-    tools = _make_tools(repo_root, table_name, postgres_section, include_db_overview=include_db_overview)
+    tools = _make_tools(repo_root, table_name, clickhouse_section, include_db_overview=include_db_overview)
     llm = _get_llm().bind_tools(tools)
     tool_node = ToolNode(tools)
 
@@ -1728,8 +1159,8 @@ def run_observations_agent(
     query: str,
     system_prompt: str,
     repo_root: Path,
-    table_name: str = "public.extracteddata",
-    postgres_section: str = "IRAVATH_DB",
+    table_name: str = "observation_data",
+    clickhouse_section: str = "CLICKHOUSE_DB",
     include_db_overview: bool = True,
     history: list[BaseMessage] | None = None,
 ) -> tuple[str, list[dict]]:
@@ -1738,14 +1169,14 @@ def run_observations_agent(
     logger.info(
         "[run] observations agent start — table=%s section=%s query_preview=%r",
         table_name,
-        postgres_section,
+        clickhouse_section,
         query[:200],
     )
     _run_ctx.downloads = []  # reset per-run download accumulator
     graph = build_observations_graph(
         repo_root,
         table_name,
-        postgres_section,
+        clickhouse_section,
         include_db_overview=include_db_overview,
     )
     initial_state: ObservationsAgentState = {

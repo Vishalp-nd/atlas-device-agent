@@ -80,7 +80,7 @@ DEFAULT_MAX_BUFFER_ROWS = 250_000
 STREAM_BLOCK_SIZE = 65_536
 
 # A device that never acquired a fix writes impossible lat/long (91 / 181) into
-# its filename. Established marker; see atlas/gps_oh_summary_generator.py:469.
+# its filename. Established marker carried over from the retired OH/GPS summary generator.
 NO_GPS_SENTINEL = "_91.0000_181.0000_"
 
 NO_GPS_LABEL = "No GPS"
@@ -146,10 +146,9 @@ SUMMARY_COLUMNS = [
 # ---------------------------------------------------------------------------
 # Small local helpers
 #
-# Deliberately re-implemented rather than imported from
-# atlas/gps_oh_summary_generator.py: that module pulls sqlalchemy, python-dotenv
-# and the Postgres device-config code at import time, none of which this
-# ClickHouse-only script needs.
+# Re-implemented locally rather than shared with the retired OH/GPS summary
+# generator, which pulled sqlalchemy and the Postgres device-config code at
+# import time — none of which this ClickHouse-only script needs.
 # ---------------------------------------------------------------------------
 
 def _num(series: pd.Series) -> pd.Series:

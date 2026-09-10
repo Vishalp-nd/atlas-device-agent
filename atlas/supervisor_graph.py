@@ -69,8 +69,8 @@ LATEST message into exactly one of these intents:
 - "coverage": asking which testcases, skills, or flows cover a feature or service
 - "critical_events": usually called cinfo, crit info etc. Asking about critical events data, code trends, error/info split,
   top processes, or analytics from local critical-events database
-- "observations": asking about observations analytics from extracteddata, including GPS quality,
-  video-loss, metadata coverage, frame-loss, and observation health KPIs
+- "observations": asking about observations analytics from observation_data/video_metadata,
+  including GPS quality, video-loss, metadata coverage, frame-loss, and observation health KPIs
 - "unknown": neither of the above
 
 If the history shows an ongoing coverage interaction and the latest message

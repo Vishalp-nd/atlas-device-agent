@@ -125,8 +125,8 @@ class GpsReportStatusResponse(BaseModel):
 class ObservationsQueryRequest(BaseModel):
     query: str
     session_id: str | None = None
-    table_name: str = "public.extracteddata"
-    postgres_section: str = "IRAVATH_DB"
+    table_name: str = "observation_data"
+    clickhouse_section: str = "CLICKHOUSE_DB"
 
 
 class DownloadRef(BaseModel):

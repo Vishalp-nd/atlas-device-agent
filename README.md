@@ -101,17 +101,17 @@ testcase-count stat in the UI header.
   sub-agent's own ReAct loop uses Claude Sonnet (`CLAUDE_MODEL` in `.env`) for the actual
   reasoning and tool use.
 - **Critical-events data can come from production or staging** — `critical_events_agent_graph.py`
-  runs read-only queries against the local PostgreSQL production table
+  runs read-only queries against the local ClickHouse production table
   `criticalinfo_snowflakes_data`, and can also query Snowflake staging table
   `STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT` for staging or compare asks.
   The local production table is kept fresh by `pipeline/nightly_critical_events_poll.sh`,
   a cron job that runs daily at 01:00 IST, pulls the last rolling 24h window from
   Snowflake (`critical_events_pipeline.py`), classifies each row (INFO/ERROR via SVM),
-  and upserts it into Postgres. This pipeline is fully decoupled from the chat
+  and upserts it into ClickHouse. This pipeline is fully decoupled from the chat
   request/response cycle above it.
-- **Observations analytics is Postgres-backed** — `observations_agent_graph.py` reads from
-  `public.extracteddata` (default DB section `IRAVATH_DB`) with read-only SQL guardrails,
-  and exposes focused tools for GPS KPIs and video-loss KPIs.
+- **Observations analytics is ClickHouse-backed** — `observations_agent_graph.py` reads from
+  `observation_data` and `video_metadata` (default DB section `CLICKHOUSE_DB`) with read-only
+  SQL guardrails, and exposes focused tools for GPS KPIs and video-loss KPIs.
 
 ## Setup
 
@@ -124,11 +124,13 @@ cp .env.example .env                                  # fill in keys
 cp db_credentials.ini.example db_credentials.ini      # fill in DB creds
 ```
 
-If you run Atlas in Docker and PostgreSQL on the host machine, set
-`host=host.docker.internal` for `IRAVATH_DB` and `POLL_USER_DB` in
+If you run Atlas in Docker and the databases on the host machine, set
+`host=host.docker.internal` for `CLICKHOUSE_DB`, `IRAVATH_DB` and `POLL_USER_DB` in
 `db_credentials.ini`. The provided `make docker-run*` targets already add the
-required host-gateway mapping.
+required host-gateway mapping. Note that `db_credentials.ini` lists ClickHouse's
+native port (9000); the agents connect over HTTP and map that to 8123.
 
+The remaining PostgreSQL sections back the data pipelines, not the agents.
 For this machine, PostgreSQL is using:
 - `/etc/postgresql/12/main/postgresql.conf`
 - `/etc/postgresql/12/main/pg_hba.conf`
@@ -144,7 +146,7 @@ sudo systemctl restart postgresql
 `ANTHROPIC_API_KEY` is required for all agents. Jenkins questions additionally need
 `JENKINS_URL`, `JENKINS_USER`, `JENKINS_API_TOKEN`; critical-events questions need
 `db_credentials.ini` at the repo root. Observations questions also use
-`db_credentials.ini` and default to `public.extracteddata`.
+`db_credentials.ini` and default to `observation_data`.
 
 ### Run the API
 
@@ -206,7 +208,7 @@ written under `OUTPUT/staging_critical_info_reports/`.
 - "What is GPS loss percentage in the last 24 hours?"
 - "Show cumulative GPS accuracy buckets for OTA 7.6.11.rc.8"
 - "Which devices have highest video loss in last day?"
-- "How many rows are missing videometadata in extracteddata?"
+- "How many observation files have no GPS samples in video_metadata?"
 
 **Knowledge graph** (`POST /cypher/query`, not routed by the supervisor)
 - "How do I validate that haptic recovers from a SIGABRT crash?"
