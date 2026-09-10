@@ -9,18 +9,20 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VENV_DIR="${REPO_ROOT}/.venv"
 VENV_ACTIVATE="${VENV_DIR}/bin/activate"
 LOG_DIR="${SCRIPT_DIR}/logs"
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+POLL_TZ="Asia/Kolkata"
+TIMESTAMP=$(TZ="${POLL_TZ}" date +"%Y%m%d_%H%M%S")
 LOG_FILE="${LOG_DIR}/nightly_obs_poll_${TIMESTAMP}.log"
 
 mkdir -p "${LOG_DIR}"
 
-START_DATE=$(date -d "yesterday" +"%Y-%m-%d")
-END_DATE=$(date +"%Y-%m-%d")
+START_DATE=$(TZ="${POLL_TZ}" date -d "yesterday" +"%Y-%m-%d")
+END_DATE=$(TZ="${POLL_TZ}" date +"%Y-%m-%d")
 START_DT="${START_DATE} 00:00:00"
 END_DT="${END_DATE} 00:00:00"
 
 echo "=== Nightly Observation + Critical Events Poll ===" | tee -a "${LOG_FILE}"
-echo "Timestamp: $(date)" | tee -a "${LOG_FILE}"
+echo "Run timestamp: ${TIMESTAMP}" | tee -a "${LOG_FILE}"
+echo "Timestamp (${POLL_TZ}): $(TZ="${POLL_TZ}" date)" | tee -a "${LOG_FILE}"
 echo "Polling date range: ${START_DT} to ${END_DT}" | tee -a "${LOG_FILE}"
 echo "Log file: ${LOG_FILE}" | tee -a "${LOG_FILE}"
 echo "" | tee -a "${LOG_FILE}"

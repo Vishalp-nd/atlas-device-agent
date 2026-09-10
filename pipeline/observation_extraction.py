@@ -9,6 +9,7 @@ import queue
 import tempfile
 import configparser
 import socket
+import math
 from datetime import datetime
 import re
 import traceback
@@ -64,38 +65,38 @@ CLICKHOUSE_OBSERVATION_DATA_DDL = """
     (
         ota Nullable(String), product_line Nullable(String), udid Nullable(String), file_name String,
         file_timestamp Nullable(Float64), start_time Nullable(DateTime64(3)),
-        end_time Nullable(DateTime64(3)), ignition_status Nullable(Int32),
-        uptime Nullable(Int64), service_uptime Nullable(Int64), privacymode Nullable(Int32),
-        dismode Nullable(String), voltage Nullable(Float64), processing_mode Nullable(Int32),
+        end_time Nullable(DateTime64(3)), ignition_status Nullable(Int64),
+        uptime Nullable(Int64), service_uptime Nullable(Int64), privacymode Nullable(Int64),
+        dismode Nullable(String), voltage Nullable(Float64), processing_mode Nullable(Int64),
         inertial_processed Nullable(UInt8), vision_processed Nullable(UInt8),
-        nrt_status Nullable(String), tripno Nullable(String), videometadatastatus Nullable(UInt32),
-        min_speed Nullable(Float32), max_speed Nullable(Float32), sensormetadata_count Nullable(UInt32),
+        nrt_status Nullable(String), tripno Nullable(String), videometadatastatus Nullable(UInt64),
+        min_speed Nullable(Float64), max_speed Nullable(Float64), sensormetadata_count Nullable(UInt64),
         driverinvariantsession Nullable(String), driverid Nullable(String), vehclass Nullable(String),
-        vehicleid Nullable(String), cameras Nullable(Int32), prevvideoname Nullable(String),
+        vehicleid Nullable(String), cameras Nullable(Int64), prevvideoname Nullable(String),
         current_videoname Nullable(String), nextvideoname Nullable(String),
-        devicemodes_itemscount Nullable(UInt32), inference_data_itemscount Nullable(UInt32),
-        canmetadata Nullable(String), alerts_data_num_alerts Nullable(UInt32), alerts_data Nullable(String),
-        audio_events_num_alerts Nullable(UInt32), audio_events_data Nullable(String),
-        events_data_num_alerts Nullable(UInt32), events_data Nullable(String),
+        devicemodes_itemscount Nullable(UInt64), inference_data_itemscount Nullable(UInt64),
+        canmetadata Nullable(String), alerts_data_num_alerts Nullable(UInt64), alerts_data Nullable(String),
+        audio_events_num_alerts Nullable(UInt64), audio_events_data Nullable(String),
+        events_data_num_alerts Nullable(UInt64), events_data Nullable(String),
         metadatastatus String DEFAULT 'full', device_id String, s3_path Nullable(String),
         speed_data Nullable(String), starttime Nullable(String), starttimeld Nullable(String),
-        inwardstarttime Nullable(String), inwardstarttimeld Nullable(String), rssi Nullable(Int32),
+        inwardstarttime Nullable(String), inwardstarttimeld Nullable(String), rssi Nullable(Int64),
         vin Nullable(String), can_firmware_ver Nullable(String), offset Nullable(Int64),
         session_embedding Nullable(String), burst_mode Nullable(String), fuel_report Nullable(String),
         can_src Nullable(String), can_sn Nullable(String), engine_status Nullable(String),
         protocol_info Nullable(String), idling_report Nullable(String), tc_recommendation Nullable(String),
-        num_frames_out Nullable(String), num_frames_in Nullable(UInt32), num_frames_dms Nullable(UInt32),
-        num_alerts Nullable(UInt32), inward_models_processed Array(String),
+        num_frames_out Nullable(String), num_frames_in Nullable(UInt64), num_frames_dms Nullable(UInt64),
+        num_alerts Nullable(UInt64), inward_models_processed Array(String),
         outward_models_processed Array(String), dms_models_processed Array(String),
         is_inward_processed Nullable(UInt8), is_dms_processed Nullable(UInt8),
-        irled_status Nullable(Int32), irled_states_timestamp Nullable(String),
+        irled_status Nullable(Int64), irled_states_timestamp Nullable(String),
         irled_states_status Nullable(String), faceImageCaptured Nullable(UInt8),
-        obs_filetype Nullable(String), audioEnable Nullable(Int32),
+        obs_filetype Nullable(String), audioEnable Nullable(Int64),
         user_generated_alert Nullable(String), rtc_valid Nullable(String),
         rtc_jump_from Nullable(Int64), rtc_jump_to Nullable(Int64), session_count Nullable(String),
-        valid_gps_entries Nullable(UInt32), gps_start_time Nullable(Int64), gps_end_time Nullable(Int64),
+        valid_gps_entries Nullable(UInt64), gps_start_time Nullable(Int64), gps_end_time Nullable(Int64),
         nw_source Nullable(String), sinr Nullable(Float64), nw_recorded_time Nullable(Int64),
-        idle Nullable(Int32), obdformat Nullable(String), is_inward_cam_obstructed Nullable(UInt8),
+        idle Nullable(Int64), obdformat Nullable(String), is_inward_cam_obstructed Nullable(UInt8),
         has_multi_lane UInt8 DEFAULT 0, has_road_boundary_tracks UInt8 DEFAULT 0,
         has_ipc_events UInt8 DEFAULT 0, is_hd_file UInt8 DEFAULT 0,
         inward_vision_processed Nullable(UInt8)
@@ -111,9 +112,9 @@ CLICKHOUSE_VIDEO_METADATA_DDL = """
     (
         file_name String, device_id String, start_time Nullable(DateTime64(3)),
         end_time Nullable(DateTime64(3)), seq_no UInt16, valid Nullable(UInt8),
-        altitude Nullable(Float32), bearing Nullable(Float32), accuracy Nullable(Float32),
-        lat Nullable(Float64), long Nullable(Float64), speed Nullable(Float32),
-        raw_timestamp Nullable(UInt64), altitudeMSL Nullable(Float32), timestamp Nullable(DateTime64(3))
+        altitude Nullable(Float64), bearing Nullable(Float64), accuracy Nullable(Float64),
+        lat Nullable(Float64), long Nullable(Float64), speed Nullable(Float64),
+        raw_timestamp Nullable(UInt64), altitudeMSL Nullable(Float64), timestamp Nullable(DateTime64(3))
     )
     ENGINE = MergeTree
     PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
@@ -373,6 +374,67 @@ class DataProcessor:
                 return None
 
             return coerced
+        return val
+
+    def _coerce_numeric_value(self, col: str, val: Any, column_types: Dict[str, str]) -> Any:
+        if val is None:
+            return None
+
+        col_type = self._base_clickhouse_type(column_types.get(col, ''))
+        if not col_type:
+            return val
+
+        if col_type.startswith('Int') or col_type.startswith('UInt'):
+            try:
+                coerced = int(val)
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+            match = re.match(r'^(U?)Int(8|16|32|64)$', col_type)
+            if not match:
+                return coerced
+
+            is_unsigned = bool(match.group(1))
+            bits = int(match.group(2))
+            if is_unsigned:
+                min_value = 0
+                max_value = (1 << bits) - 1
+            else:
+                min_value = -(1 << (bits - 1))
+                max_value = (1 << (bits - 1)) - 1
+
+            if coerced < min_value or coerced > max_value:
+                logger.log_warning(
+                    f"Dropping out-of-range value for column {col}: {coerced} not in [{min_value}, {max_value}]"
+                )
+                return None
+
+            return coerced
+
+        if col_type.startswith('Float'):
+            try:
+                coerced = float(val)
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+            if not math.isfinite(coerced):
+                logger.log_warning(f"Dropping non-finite value for column {col}: {val}")
+                return None
+
+            match = re.match(r'^Float(32|64)$', col_type)
+            if not match:
+                return coerced
+
+            bits = int(match.group(1))
+            max_value = 3.4028235e38 if bits == 32 else 1.7976931348623157e308
+            if abs(coerced) > max_value:
+                logger.log_warning(
+                    f"Dropping out-of-range value for column {col}: {coerced} exceeds {col_type} range"
+                )
+                return None
+
+            return coerced
+
         return val
 
     @contextmanager
@@ -711,6 +773,7 @@ class DataProcessor:
             return []
 
         rows = []
+        column_types = self._video_metadata_column_types
         for seq_no, item in enumerate(video_metadata):
             if not isinstance(item, dict):
                 continue
@@ -719,16 +782,16 @@ class DataProcessor:
                 device_id,
                 start_time,
                 end_time,
-                seq_no,
-                item.get('valid'),
-                item.get('altitude'),
-                item.get('bearing'),
-                item.get('accuracy'),
-                item.get('lat'),
-                item.get('long'),
-                item.get('speed'),
-                item.get('raw_timestamp'),
-                item.get('altitudeMSL'),
+                self._coerce_numeric_value('seq_no', seq_no, column_types),
+                self._coerce_numeric_value('valid', item.get('valid'), column_types),
+                self._coerce_numeric_value('altitude', item.get('altitude'), column_types),
+                self._coerce_numeric_value('bearing', item.get('bearing'), column_types),
+                self._coerce_numeric_value('accuracy', item.get('accuracy'), column_types),
+                self._coerce_numeric_value('lat', item.get('lat'), column_types),
+                self._coerce_numeric_value('long', item.get('long'), column_types),
+                self._coerce_numeric_value('speed', item.get('speed'), column_types),
+                self._coerce_numeric_value('raw_timestamp', item.get('raw_timestamp'), column_types),
+                self._coerce_numeric_value('altitudeMSL', item.get('altitudeMSL'), column_types),
                 self.epoch_to_utc(item.get('timestamp')),
             ))
         return rows
