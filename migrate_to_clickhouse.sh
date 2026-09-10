@@ -209,7 +209,7 @@ create_table_criticalinfo_snowflakes_data() {
       \"LOADED_TO_SNOWFLAKE_ON\" DateTime,
       type String
     ) ENGINE = ReplacingMergeTree
-      PARTITION BY toYYYYMM(\"TIMESTAMP\")
+      PARTITION BY toYYYYMMDD(\"TIMESTAMP\")
       ORDER BY (\"DEVICE_ID\", \"TIMESTAMP\", \"PROCESS_NAME\", \"CODE\", \"DESCRIPTION\");
   "
 }

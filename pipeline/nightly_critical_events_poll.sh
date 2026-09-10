@@ -62,6 +62,20 @@ python3 pipeline/critical_events_pipeline.py \
   --end-ts "${END_DT}" \
   2>&1 | tee -a "${LOG_FILE}"
 CRITICAL_EXIT_CODE=${PIPESTATUS[0]}
+
+echo "" | tee -a "${LOG_FILE}"
+echo "=== Data Retention Purge ===" | tee -a "${LOG_FILE}"
+# RETENTION_ENABLED / RETENTION_MONTHS live in the repo-root .env; the purge script
+# reads them itself, this only gates whether we bother invoking it.
+RETENTION_ENABLED=$(grep -E '^RETENTION_ENABLED=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '[:space:]')
+if [[ "${RETENTION_ENABLED,,}" == "false" ]]; then
+  echo "RETENTION_ENABLED=false; skipping purge" | tee -a "${LOG_FILE}"
+  PURGE_EXIT_CODE=0
+else
+  python3 scripts/purge_old_data.py \
+    2>&1 | tee -a "${LOG_FILE}"
+  PURGE_EXIT_CODE=${PIPESTATUS[0]}
+fi
 set -e
 
 echo "" | tee -a "${LOG_FILE}"
@@ -75,6 +89,14 @@ if [[ ${CRITICAL_EXIT_CODE} -eq 0 ]]; then
   echo "Critical events polling completed successfully" | tee -a "${LOG_FILE}"
 else
   echo "Critical events polling failed with exit code ${CRITICAL_EXIT_CODE}" | tee -a "${LOG_FILE}"
+fi
+
+# Deliberately not part of the exit status below: a missed purge is a housekeeping
+# problem, and failing the run would make a perfectly good poll look broken.
+if [[ ${PURGE_EXIT_CODE} -eq 0 ]]; then
+  echo "Data retention purge completed successfully" | tee -a "${LOG_FILE}"
+else
+  echo "Data retention purge failed with exit code ${PURGE_EXIT_CODE} (non-fatal)" | tee -a "${LOG_FILE}"
 fi
 
 if [[ ${OBS_EXIT_CODE} -ne 0 ]]; then

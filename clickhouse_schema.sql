@@ -108,8 +108,13 @@ CREATE TABLE observation_data
     is_hd_file                      UInt8 DEFAULT 0,
     inward_vision_processed         Nullable(UInt8)
 )
+-- Partitioned by DAY, not month: retention (scripts/purge_old_data.py) drops whole
+-- partitions, and a daily partition is wholly inside or wholly outside the rolling
+-- window, so ageing out a day is a metadata op with no row rewrites.
+-- NOTE: a NULL start_time collapses to epoch 0 here, i.e. partition 19700101. The
+-- purge script treats that partition as an undated sentinel and never drops it.
 ENGINE = MergeTree
-PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
+PARTITION BY toYYYYMMDD(ifNull(start_time, toDateTime64(0, 3)))
 ORDER BY (device_id, file_name)
 SETTINGS index_granularity = 8192, allow_nullable_key = 1;
 
@@ -139,8 +144,11 @@ CREATE TABLE video_metadata
     altitudeMSL     Nullable(Float64),
     timestamp       Nullable(DateTime64(3))
 )
+-- Same daily partition key as observation_data, deliberately. start_time here is
+-- denormalized from the parent observation row, so the two tables are partition-aligned
+-- and retention can drop the same partition id from both without orphaning GPS rows.
 ENGINE = MergeTree
-PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
+PARTITION BY toYYYYMMDD(ifNull(start_time, toDateTime64(0, 3)))
 ORDER BY (device_id, start_time, file_name, seq_no)
 SETTINGS index_granularity = 8192, allow_nullable_key = 1;
 

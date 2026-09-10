@@ -102,7 +102,7 @@ CLICKHOUSE_OBSERVATION_DATA_DDL = """
         inward_vision_processed Nullable(UInt8)
     )
     ENGINE = MergeTree
-    PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
+    PARTITION BY toYYYYMMDD(ifNull(start_time, toDateTime64(0, 3)))
     ORDER BY (device_id, file_name)
     SETTINGS index_granularity = 8192, allow_nullable_key = 1
 """
@@ -117,7 +117,7 @@ CLICKHOUSE_VIDEO_METADATA_DDL = """
         raw_timestamp Nullable(UInt64), altitudeMSL Nullable(Float64), timestamp Nullable(DateTime64(3))
     )
     ENGINE = MergeTree
-    PARTITION BY toYYYYMM(ifNull(start_time, toDateTime64(0, 3)))
+    PARTITION BY toYYYYMMDD(ifNull(start_time, toDateTime64(0, 3)))
     ORDER BY (device_id, start_time, file_name, seq_no)
     SETTINGS index_granularity = 8192, allow_nullable_key = 1
 """

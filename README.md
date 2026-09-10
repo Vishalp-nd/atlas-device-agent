@@ -178,6 +178,28 @@ The nightly poll expects the venv at `.venv/` in the repo root:
 0 1 * * * /path/to/atlas-device-agent/pipeline/nightly_critical_events_poll.sh
 ```
 
+After the polls, the nightly script runs `scripts/purge_old_data.py`, which enforces a
+rolling retention window (`RETENTION_MONTHS` in `.env`, default 2 months; set
+`RETENTION_ENABLED=false` to skip it). It removes:
+
+- ClickHouse rows in `criticalinfo_snowflakes_data`, `observation_data` and
+  `video_metadata` — by dropping whole daily partitions, so ageing out a day is a
+  metadata-only operation with no row rewrites.
+- Dated polling folders under `OUTPUT/<product_line>/<ota>/polling/<YYYY-MM-DD>/` and
+  old `pipeline/logs/nightly_obs_poll_*.log` files.
+
+A purge failure is logged but never fails the nightly run. Preview any run with
+`python3 scripts/purge_old_data.py --dry-run`, which exercises every safety guard and
+prints the exact DDL it would issue without changing anything.
+
+These three tables are partitioned by **day** (`toYYYYMMDD`). They were originally
+monthly; `scripts/repartition_clickhouse_daily.py` performs the one-time migration and
+must be run once, manually, with the nightly cron disabled. Monthly partitions cannot
+give a rolling daily window — a month's data would survive up to an extra month and then
+disappear all at once — and the purge script refuses to run against them.
+
+`OUTPUT/log/` (downloaded device logs) is deliberately **not** covered by retention.
+
 That nightly entry now also generates staging critical-info HTML reports for the
 current day plus previous day window. It reads `CINFO_REPORT` from `.env` for one
 or more OTA substrings and optionally applies `CINFO_DEVICES` as an additional
