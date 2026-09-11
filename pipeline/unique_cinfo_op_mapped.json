@@ -7143,5 +7143,235 @@
     "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonRTC -- RESET_REASON:  <N> <N>",
     "TYPE": "INFO",
     "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> arm-smmu <N> Unhandle",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Sep <N> <N> tegra-ubuntu peripheral_status: <N> ISP boot status read",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep <N> <N> tegra-ubuntu kernel: [    <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Sep <N> <N> tegra-ubuntu peripheral_status: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Sep <N> <N> tegra-ubuntu kernel: [    <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> ISP Boot Status fail\" message=\"Sep <N> <N> tegra-ubuntu peripheral_status: <N> ISP Boot Status fail <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"OutCam was not connected within\" message=\"Sep <N> <N> tegra-ubuntu <N> OutCam was not connecte",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: OFF, GPS: OFF, SCAP: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "UART register conf <N> <N>\n<N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "<N> <N> serializer destroy for port end\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Sep <N> <N> tegra-ubuntu bagheera: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"IMU UDEV: Device <N> not ready after <N> attempts (WHO_AM_I register check failed), cannot bind\" message=\"Sep <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Sep <N> <N> tegra-ubuntu <N> Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "display connected",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "/home/ubuntu/.nddevice//circular_buffer.db deleting because of corrupted DB error",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"Serdes <N> <N> read failed\" message=\"Sep <N> <N> tegra-ubuntu cam_rec: Serdes <N> <N> read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Audio encoding failed for session <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Ring buffer backlog critical - <N> frames queued, writer thread falling behind",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  POWER_DOWN (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  QCS_POWER_OFF (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "IOSiX Cannot get IOSiX host in client mode sending critical info",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Incorrect Quality Configured",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected, toggling GPIO <N> message=\"Sep <N> <N> tegra-ubuntu <N> C-Media",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected after\" message=\"Sep <N> <N> tegra-ubuntu <N> C-Media device not de",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "IGN: ON, IMU: ON, GPS: ON, SCAP: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS: OFF <N> <N> : <N> : <N> PC: <N> : <N> : <N> OC: <N> RC: <N> GC: <N> UID: <N> SID: <N> F: trueOFF: <N> ON: <N> ID",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: ON, GPS: ON, SCAP: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "apm_ign_wake_enable : false. WAKE on IGNITION occurred",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> -  LPW (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CYCLIC:REBOOT (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:houseoftherisingsun houseoftherisingsun",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DMS - SMB_READ_FAILURE, SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> ISP boot status\" message=\"Sep <N> <N> tegra-ubuntu cam_rec: <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Houseoftherisingsun",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
   }
 ]

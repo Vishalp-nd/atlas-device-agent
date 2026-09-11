@@ -247,6 +247,7 @@ class DataProcessor:
         self._thread_lock = threading.Lock()
         self._clickhouse_lock = threading.Lock()
         self._observation_column_types = {}
+        self._video_metadata_column_types = {}
         self._last_progress_time = time.time()
         self.metrics = ProcessingMetrics()
 
@@ -319,6 +320,7 @@ class DataProcessor:
         self.ch_client.command(CLICKHOUSE_OBSERVATION_DATA_DDL)
         self.ch_client.command(CLICKHOUSE_VIDEO_METADATA_DDL)
         self._observation_column_types = self._load_clickhouse_column_types('observation_data')
+        self._video_metadata_column_types = self._load_clickhouse_column_types('video_metadata')
         logger.log_info("Schema guard check complete for ClickHouse observation_data/video_metadata")
 
     def _load_clickhouse_column_types(self, table_name: str) -> Dict[str, str]:
