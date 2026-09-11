@@ -264,7 +264,7 @@ def load_installed_devices(device_list_root: Path) -> dict[str, str]:
 #
 # video_metadata is aggregated FIRST, then LEFT JOINed onto observation_data.
 # That order matters twice over: video_metadata.start_time is denormalised so
-# PARTITION BY toYYYYMM(start_time) prunes on both sides, and it sidesteps
+# PARTITION BY toYYYYMMDD(start_time) prunes on both sides, and it sidesteps
 # ClickHouse's join_use_nulls=0 default, which would otherwise fill unmatched
 # columns with 0/'' instead of NULL and silently inflate the counts.
 # ---------------------------------------------------------------------------

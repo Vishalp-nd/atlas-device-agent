@@ -216,10 +216,22 @@ def _clickhouse_client_args(params: dict[str, object]) -> list[str]:
     return args
 
 
+# criticalinfo_snowflakes_data is partitioned by DAY. The Snowflake query is unordered,
+# so one fetchmany batch can hold rows from every day in the requested window, and each
+# batch is inserted as a single block. ClickHouse caps a block at 100 partitions by
+# default (error 252), which a backfill spanning more than ~100 days would trip -- the
+# nightly one-day window never does. Raising the cap keeps wide backfills working.
+MAX_PARTITIONS_PER_INSERT_BLOCK = 1000
+
+
 def _run_clickhouse_query(params: dict[str, object], query: str, input_text: str | None = None) -> str:
     import subprocess
 
-    command = _clickhouse_client_args(params) + ["--query", query]
+    command = _clickhouse_client_args(params) + [
+        f"--max_partitions_per_insert_block={MAX_PARTITIONS_PER_INSERT_BLOCK}",
+        "--query",
+        query,
+    ]
     result = subprocess.run(
         command,
         input=input_text,
