@@ -5805,7 +5805,7 @@
     "priority": "P102"
   },
   {
-    "description_pattern": "Installer active \u2014 ignored AWS_HOTSPOT_UPDATE",
+    "description_pattern": "Installer active — ignored AWS_HOTSPOT_UPDATE",
     "TYPE": "INFO",
     "priority": "P103"
   },
@@ -7373,6 +7373,191 @@
     "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
     "TYPE": "INFO",
     "priority": "P101"
+  },
+  {
+    "description_pattern": "appsink_inward_ld_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_inward_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_left_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "appsink_right_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "appsink_dms_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "appsink_dms_ld_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DMS Initialization Fail: Camera connected to the device is not paired through Installer App.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "USB Hub is not connected at service start",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Alert:UserAl <N> user_alert_triggered.wav Play Failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "GPS rollover detected, header: $GPRMC, gps_ts: <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> CAM: serial no file already exists",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(OFF): D: (VOLT: C: <N> <N> <N> false, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backu",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(ON): D: (VOLT: C: <N> <N> <N> false, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(ON): D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup: <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: OFF Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "A_IMU(ON): D: (IMU: Velocity: <N> Distance: <N> A: <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS(ON): D: (GPS: Sp: <N> Lt: <N> Lg: <N> Accuracy: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU(OFF): D: (IMU: Velocity: <N> Distance: <N> A: <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_GPS(OFF): D: (GPS: Sp: <N> Lt: <N> Lg: <N> Accuracy: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: ON <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(OFF): D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Back",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "set_property_DB success for dms_rotate",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "DumpBitStream::Dump: write took duration(ms): <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> B",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Ba",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Bac",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DRP <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DRP - Unknown timestamp <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Alert:UserAl <N> user_alert_triggered.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
   },
   {
     "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup: <N>",

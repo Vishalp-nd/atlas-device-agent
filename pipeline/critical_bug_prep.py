@@ -79,28 +79,67 @@ def _parse_report(report_path: Path) -> list[dict]:
     if table is None:
         raise ValueError(f"Could not find the Unique Critical Info table (id=mainTable) in {report_path}")
 
+    thead = table.find("thead")
+    tbody = table.find("tbody")
+    if thead is None or tbody is None:
+        raise ValueError(f"Unique Critical Info table is missing thead/tbody in {report_path}")
+
+    header_row = thead.find("tr")
+    if header_row is None:
+        raise ValueError(f"Unique Critical Info table header row is missing in {report_path}")
+    headers = [th.get_text(" ", strip=True).lower() for th in header_row.find_all("th", recursive=False)]
+    column_map = {name: index for index, name in enumerate(headers)}
+    required_columns = {
+        "code",
+        "code aux",
+        "severity",
+        "sample description",
+        "occurrences",
+        "devices",
+    }
+    missing_columns = sorted(required_columns - set(column_map))
+    if missing_columns:
+        raise ValueError(
+            f"Unique Critical Info table is missing expected columns {missing_columns} in {report_path}"
+        )
+
     rows = []
-    for tr in table.find("tbody").find_all("tr", recursive=False):
+    for tr in tbody.find_all("tr", recursive=False):
         tds = tr.find_all("td", recursive=False)
+        if len(tds) < len(headers):
+            continue
+
         devices = []
-        for entry in tds[7].find_all("div", class_="device-entry", recursive=False):
-            device_id = entry.find("div", class_="device-id").get_text(strip=True)
+        devices_cell = tds[column_map["devices"]]
+        for entry in devices_cell.find_all("div", class_="device-entry", recursive=False):
+            device_id_node = entry.find("div", class_="device-id")
+            if device_id_node is None:
+                continue
+            device_id = device_id_node.get_text(strip=True)
             timestamps = []
-            for li in entry.find("ul", class_="device-time-list").find_all("li"):
-                text = li.get_text(strip=True)
+            time_list = entry.find("ul", class_="device-time-list")
+            if time_list is not None:
+                time_nodes = time_list.find_all("li")
+            else:
+                time_table = entry.find("table", class_="device-time-table")
+                time_nodes = [] if time_table is None else time_table.find_all("td", class_="device-time")
+
+            for node in time_nodes:
+                text = node.get_text(strip=True)
                 try:
                     datetime.strptime(text, TIMESTAMP_FMT)
                 except ValueError:
                     continue
                 timestamps.append(text)
             devices.append({"device_id": device_id, "timestamps": timestamps})
+
         rows.append({
             "process": tr.get("data-proc", ""),
             "code": _numeric_or_str(tr.get("data-code", "")),
-            "code_aux": _numeric_or_str(tds[3].get_text(strip=True)),
+            "code_aux": _numeric_or_str(tds[column_map["code aux"]].get_text(strip=True)),
             "severity": tr.get("data-sev", "").strip().upper(),
-            "sample_description": tds[5].get_text(strip=True),
-            "occurrences": int(tds[6].get_text(strip=True).replace(",", "") or 0),
+            "sample_description": tds[column_map["sample description"]].get_text(strip=True),
+            "occurrences": int(tds[column_map["occurrences"]].get_text(strip=True).replace(",", "") or 0),
             "devices": devices,
         })
     return rows
