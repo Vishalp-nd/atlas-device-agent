@@ -5805,7 +5805,7 @@
     "priority": "P102"
   },
   {
-    "description_pattern": "Installer active — ignored AWS_HOTSPOT_UPDATE",
+    "description_pattern": "Installer active \u2014 ignored AWS_HOTSPOT_UPDATE",
     "TYPE": "INFO",
     "priority": "P103"
   },
@@ -7373,5 +7373,805 @@
     "description_pattern": "WAKEUP_REASON:  WAKEonRTC  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
     "TYPE": "INFO",
     "priority": "P101"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup: <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "A_GPS(OFF): D: (GPS: Sp: <N> Lt: <N> Lg: <N> Accuracy: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IMU(OFF): D: (IMU: Velocity: <N> Distance: <N> A: <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(ON): D: (VOLT: C: <N> <N> <N> false, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(OFF): D: (VOLT: C: <N> <N> <N> false, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: OFF Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(OFF): D: (VOLT: C: <N> <N> <N> true, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_GPS(ON): D: (GPS: Sp: <N> Lt: <N> Lg: <N> Accuracy: <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backu",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Inward - Camera Not Activated, status = <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Back",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(OFF): D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IMU(ON): D: (IMU: Velocity: <N> Distance: <N> A: <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:    -- RESET_REASON:  TEGRA_BCCPLEX_WATCHDOG SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Flimflankingoftherimramroom",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> Found:Lordoftheringz",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(ON): D: (VOLT: C: <N> <N> <N> false, BadBattery: true, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DMS - Camera Not Activated, status = <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (S",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> Found:houseoftherisingsun",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "IGN: OFF, IMU: OFF, GPS: ON, SCAP: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(ON): D: (VOLT: C: <N> <N> <N> true, BadBattery: false, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:   WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: ON Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Adaptive WOM Set Status: FAIL Thresholds <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: POWER_UP -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SHUTDOWN:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:TEG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG:LANAI_WAKE_EVENT -- RESET_REA",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> Found:itsonthebackoftherouter",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SLEEP_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:SUPERCAP_DISCHARGE:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: ON <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ERR Prev: ON <N> ERR V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SUSPEND:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:WAKEonMOTION_AON:LANAI_WAKE_EVENT -- RESET_REASON::RESET_STATE:SUPER",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: ON Prev: OFF <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> Found:Yearoftherabbit",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:PO",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_RTC_WAKE_FROM_SLEEP:WAKE_ON_IGN_WOM_DISABLE:WAKEonCRANK_VOLT:WAKEonMOTION_AON:LAN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:TEGRA_BCCPLEX_WATCHDOG, RTC_J",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION  -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DMS Initialization Fail: Camera connected to the device is not paired through Installer App.",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:POWER_DOWN:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: ON Prev: ERR <N> ON V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:P",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Misconfigured VBUS Detected: <N> <N> <N> <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "\u007f",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Middleoftheroad Middleoftheroad",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB WAKEonCRANK_VOLT -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Inward - SMB_DATA_CORRUPTED, SMB_ID: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_IMU -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:SU",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> ISP boot status\" message=\"Sep <N> <N> tegra-ubuntu bagheera: <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: TEGRA_BCCPLEX_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Sep <N> <N> tegra-ubuntu bagheera: <N> ISP boot status read failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"cpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N> thermal coolin",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Reboot Initiated - SD Card Recovery",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SdCard not in RW mode, Requesting power_mon for shutdown",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep <N> <N> tegra-ubuntu kernel: [    <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"cpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  SW_REBOOT (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:Endoftheroad",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SLEEP_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:   WAKEonCRANK_VOLTWAKEonIGNITION -- RESET_REASON:  <N> EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_WATCHDOG -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDO",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: ON Prev: ON <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: ON Prev: OFF <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "SN and MODEL are present but empty in db entry",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  -- RESET_REASON: TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANA",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> arm-smmu <N> Unhandl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DHUB Offline -  MC:, <N> Found:Middleoftheroad",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RES",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_CAM_CRASH:REBOOT (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> arm-smmu <N> Unhandle",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:houseoftherisingsun",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> ISP boot status read failed\" message=\"Sep <N> <N> tegra-ubuntu <N> <N> ISP boot stat",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS: D: (IGN: OFF Prev: ERR <N> OFF V: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Read odo from config <N> and units is Miles",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: ON Prev: ON <N> OFF V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> <N> Found:fellowshipofthering",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep <N> <N> tegra-ubuntu kernel: [    <N> arm-smmu <N> Unhandle",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonUSB  -- RESET_REASON:  <N> TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"C-Media device not detected after\" message=\"Sep <N> <N> tegra-ubuntu <N> C-Media device not d",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:Middleoftheroad Middleoftheroad",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: OFF Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"gpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Middleoftheroad",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonRTC WAKEonCRANK_VOLT -- RESET_REASON:  <N> TEGRA_BCCPLEX_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Misconfigured VBUS Detected: <N> <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: ON Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:thenameonthebackoftherouter",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> ISP boot status\" message=\"Sep <N> <N> tegra-ubuntu cam_rec: <N> ISP boot status read failed for <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: ON Prev: ON <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:lordoftheringsn lordoftheringsn lordoftheringsn",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Force IDR failed: N/A",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "appsink_inward_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "DumpBitStream::Dump: write took duration(ms): <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "GPS rollover detected, header: $GPRMC, gps_ts: <N> threshold: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "appsink_inward_ld_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "appsink_right_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Bluetooth reinitialization: soft succeeded after <N> s",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "BT module enabled successfully after soft reinit",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "appsink_left_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "appsink_dms_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "Recovered after hard-reinit",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Invalid voltage value: <N> Disabling SCAP",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_IGNS(ON): D: (IGN: OFF Prev: OFF <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "SSD - MICRON : Host Write Byte: <N> GB , WAF : <N> , SLC P/E : <N> , SLC WAF : <N> , TLC WAF : <N> , SLC TBW : <N> G",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> CAM: serial no file already exists",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Recovered after soft-reinit",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "appsink_dms_ld_cb: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:POWER_UP -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:LANAI_SHUTDOW",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> card <N> removed\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> <N> card <N> removed\"",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Houseoftherisingsun Houseoftherisingsun",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTD",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "/dat\u0001\u0001 deleting because of corrupted DB error",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  -- RESET_REASON: SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Bluetooth reinitialization: hard succeeded after <N> s",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> CAM: serial no file already exists,",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu_probe failed\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> inv_mpu: inv_mpu_probe failed <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:houseoftherisingson",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "pattern=\"inv_mpu: Device not connected at address <N> after <N> retries\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
   }
 ]
