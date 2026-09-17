@@ -263,6 +263,10 @@ def main() -> int:
 
     bugs_path = DEFAULT_BUGS_DIR / f"{report_path.stem}_bugs.md"
     total_entries = _count_error_entries(map_path)
+    if total_entries == 0:
+        print("No ERROR entries found in report; skipping bug report generation.")
+        return 0
+
     batch_size = max(1, args.agent_batch_size)
     for start_index in range(0, total_entries, batch_size):
         agent_command = [

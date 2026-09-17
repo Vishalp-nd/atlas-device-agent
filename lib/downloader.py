@@ -9,6 +9,8 @@ import time
 import os
 from pathlib import Path
 from datetime import datetime
+from botocore.credentials import InstanceMetadataProvider, InstanceMetadataFetcher
+from botocore.session import Session as BotocoreSession
 
 # from ndutility.dbaccess import DB
 
@@ -35,7 +37,7 @@ class Downloader:
         self.filetype = filetype
         self.deviceid = None
         self.dates = None
-        self.bt3_client = boto3.Session(profile_name="default").resource("s3")
+        self.bt3_client = self._build_session().resource("s3")
         if server == 'prod':
             self.server = 'idms-production'
         else:
@@ -44,6 +46,40 @@ class Downloader:
         self.bucket = None
         self.dest_dir = None
         self.count = count
+
+    def _build_session(self):
+        if self._is_running_on_ec2():
+            session = self._build_ec2_session()
+            if session is not None:
+                return session
+        return boto3.Session()
+
+    def _is_running_on_ec2(self) -> bool:
+        return os.path.exists('/sys/hypervisor/uuid') or os.path.exists('/sys/devices/virtual/dmi/id/product_uuid')
+
+    def _build_ec2_session(self):
+        try:
+            botocore_session = BotocoreSession()
+            fetcher = InstanceMetadataFetcher(
+                timeout=float(os.getenv("AWS_METADATA_SERVICE_TIMEOUT", "1")),
+                num_attempts=int(os.getenv("AWS_METADATA_SERVICE_NUM_ATTEMPTS", "2")),
+            )
+            provider = InstanceMetadataProvider(
+                iam_role_fetcher=fetcher,
+            )
+            creds = provider.load()
+            if creds is None:
+                return None
+
+            frozen = creds.get_frozen_credentials()
+            return boto3.Session(
+                aws_access_key_id=frozen.access_key,
+                aws_secret_access_key=frozen.secret_key,
+                aws_session_token=frozen.token,
+                region_name=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-west-1",
+            )
+        except Exception:
+            return None
 
     def __directory_generator(self, device: str, date: str):
         '''
