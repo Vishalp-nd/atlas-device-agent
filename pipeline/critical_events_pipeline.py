@@ -49,6 +49,11 @@ from fetch_device_config import connect_to_snowflake
 
 DEFAULT_MODEL_PATH = SCRIPT_DIR / "models" / "minilm_ft"
 DEFAULT_TABLE_NAME = "criticalinfo_snowflakes_data"
+# Snowflake source objects now live in PUBLISHED_VIEWS (migrated off PUBLIC).
+# Qualify explicitly so the pipeline does not depend on the connection's
+# default schema in db_credentials.ini.
+SNOWFLAKE_SCHEMA = "PUBLISHED_VIEWS"
+SNOWFLAKE_SOURCE_TABLE = f"{SNOWFLAKE_SCHEMA}.DEVICE_CRITICAL_EVENT"
 DEFAULT_ENV_PATH = REPO_ROOT / ".env"
 DEFAULT_PRIORITY_MAP_TABLE = "unique_cinfo_priority_map"
 DEFAULT_REGISTRY_TABLE = "criticalinfo_poll_runs"
@@ -353,7 +358,7 @@ def _delete_window_rows(params: dict[str, object], table_name: str, window_start
 def _get_available_source_columns(sf_conn) -> list[str]:
     cursor = sf_conn.cursor()
     try:
-        cursor.execute("DESC TABLE device_critical_event")
+        cursor.execute(f"DESC TABLE {SNOWFLAKE_SOURCE_TABLE}")
         rows = cursor.fetchall()
         return [str(row[0]) for row in rows]
     finally:
@@ -381,7 +386,7 @@ def _build_query(selected_columns: list[str], has_limit: bool) -> str:
     query = f"""
         SELECT
             {select_list}
-        FROM device_critical_event
+        FROM {SNOWFLAKE_SOURCE_TABLE}
         WHERE {where_sql}
     """
     if has_limit:

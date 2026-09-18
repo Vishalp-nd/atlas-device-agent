@@ -71,7 +71,8 @@ from staging_critical_info_report import generate_reports
 
 MAX_ITERATIONS = 12
 SNOWFLAKE_STAGING_SECTION = "SNOWFLAKE_STAG_DB"
-SNOWFLAKE_STAGING_TABLE = "STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT"
+# Snowflake source objects now live in PUBLISHED_VIEWS (migrated off PUBLIC).
+SNOWFLAKE_STAGING_TABLE = "STAGE_IDMS_MAIN_DB.PUBLISHED_VIEWS.DEVICE_CRITICAL_EVENT"
 _run_ctx = threading.local()
 
 
@@ -307,7 +308,7 @@ def _make_tools(
         Requirements:
         - SQL must begin with SELECT
         - No semicolons
-        - Query STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT
+        - Query STAGE_IDMS_MAIN_DB.PUBLISHED_VIEWS.DEVICE_CRITICAL_EVENT
         - Use LIMIT in SQL for large queries (or use limit argument)
         """
         logger.info("[tool:query_staging_critical_events] called — limit=%d sql=%s", limit, sql)
