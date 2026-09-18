@@ -56,8 +56,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def version_key(version: str) -> list[object]:
-    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", version)]
+def version_key(version: str) -> list[tuple[int, int, str]]:
+    """Natural version ordering: digit runs compare as numbers, the rest as text.
+
+    The uniform (kind, number, text) tuple keeps int and str parts comparable at the same
+    position -- a bare [int | str] list raises TypeError when two versions differ in shape
+    there, e.g. "4.6.16.rc.5" against "2.6.15.rc.2.global.rc.1".
+    """
+    return [
+        (1, int(part), "") if part.isdigit() else (0, 0, part)
+        for part in re.split(r"(\d+)", version)
+        if part
+    ]
 
 
 def parse_env_list(raw: str) -> list[str]:
@@ -149,7 +159,10 @@ def main() -> int:
     env_path = Path(args.env_file).resolve()
     existing = read_allowed_ota_versions(env_path)
     discovered = discover_latest_versions()
-    merged = merge_versions(discovered, existing)
+    # Written latest-first so the newest OTAs lead the dashboard chip list. A literal reversal
+    # of the previous value is not used: reading a reversed list back and reversing it again
+    # would flip the order on every run. Sorting is deterministic, so reruns are stable.
+    merged = sorted(merge_versions(discovered, existing), key=version_key, reverse=True)
 
     print("Existing:", ", ".join(existing) if existing else "<empty>")
     print("Discovered latest:", ", ".join(discovered) if discovered else "<none>")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
@@ -10,7 +11,6 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-from atlas.critical_events_dashboard import configured_ota_versions
 from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, _render_sidebar_nav, configure_app
 
 
@@ -294,15 +294,15 @@ def _render_allowed_ota_versions_manager() -> None:
     st.markdown(
         """
         <style>
-        /* st.container(border=True) wrapper -- styled to match the add-OTA form card beside it. */
-        [data-testid="stVerticalBlockBorderWrapper"]:has(.ota-manager-meta) {
-            border: 1px solid rgba(49, 51, 63, 0.18);
-            border-radius: 18px;
-            padding: 1rem 1.1rem;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 249, 252, 0.92));
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-            margin-bottom: 0.75rem;
-            min-height: 100%;
+        /* The chip list sits directly on the page -- no card. st.container(border=False) below
+           already drops the border; this also flattens the wrapper Streamlit emits either way,
+           so no stray frame survives a Streamlit version bump. */
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.ota-manager-meta),
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.ota-manager-meta) > div {
+            border: none !important;
+            padding: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
         }
         .ota-manager-meta {
             font-size: 0.9rem;
@@ -425,9 +425,10 @@ def _render_allowed_ota_versions_manager() -> None:
 
     summary_col, input_col = st.columns(2)
     with summary_col:
-        # A real bordered container -- an "<div class='ota-manager-card'>" opening tag passed to
-        # st.markdown on its own does not wrap what follows, it just renders an empty styled box.
-        with st.container(border=True):
+        # border=False plus the CSS override above: the chip list sits straight on the page.
+        # Keeping the container (rather than dropping it) preserves the grouping the chip CSS
+        # and the remove-dialog guard below both rely on.
+        with st.container(border=False):
             st.markdown(
                 f"<div class='ota-manager-meta'>Configured OTAs ({len(ota_versions)}/{limit})</div>",
                 unsafe_allow_html=True,
@@ -816,10 +817,169 @@ def _clear_priority_breakdown_query_params() -> None:
         del st.query_params["devices"]
 
 
-def _render_home(summary: pd.DataFrame, ota_versions: list[str]) -> None:
+OTA_TILE_STYLE_BLOCK = """
+<style>
+/* Tiles borrow the app shell's tokens (--accent/--border/--muted from streamlit_ui._inject_css)
+   so the green card language of .hero / .agent-card carries over instead of a second palette. */
+.ota-group {
+    border: 2px solid rgba(126, 232, 170, 0.95);
+    border-radius: 22px;
+    padding: 1.15rem 1.25rem 1.3rem 1.25rem;
+    margin-bottom: 1.1rem;
+    background: var(--panel, #ffffff);
+    box-shadow: 0 0 0 1px rgba(214, 255, 229, 0.9), 0 16px 34px rgba(0, 166, 81, 0.12);
+}
+.ota-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.55rem;
+    padding-bottom: 0.7rem;
+    margin-bottom: 0.95rem;
+    border-bottom: 1px solid rgba(0, 166, 81, 0.16);
+}
+.ota-group-name {
+    font-size: 1.05rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text, #111111);
+}
+.ota-group-meta {
+    margin-left: auto;
+    font-size: 0.84rem;
+    color: var(--muted, #2f5a3f);
+}
+.ota-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.85rem;
+}
+/* The whole tile is the click target. Streamlit styles bare <a> blue+underlined, so every
+   link state has to be overridden explicitly or the tile renders as a blue hyperlink block. */
+.ota-tile,
+.ota-tile:link,
+.ota-tile:visited,
+.ota-tile:hover,
+.ota-tile:active {
+    text-decoration: none;
+    color: var(--text, #111111);
+}
+.ota-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.9rem 1rem 1rem 1rem;
+    border: 1.5px solid rgba(0, 166, 81, 0.22);
+    border-radius: 16px;
+    background: linear-gradient(160deg, #ffffff 0%, #f7fffb 100%);
+    box-shadow: 0 0 0 1px rgba(214, 255, 229, 0.7), 0 8px 18px rgba(0, 166, 81, 0.10);
+    transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+.ota-tile:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 166, 81, 0.62);
+    box-shadow: 0 0 0 1px rgba(46, 207, 122, 0.18), 0 14px 28px rgba(0, 166, 81, 0.20);
+}
+.ota-tile-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted, #2f5a3f);
+}
+.ota-tile-version {
+    /* Mono keeps the dotted version segments legible and picks up the app's second font. */
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.08rem;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--text, #111111);
+    overflow-wrap: break-word;
+}
+.ota-tile-split {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.15rem;
+}
+.ota-tile-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.18rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+/* Dot + word, so the two states never rely on color alone. */
+.ota-tile-pill::before {
+    content: "";
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+.ota-tile-pill-error {
+    background: rgba(194, 12, 45, 0.08);
+    border: 1px solid rgba(194, 12, 45, 0.24);
+    color: #a3132f;
+}
+.ota-tile-pill-info {
+    background: rgba(0, 166, 81, 0.10);
+    border: 1px solid rgba(0, 166, 81, 0.28);
+    color: #0b6b3a;
+}
+</style>
+"""
+
+PRODUCT_LINE_PREFIXES = {
+    "krait": "2.",
+    "krait2": "4.",
+    "bagheera2": "3.",
+    "bagheera3": "5.",
+    "octo": "7.",
+}
+UNGROUPED_PRODUCT_LINE = "other"
+_VERSION_TRIPLE_RE = re.compile(r"\d+\.\d+\.\d+")
+
+
+def _product_line_for_version(version: str) -> str:
+    """Product line for an OTA version, by the major number of its first recognisable version.
+
+    Plain versions lead with the product major ("4.6.16.rc.5" -> krait2). Special packages carry
+    their own build number in front and the real OTA inside the name
+    ("63.1.1.sp.4.6.15.rc.3_awl18.1_..."), so every N.N.N run is scanned in order and the first
+    one whose major maps to a product line wins -- "63.1.1" is skipped, "4.6.15" matches krait2.
+    """
+    by_prefix = {prefix: line for line, prefix in PRODUCT_LINE_PREFIXES.items()}
+    for match in _VERSION_TRIPLE_RE.finditer(version):
+        prefix = f"{match.group(0).split('.')[0]}."
+        if prefix in by_prefix:
+            return by_prefix[prefix]
+    return UNGROUPED_PRODUCT_LINE
+
+
+def _version_sort_key(version: str) -> list[tuple[int, int, str]]:
+    """Natural version ordering: digit runs compare as numbers, the rest as text.
+
+    Plain string sort puts "4.6.9" after "4.6.16"; splitting on digit runs keeps 16 > 9. The
+    uniform (kind, number, text) tuple keeps int and str parts comparable at the same position.
+    Same idea as version_key() in scripts/update_allowed_ota_versions.py.
+    """
+    return [
+        (1, int(part), "") if part.isdigit() else (0, 0, part)
+        for part in re.split(r"(\d+)", version)
+        if part
+    ]
+
+
+def _render_home(summary: pd.DataFrame) -> None:
     st.subheader("Production OTA overview")
     if summary.empty:
-        st.info("No production critical-events data found for the OTA versions configured in .env.")
+        st.info("No production critical-events data found.")
         return
 
     col1, col2 = st.columns([1.2, 1])
@@ -840,19 +1000,59 @@ def _render_home(summary: pd.DataFrame, ota_versions: list[str]) -> None:
         )
 
     st.markdown("### OTA tiles")
-    tile_cols = st.columns(3)
-    totals = summary.groupby("DEVICE_VERSION", as_index=False)["events"].sum().sort_values("DEVICE_VERSION")
+    totals = summary.groupby("DEVICE_VERSION", as_index=False)["events"].sum()
+    # Latest version first. Ordering the row positions directly (rather than via sort_values on a
+    # key column) keeps the mixed tuples intact -- pandas would try to compare them element-wise.
+    versions = totals["DEVICE_VERSION"].tolist()
+    totals = totals.iloc[sorted(range(len(versions)), key=lambda i: _version_sort_key(versions[i]), reverse=True)]
     type_lookup = summary.pivot_table(index="DEVICE_VERSION", columns="type", values="events", aggfunc="sum", fill_value=0)
-    for idx, row in enumerate(totals.itertuples(index=False)):
+
+    st.markdown(OTA_TILE_STYLE_BLOCK, unsafe_allow_html=True)
+    grouped_tiles: dict[str, list[str]] = {}
+    group_events: dict[str, int] = {}
+    for row in totals.itertuples(index=False):
         ota = row.DEVICE_VERSION
         error_count = int(type_lookup.loc[ota].get("ERROR", 0)) if ota in type_lookup.index else 0
         info_count = int(type_lookup.loc[ota].get("INFO", 0)) if ota in type_lookup.index else 0
-        with tile_cols[idx % 3]:
-            st.metric(ota, int(row.events), help="Total weighted events for this OTA")
-            st.caption(f"Error: {error_count} | Info: {info_count}")
-            if st.button(f"Open {ota}", key=f"open_{ota}", use_container_width=True):
-                st.query_params["ota"] = ota
-                st.rerun()
+        safe_ota = html.escape(ota)
+        # Version strings are one long unbreakable token; without explicit break opportunities
+        # the tile wraps mid-segment ("...global.r" / "c.1", or a lone trailing digit off a build
+        # hash). <wbr> after each dot and underscore keeps every wrap on a segment boundary.
+        wrapped_ota = safe_ota.replace(".", ".<wbr>").replace("_", "_<wbr>")
+        # href carries the same "?ota=<version>" the old Open button set by hand, so the tile
+        # lands on the OTA detail view and drops any stale view/start/end params with it.
+        tile = (
+            f"<a class='ota-tile' href='?ota={quote(ota, safe='')}' target='_self' "
+            f"title='Total weighted events for {safe_ota}'>"
+            f"<span class='ota-tile-label'>{int(row.events):,} events</span>"
+            f"<span class='ota-tile-version'>{wrapped_ota}</span>"
+            "<span class='ota-tile-split'>"
+            f"<span class='ota-tile-pill ota-tile-pill-error'>Error {error_count:,}</span>"
+            f"<span class='ota-tile-pill ota-tile-pill-info'>Info {info_count:,}</span>"
+            "</span>"
+            "</a>"
+        )
+        product_line = _product_line_for_version(ota)
+        grouped_tiles.setdefault(product_line, []).append(tile)
+        group_events[product_line] = group_events.get(product_line, 0) + int(row.events)
+
+    # Known product lines in the order declared above, then anything that matched no prefix.
+    ordered_lines = [line for line in PRODUCT_LINE_PREFIXES if line in grouped_tiles]
+    ordered_lines += [line for line in grouped_tiles if line not in PRODUCT_LINE_PREFIXES]
+    for product_line in ordered_lines:
+        tiles = grouped_tiles[product_line]
+        meta = f"{len(tiles)} version{'' if len(tiles) == 1 else 's'} · {group_events[product_line]:,} events"
+        st.markdown(
+            "<div class='ota-group'>"
+            "<div class='ota-group-head'>"
+            # Uppercased in CSS, not here, so the group key stays the lookup value it came from.
+            f"<span class='ota-group-name'>{html.escape(product_line)}</span>"
+            f"<span class='ota-group-meta'>{html.escape(meta)}</span>"
+            "</div>"
+            f"<div class='ota-tile-grid'>{''.join(tiles)}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_ota_page(ota_version: str) -> None:
@@ -1073,8 +1273,10 @@ def main() -> None:
     st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
 
     try:
-        ota_versions = configured_ota_versions(REPO_ROOT)
-        summary = _load_summary(tuple(ota_versions))
+        # Empty tuple => load_ota_summary() runs without a DEVICE_VERSION filter, so the home
+        # view covers every OTA present in the data. Filtering by CINFO_REPORT here used to cut
+        # the tiles down to that subset (2 versions) while the data held many more.
+        summary = _load_summary(())
         selected_ota = st.query_params.get("ota")
         selected_view = st.query_params.get("view")
 
@@ -1084,7 +1286,7 @@ def main() -> None:
             _render_ota_page(selected_ota)
         else:
             _render_allowed_ota_versions_manager()
-            _render_home(summary, ota_versions)
+            _render_home(summary)
     except DashboardApiError as exc:
         st.error(str(exc))
         st.stop()
