@@ -946,6 +946,20 @@ UNGROUPED_PRODUCT_LINE = "other"
 _VERSION_TRIPLE_RE = re.compile(r"\d+\.\d+\.\d+")
 
 
+def _allowed_ota_order() -> list[str]:
+    """ALLOWED_OTA_VERSIONS in .env order -- the same list the chips at the top of the page show.
+
+    Served from the cached allowed-versions call the OTA manager already makes on this render,
+    so this costs no extra request. An unreachable backend degrades to "no preferred order"
+    rather than failing the page.
+    """
+    try:
+        payload = _load_allowed_ota_versions()
+    except DashboardApiError:
+        return []
+    return [str(value) for value in payload.get("ota_versions", [])]
+
+
 def _product_line_for_version(version: str) -> str:
     """Product line for an OTA version, by the major number of its first recognisable version.
 
@@ -1001,10 +1015,14 @@ def _render_home(summary: pd.DataFrame) -> None:
 
     st.markdown("### OTA tiles")
     totals = summary.groupby("DEVICE_VERSION", as_index=False)["events"].sum()
-    # Latest version first. Ordering the row positions directly (rather than via sort_values on a
-    # key column) keeps the mixed tuples intact -- pandas would try to compare them element-wise.
+    # Configured versions first, in ALLOWED_OTA_VERSIONS order, then everything else latest-first.
+    # Ordering the whole frame here (not per group) is enough: the group loop below appends in
+    # this order, so each product line inherits it.
+    allowed_rank = {ota: index for index, ota in enumerate(_allowed_ota_order())}
     versions = totals["DEVICE_VERSION"].tolist()
-    totals = totals.iloc[sorted(range(len(versions)), key=lambda i: _version_sort_key(versions[i]), reverse=True)]
+    configured = sorted((v for v in versions if v in allowed_rank), key=lambda v: allowed_rank[v])
+    remaining = sorted((v for v in versions if v not in allowed_rank), key=_version_sort_key, reverse=True)
+    totals = totals.set_index("DEVICE_VERSION").loc[configured + remaining].reset_index()
     type_lookup = summary.pivot_table(index="DEVICE_VERSION", columns="type", values="events", aggfunc="sum", fill_value=0)
 
     st.markdown(OTA_TILE_STYLE_BLOCK, unsafe_allow_html=True)
