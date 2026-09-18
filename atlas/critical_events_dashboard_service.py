@@ -356,6 +356,44 @@ def load_ota_priority_code_breakdown(
     return frame[["priority", "CODE", "normalized_description", "events"]]
 
 
+def load_ota_priority_device_breakdown(
+    config: DashboardConfig,
+    ota_version: str,
+    device_ids: list[str] | None = None,
+    start_ts: pd.Timestamp | None = None,
+    end_ts: pd.Timestamp | None = None,
+    limit_per_priority: int = 15,
+) -> pd.DataFrame:
+    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
+    sql = f'''
+        SELECT
+            priority_value AS priority,
+            "DEVICE_ID",
+            events
+        FROM (
+            SELECT
+                if(upperUTF8(trimBoth(ifNull(priority, ''))) = '', 'UNMAPPED', upperUTF8(trimBoth(ifNull(priority, '')))) AS priority_value,
+                "DEVICE_ID",
+                sum("COUNT") AS events
+            FROM {config.table_name}
+            WHERE {where_sql} AND type = 'ERROR'
+            GROUP BY priority_value, "DEVICE_ID"
+        )
+        ORDER BY priority_value, events DESC, "DEVICE_ID"
+        LIMIT {int(limit_per_priority)} BY priority_value
+    '''
+    frame = _read_clickhouse_df(config, sql)
+    if frame.empty:
+        return pd.DataFrame(columns=["priority", "DEVICE_ID", "events"])
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper().str.strip()
+    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
+    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("UNKNOWN").astype(str)
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame[["priority", "DEVICE_ID", "events"]].sort_values(
+        ["priority", "events"], ascending=[True, False]
+    ).reset_index(drop=True)
+
+
 def load_ota_top_devices(
     config: DashboardConfig,
     ota_version: str,

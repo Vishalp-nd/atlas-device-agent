@@ -646,6 +646,26 @@ def _load_priority_code_breakdown(
 
 
 @st.cache_data(show_spinner=True, ttl=300)
+def _load_priority_device_breakdown(
+    ota_version: str,
+    device_ids: tuple[str, ...],
+    start_date: str | None,
+    end_date_exclusive: str | None,
+) -> pd.DataFrame:
+    payload = _dashboard_api_post(
+        f"/atlas/dashboard/critical-events/{ota_version}/priority-device-breakdown",
+        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
+    )
+    frame = _frame_from_rows(payload.get("rows", []))
+    if frame.empty:
+        return pd.DataFrame(columns=["priority", "DEVICE_ID", "events"])
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("UNKNOWN").astype(str)
+    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
+    return frame
+
+
+@st.cache_data(show_spinner=True, ttl=300)
 def _load_top_devices(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/top-devices",
@@ -665,6 +685,7 @@ def _load_ota_page_data(ota_version: str, device_ids: tuple[str, ...], start_dat
         "type_counts": lambda: _load_type_counts(ota_version, device_ids, start_date, end_date_exclusive),
         "priority_counts": lambda: _load_priority_counts(ota_version, device_ids, start_date, end_date_exclusive),
         "priority_breakdown": lambda: _load_priority_code_breakdown(ota_version, device_ids, start_date, end_date_exclusive),
+        "priority_device_breakdown": lambda: _load_priority_device_breakdown(ota_version, device_ids, start_date, end_date_exclusive),
         "daily_counts": lambda: _load_daily_counts(ota_version, device_ids, start_date, end_date_exclusive),
         "process_counts": lambda: _load_top_processes(ota_version, device_ids, start_date, end_date_exclusive),
         "code_counts": lambda: _load_top_codes(ota_version, device_ids, start_date, end_date_exclusive),
@@ -748,6 +769,28 @@ def _priority_breakdown_bar(data: pd.DataFrame, priority: str):
     )
     fig.update_xaxes(tickangle=-35)
     fig.update_traces(hovertemplate="Code=%{customdata[0]}<br>Normalized description=%{customdata[1]}<br>Full label=%{customdata[2]}<br>Count=%{y}<extra></extra>")
+    return fig
+
+
+def _priority_device_bar(data: pd.DataFrame, priority: str):
+    plot_data = data.sort_values("events", ascending=False).copy()
+    plot_data["DEVICE_ID"] = plot_data["DEVICE_ID"].astype(str)
+    plot_data["label"] = plot_data["DEVICE_ID"].map(lambda value: _truncate_label(value, PRIORITY_BREAKDOWN_LABEL_LIMIT))
+    fig = px.bar(
+        plot_data,
+        x="label",
+        y="events",
+        hover_data={"DEVICE_ID": True, "label": False},
+        title=f"{priority} by device",
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=50, b=10),
+        xaxis_title="Device ID",
+        yaxis_title="Count",
+        xaxis={"type": "category", "categoryorder": "array", "categoryarray": plot_data["label"].tolist()},
+    )
+    fig.update_xaxes(tickangle=-35)
+    fig.update_traces(hovertemplate="Device=%{customdata[0]}<br>Count=%{y}<extra></extra>")
     return fig
 
 
@@ -970,11 +1013,13 @@ def _render_priority_breakdown_page(ota_version: str) -> None:
 
     page_data = _load_ota_page_data(ota_version, selected_device_ids, start_date, end_date_exclusive)
     breakdown = page_data["priority_breakdown"]
+    device_breakdown = page_data["priority_device_breakdown"]
     if breakdown.empty:
         st.info("No priority breakdown rows found for this OTA selection.")
         return
 
     priorities = [f"P{level}" for level in range(5)]
+    st.markdown("### Code breakdown by priority")
     chart_cols = st.columns(2)
     for index, priority in enumerate(priorities):
         priority_frame = breakdown[breakdown["priority"] == priority].copy()
@@ -989,6 +1034,26 @@ def _render_priority_breakdown_page(ota_version: str) -> None:
                     "Code-level breakdown for this priority bucket.",
                     key=f"priority_breakdown_chart_{priority}_{ota_version}",
                 )
+
+    st.markdown("### Device breakdown by priority")
+    st.caption("Devices ranked from highest to lowest event count within each priority bucket.")
+    if device_breakdown.empty:
+        st.info("No device-level priority rows found for this OTA selection.")
+    else:
+        device_chart_cols = st.columns(2)
+        for index, priority in enumerate(priorities):
+            device_frame = device_breakdown[device_breakdown["priority"] == priority].copy()
+            target = device_chart_cols[index % 2]
+            with target:
+                if device_frame.empty:
+                    st.info(f"No device rows found for {priority}.")
+                else:
+                    _render_chart_card(
+                        _priority_device_bar(device_frame, priority),
+                        f"{priority} by device",
+                        "Highest-to-lowest device event counts for this priority bucket.",
+                        key=f"priority_device_chart_{priority}_{ota_version}",
+                    )
 
     unmapped = breakdown[~breakdown["priority"].isin(priorities)].copy()
     if not unmapped.empty:
