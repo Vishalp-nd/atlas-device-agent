@@ -124,15 +124,23 @@ def discover_latest_versions() -> list[str]:
     return latest_versions
 
 
-def merge_versions(existing: list[str], discovered: list[str]) -> list[str]:
+def merge_versions(*version_groups: list[str]) -> list[str]:
+    """Concatenate groups in the order given, keeping the first occurrence of each version.
+
+    Callers pass the freshly discovered versions first so the newest OTAs land at the head of
+    ALLOWED_OTA_VERSIONS -- the dashboard renders its OTA chips in .env order, so head-of-list
+    is what shows up first on screen. Dedup-on-first-occurrence makes this idempotent: a rerun
+    that discovers the same versions reproduces the same list rather than flipping it.
+    """
     merged: list[str] = []
     seen: set[str] = set()
-    for version in [*existing, *discovered]:
-        normalized = version.strip()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        merged.append(normalized)
+    for group in version_groups:
+        for version in group:
+            normalized = version.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(normalized)
     return merged
 
 
@@ -141,11 +149,11 @@ def main() -> int:
     env_path = Path(args.env_file).resolve()
     existing = read_allowed_ota_versions(env_path)
     discovered = discover_latest_versions()
-    merged = merge_versions(existing, discovered)
+    merged = merge_versions(discovered, existing)
 
     print("Existing:", ", ".join(existing) if existing else "<empty>")
     print("Discovered latest:", ", ".join(discovered) if discovered else "<none>")
-    print("Merged:", ", ".join(merged) if merged else "<empty>")
+    print("Merged (newest first):", ", ".join(merged) if merged else "<empty>")
 
     if args.dry_run:
         return 0
