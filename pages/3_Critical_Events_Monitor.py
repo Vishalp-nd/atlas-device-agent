@@ -738,12 +738,19 @@ def _render_home(summary: pd.DataFrame) -> None:
 
 PROCESS_CODE_TABLE_STYLE_BLOCK = """
 <style>
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Outfit', Arial, sans-serif;
+    color: #111111;
+    background: #ffffff;
+}
 .process-code-table-wrap {
-    max-height: 480px;
+    max-height: 460px;
     overflow-y: auto;
     border: 1px solid rgba(120, 120, 120, 0.25);
     border-radius: 8px;
-    margin-bottom: 0.4rem;
+    box-sizing: border-box;
 }
 .process-code-table {
     width: 100%;
@@ -863,15 +870,22 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
             f"<td>{copy_button}<div class='process-code-devices'>{devices_inner}</div></td>"
             "</tr>"
         )
-    table_html = (
-        "<div class='process-code-table-wrap'>"
-        "<table class='process-code-table'>"
-        f"<thead><tr>{header_html}</tr></thead>"
-        f"<tbody>{''.join(row_chunks)}</tbody>"
-        "</table>"
-        "</div>"
+    # This has to be a real <iframe> (via st.iframe) rather than st.markdown: Streamlit strips
+    # inline event-handler attributes like onclick from unsafe_allow_html markdown even though
+    # it leaves the rest of the raw HTML alone, which is why the Copy button rendered but never
+    # did anything. An iframe has no such sanitization. height="content" auto-measures the
+    # rendered height, and since .process-code-table-wrap has its own CSS max-height + internal
+    # scroll, that measurement is naturally capped for tables with many rows.
+    document_html = (
+        PROCESS_CODE_TABLE_STYLE_BLOCK
+        + "<div class='process-code-table-wrap'>"
+        + "<table class='process-code-table'>"
+        + f"<thead><tr>{header_html}</tr></thead>"
+        + f"<tbody>{''.join(row_chunks)}</tbody>"
+        + "</table>"
+        + "</div>"
     )
-    st.markdown(table_html, unsafe_allow_html=True)
+    st.iframe(document_html, height="content")
 
 
 def _priority_family(priority: str) -> int:
@@ -976,7 +990,6 @@ def _render_ota_page(ota_version: str) -> None:
     priority_groups = sorted(table["priority"].dropna().unique().tolist(), key=_priority_sort_key)
 
     st.markdown("### Process / code details by priority")
-    st.markdown(PROCESS_CODE_TABLE_STYLE_BLOCK, unsafe_allow_html=True)
 
     for priority in priority_groups:
         group_total = table[table["priority"] == priority]
