@@ -765,17 +765,28 @@ html, body {
     overflow-wrap: anywhere;
 }
 /* Fixed layout needs explicit per-column widths (they sum to 100%) so every
-   column stays visible without the table growing wider than its container. */
-.process-code-table th:nth-child(1), .process-code-table td:nth-child(1) { width: 11%; }  /* Process */
-.process-code-table th:nth-child(2), .process-code-table td:nth-child(2) { width: 6%; }   /* Code */
-.process-code-table th:nth-child(3), .process-code-table td:nth-child(3) { width: 6%; }   /* Code Aux */
-.process-code-table th:nth-child(4), .process-code-table td:nth-child(4) { width: 7%; }   /* Severity */
-.process-code-table th:nth-child(5), .process-code-table td:nth-child(5) { width: 6%; }   /* Priority */
-.process-code-table th:nth-child(6), .process-code-table td:nth-child(6) { width: 19%; }  /* Description Pattern */
-.process-code-table th:nth-child(7), .process-code-table td:nth-child(7) { width: 19%; }  /* Sample Description */
-.process-code-table th:nth-child(8), .process-code-table td:nth-child(8) { width: 7%; }   /* Occurrences */
-.process-code-table th:nth-child(9), .process-code-table td:nth-child(9) { width: 7%; }   /* Device Count */
-.process-code-table th:nth-child(10), .process-code-table td:nth-child(10) { width: 12%; } /* Devices */
+   column stays visible without the table growing wider than its container. Two
+   width sets -- keyed by a semantic class per column rather than nth-child --
+   since the Code Aux column drops out entirely when it's being ignored. */
+.process-code-table.has-code-aux .col-process { width: 11%; }
+.process-code-table.has-code-aux .col-code { width: 6%; }
+.process-code-table.has-code-aux .col-code-aux { width: 6%; }
+.process-code-table.has-code-aux .col-severity { width: 7%; }
+.process-code-table.has-code-aux .col-priority { width: 6%; }
+.process-code-table.has-code-aux .col-desc-pattern { width: 19%; }
+.process-code-table.has-code-aux .col-sample-desc { width: 19%; }
+.process-code-table.has-code-aux .col-occurrences { width: 7%; }
+.process-code-table.has-code-aux .col-device-count { width: 7%; }
+.process-code-table.has-code-aux .col-devices { width: 12%; }
+.process-code-table.no-code-aux .col-process { width: 12%; }
+.process-code-table.no-code-aux .col-code { width: 7%; }
+.process-code-table.no-code-aux .col-severity { width: 7%; }
+.process-code-table.no-code-aux .col-priority { width: 7%; }
+.process-code-table.no-code-aux .col-desc-pattern { width: 21%; }
+.process-code-table.no-code-aux .col-sample-desc { width: 21%; }
+.process-code-table.no-code-aux .col-occurrences { width: 7%; }
+.process-code-table.no-code-aux .col-device-count { width: 7%; }
+.process-code-table.no-code-aux .col-devices { width: 11%; }
 .process-code-table thead th {
     position: sticky;
     top: 0;
@@ -817,15 +828,29 @@ html, body {
 
 
 def _render_process_code_table(frame: pd.DataFrame) -> None:
-    headers = [
-        "Process", "Code", "Code Aux", "Severity", "Priority",
-        "Description Pattern", "Sample Description", "Occurrences", "Device Count", "Devices",
+    # The "Ignore Code Aux" toggle merges rows and drops the CODE_AUX column entirely (see
+    # _merge_ignoring_code_aux), so the column set here is driven by whether it's still present
+    # rather than a separate flag -- one source of truth for what this frame actually contains.
+    show_code_aux = "CODE_AUX" in frame.columns
+    table_class = "process-code-table has-code-aux" if show_code_aux else "process-code-table no-code-aux"
+
+    columns = [("col-process", "Process"), ("col-code", "Code")]
+    if show_code_aux:
+        columns.append(("col-code-aux", "Code Aux"))
+    columns += [
+        ("col-severity", "Severity"),
+        ("col-priority", "Priority"),
+        ("col-desc-pattern", "Description Pattern"),
+        ("col-sample-desc", "Sample Description"),
+        ("col-occurrences", "Occurrences"),
+        ("col-device-count", "Device Count"),
+        ("col-devices", "Devices"),
     ]
-    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    header_html = "".join(f"<th class='{cls}'>{html.escape(label)}</th>" for cls, label in columns)
+
     row_chunks = []
     for row in frame.itertuples(index=False):
         code = "" if pd.isna(row.CODE) else str(int(row.CODE))
-        code_aux = "" if pd.isna(row.CODE_AUX) else str(int(row.CODE_AUX))
         occurrences = 0 if pd.isna(row.occurrences) else int(row.occurrences)
         devices = row.devices or []
         device_count = len(devices)
@@ -856,20 +881,23 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
             f'data-devices="{html.escape(devices_text)}" '
             f'onclick="{html.escape(copy_button_js)}">Copy</button>'
         )
-        row_chunks.append(
-            "<tr>"
-            f"<td>{html.escape(str(row.PROCESS_NAME))}</td>"
-            f"<td>{html.escape(code)}</td>"
-            f"<td>{html.escape(code_aux)}</td>"
-            f"<td>{html.escape(str(row.type))}</td>"
-            f"<td>{html.escape(str(row.priority))}</td>"
-            f"<td>{html.escape(str(row.description_pattern))}</td>"
-            f"<td>{html.escape(str(row.sample_description))}</td>"
-            f"<td>{occurrences}</td>"
-            f"<td>{device_count}</td>"
-            f"<td>{copy_button}<div class='process-code-devices'>{devices_inner}</div></td>"
-            "</tr>"
-        )
+        cells = [
+            f"<td class='col-process'>{html.escape(str(row.PROCESS_NAME))}</td>",
+            f"<td class='col-code'>{html.escape(code)}</td>",
+        ]
+        if show_code_aux:
+            code_aux = "" if pd.isna(row.CODE_AUX) else str(int(row.CODE_AUX))
+            cells.append(f"<td class='col-code-aux'>{html.escape(code_aux)}</td>")
+        cells += [
+            f"<td class='col-severity'>{html.escape(str(row.type))}</td>",
+            f"<td class='col-priority'>{html.escape(str(row.priority))}</td>",
+            f"<td class='col-desc-pattern'>{html.escape(str(row.description_pattern))}</td>",
+            f"<td class='col-sample-desc'>{html.escape(str(row.sample_description))}</td>",
+            f"<td class='col-occurrences'>{occurrences}</td>",
+            f"<td class='col-device-count'>{device_count}</td>",
+            f"<td class='col-devices'>{copy_button}<div class='process-code-devices'>{devices_inner}</div></td>",
+        ]
+        row_chunks.append("<tr>" + "".join(cells) + "</tr>")
     # This has to be a real <iframe> (via st.iframe) rather than st.markdown: Streamlit strips
     # inline event-handler attributes like onclick from unsafe_allow_html markdown even though
     # it leaves the rest of the raw HTML alone, which is why the Copy button rendered but never
@@ -879,13 +907,42 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
     document_html = (
         PROCESS_CODE_TABLE_STYLE_BLOCK
         + "<div class='process-code-table-wrap'>"
-        + "<table class='process-code-table'>"
+        + f"<table class='{table_class}'>"
         + f"<thead><tr>{header_html}</tr></thead>"
         + f"<tbody>{''.join(row_chunks)}</tbody>"
         + "</table>"
         + "</div>"
     )
     st.iframe(document_html, height="content")
+
+
+def _merge_ignoring_code_aux(frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "PROCESS_NAME", "CODE", "type", "priority",
+        "description_pattern", "sample_description", "occurrences", "devices",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    group_cols = ["PROCESS_NAME", "CODE", "type", "priority", "description_pattern"]
+    merged_rows = []
+    for _, group in frame.groupby(group_cols, dropna=False, sort=False):
+        merged_devices = sorted({str(device) for devices in group["devices"] for device in (devices or [])})
+        # Rows in a group only ever differ by CODE_AUX and (potentially) sample_description --
+        # the highest-occurrence row's sample_description is the most representative one to show.
+        representative = group.loc[group["occurrences"].idxmax()]
+        merged_rows.append({
+            "PROCESS_NAME": representative["PROCESS_NAME"],
+            "CODE": representative["CODE"],
+            "type": representative["type"],
+            "priority": representative["priority"],
+            "description_pattern": representative["description_pattern"],
+            "sample_description": representative["sample_description"],
+            "occurrences": int(group["occurrences"].sum()),
+            "devices": merged_devices,
+        })
+    merged = pd.DataFrame(merged_rows, columns=columns)
+    merged["occurrences"] = merged["occurrences"].astype("Int64")
+    return merged.sort_values("occurrences", ascending=False).reset_index(drop=True)
 
 
 def _priority_family(priority: str) -> int:
@@ -1000,11 +1057,22 @@ def _render_ota_page(ota_version: str) -> None:
         )
         priority_label = f"{priority} - {ERROR_PRIORITIES[priority]}" if priority in ERROR_PRIORITIES else priority
         st.markdown(f"**{priority_label}**")
-        if group_filtered.empty:
+        ignore_code_aux = st.toggle(
+            "Ignore Code Aux",
+            key=f"ignore_code_aux_{ota_version}_{priority}",
+            help="Combine rows that only differ by Code Aux, merging their occurrences, device counts and devices.",
+        )
+        if ignore_code_aux:
+            display_frame = _merge_ignoring_code_aux(group_filtered)
+            display_total = _merge_ignoring_code_aux(group_total)
+        else:
+            display_frame = group_filtered
+            display_total = group_total
+        if display_frame.empty:
             st.info("No rows match the selected filters.")
         else:
-            _render_process_code_table(group_filtered)
-        st.caption(f"Showing {len(group_filtered)} of {len(group_total)} entries.")
+            _render_process_code_table(display_frame)
+        st.caption(f"Showing {len(display_frame)} of {len(display_total)} entries.")
 
 
 def main() -> None:
