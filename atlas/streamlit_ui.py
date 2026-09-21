@@ -607,40 +607,32 @@ def _inject_css() -> None:
             color: #ffffff !important;
         }
 
-        /* Same dark-mode-browser bleed-through as above, on st.checkbox/st.toggle (both share
-           the stCheckbox testid): the label text rendered in near-invisible dark-mode colors. */
+        /* Same dark-mode-browser bleed-through as above, on st.toggle/st.checkbox (both share
+           the stCheckbox testid): the label text rendered near-invisible. */
         [data-testid="stCheckbox"],
         [data-testid="stCheckbox"] * {
             color: #111111 !important;
         }
 
-        /* The toggle's visible track is an emotion-styled span with no testid or role of its
-           own -- the only role="switch" here is on the visually hidden <input>, so styling that
-           shows nothing. The track is always the element immediately before the widget label,
-           which does carry a testid, hence the :has() sibling match. Its child is the knob.
-           Both need an outline or they're white-on-white in the off state. */
+        /* The toggle's track takes its colour from theme.colors.borderColor when off and
+           theme.colors.primary when on -- both arrive as the wrong values here, so it renders
+           invisible-on-white when off and Streamlit's default orange when on. Neither the track
+           nor the knob carries a testid or role (the only role="switch" is on the hidden input),
+           but emotion gives each a stable target class, which is the reliable hook. The
+           :has(+ label) selectors are a structural fallback if those classes ever change. */
+        [data-testid="stCheckbox"] .ew2p8o5,
         [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) {
-            border: 1.5px solid #111111 !important;
-            box-sizing: border-box !important;
+            background-color: #9aa0a6 !important;
         }
 
-        [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) > * {
-            background: #ffffff !important;
-            border: 1px solid #111111 !important;
-            box-sizing: border-box !important;
-        }
-
-        /* The fills are split by state so the off position isn't white-on-white, and so the on
-           position uses the app's green instead of Streamlit's built-in orange primary (the
-           configured theme colour doesn't reach this widget for the same reason as above).
-           Keeping them in their own rules means that if :has() ever fails to match, the track
-           falls back to Streamlit's own colours rather than being forced to one flat fill. */
-        [data-testid="stCheckbox"]:not(:has(input:checked)) *:has(+ [data-testid="stWidgetLabel"]) {
-            background: #d0d0d0 !important;
-        }
-
+        [data-testid="stCheckbox"]:has(input:checked) .ew2p8o5,
         [data-testid="stCheckbox"]:has(input:checked) *:has(+ [data-testid="stWidgetLabel"]) {
-            background: var(--accent) !important;
+            background-color: var(--accent) !important;
+        }
+
+        [data-testid="stCheckbox"] .ew2p8o6,
+        [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) > * {
+            background-color: #ffffff !important;
         }
 
         @media (max-width: 800px) {
