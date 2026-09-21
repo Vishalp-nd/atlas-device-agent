@@ -625,8 +625,22 @@ def _inject_css() -> None:
         }
 
         [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) > * {
+            background: #ffffff !important;
             border: 1px solid #111111 !important;
             box-sizing: border-box !important;
+        }
+
+        /* The fills are split by state so the off position isn't white-on-white, and so the on
+           position uses the app's green instead of Streamlit's built-in orange primary (the
+           configured theme colour doesn't reach this widget for the same reason as above).
+           Keeping them in their own rules means that if :has() ever fails to match, the track
+           falls back to Streamlit's own colours rather than being forced to one flat fill. */
+        [data-testid="stCheckbox"]:not(:has(input:checked)) *:has(+ [data-testid="stWidgetLabel"]) {
+            background: #d0d0d0 !important;
+        }
+
+        [data-testid="stCheckbox"]:has(input:checked) *:has(+ [data-testid="stWidgetLabel"]) {
+            background: var(--accent) !important;
         }
 
         @media (max-width: 800px) {
