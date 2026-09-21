@@ -104,6 +104,43 @@ COMPACT_LAYOUT_STYLE_BLOCK = """
 </style>
 """
 
+# Covers the viewport while main() renders, so partially-built widgets are never visible.
+LOADING_OVERLAY_HTML = """
+<style>
+.atlas-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9rem;
+    background: var(--background-color, #ffffff);
+}
+.atlas-loading-spinner {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 4px solid rgba(49, 51, 63, 0.12);
+    border-top-color: #2f7de1;
+    animation: atlas-loading-spin 0.85s linear infinite;
+}
+.atlas-loading-text {
+    font-size: 0.9rem;
+    color: var(--text-color, #5a6472);
+    opacity: 0.75;
+}
+@keyframes atlas-loading-spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+<div class="atlas-loading-overlay">
+    <div class="atlas-loading-spinner"></div>
+    <div class="atlas-loading-text">Loading dashboard…</div>
+</div>
+"""
+
 
 class DashboardApiError(RuntimeError):
     pass
@@ -491,7 +528,7 @@ def _render_allowed_ota_versions_manager() -> None:
     st.divider()
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_summary(ota_versions: tuple[str, ...]) -> pd.DataFrame:
     payload = _dashboard_api_post("/atlas/dashboard/critical-events/summary", {"ota_versions": list(ota_versions)})
     frame = _frame_from_rows(payload.get("rows", []))
@@ -503,7 +540,7 @@ def _load_summary(ota_versions: tuple[str, ...]) -> pd.DataFrame:
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_detail(
     ota_version: str,
     device_ids: tuple[str, ...],
@@ -521,7 +558,7 @@ def _load_detail(
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_date_bounds(ota_version: str) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
     payload = _dashboard_api_get(f"/atlas/dashboard/critical-events/{ota_version}/date-bounds")
     min_ts = pd.to_datetime(payload.get("min_timestamp"), errors="coerce")
@@ -529,7 +566,7 @@ def _load_date_bounds(ota_version: str) -> tuple[pd.Timestamp | None, pd.Timesta
     return (None if pd.isna(min_ts) else min_ts, None if pd.isna(max_ts) else max_ts)
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_devices(ota_version: str, start_date: str | None, end_date_exclusive: str | None) -> list[str]:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/devices",
@@ -538,7 +575,7 @@ def _load_devices(ota_version: str, start_date: str | None, end_date_exclusive: 
     return [str(device_id) for device_id in payload.get("device_ids", [])]
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_type_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/type-counts",
@@ -552,7 +589,7 @@ def _load_type_counts(ota_version: str, device_ids: tuple[str, ...], start_date:
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_priority_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/priority-counts",
@@ -566,7 +603,7 @@ def _load_priority_counts(ota_version: str, device_ids: tuple[str, ...], start_d
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_daily_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/daily-counts",
@@ -581,7 +618,7 @@ def _load_daily_counts(ota_version: str, device_ids: tuple[str, ...], start_date
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_top_processes(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/top-processes",
@@ -595,7 +632,7 @@ def _load_top_processes(ota_version: str, device_ids: tuple[str, ...], start_dat
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_top_codes(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/top-codes",
@@ -609,7 +646,7 @@ def _load_top_codes(ota_version: str, device_ids: tuple[str, ...], start_date: s
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/top-code-details",
@@ -623,7 +660,7 @@ def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_priority_code_breakdown(
     ota_version: str,
     device_ids: tuple[str, ...],
@@ -644,7 +681,7 @@ def _load_priority_code_breakdown(
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_priority_device_breakdown(
     ota_version: str,
     device_ids: tuple[str, ...],
@@ -664,7 +701,7 @@ def _load_priority_device_breakdown(
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_top_devices(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
         f"/atlas/dashboard/critical-events/{ota_version}/top-devices",
@@ -678,7 +715,7 @@ def _load_top_devices(ota_version: str, device_ids: tuple[str, ...], start_date:
     return frame
 
 
-@st.cache_data(show_spinner=True, ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def _load_ota_page_data(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> dict[str, pd.DataFrame]:
     loaders = {
         "type_counts": lambda: _load_type_counts(ota_version, device_ids, start_date, end_date_exclusive),
@@ -1266,11 +1303,14 @@ def _render_priority_breakdown_page(ota_version: str) -> None:
 def main() -> None:
     configure_app()
     st.markdown(COMPACT_LAYOUT_STYLE_BLOCK, unsafe_allow_html=True)
-    _render_sidebar_nav()
-    st.title("Critical Events Monitor")
-    st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
+    loading_overlay = st.empty()
+    loading_overlay.markdown(LOADING_OVERLAY_HTML, unsafe_allow_html=True)
 
     try:
+        _render_sidebar_nav()
+        st.title("Critical Events Monitor")
+        st.caption("Production dashboard backed by ClickHouse summary and detail queries.")
+
         # Empty tuple => load_ota_summary() runs without a DEVICE_VERSION filter, so the home
         # view covers every OTA present in the data. Filtering by CINFO_REPORT here used to cut
         # the tiles down to that subset (2 versions) while the data held many more.
@@ -1288,6 +1328,8 @@ def main() -> None:
     except DashboardApiError as exc:
         st.error(str(exc))
         st.stop()
+    finally:
+        loading_overlay.empty()
 
 
 if __name__ == "__main__":
