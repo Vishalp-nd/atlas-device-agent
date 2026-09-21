@@ -739,19 +739,36 @@ def _render_home(summary: pd.DataFrame) -> None:
 PROCESS_CODE_TABLE_STYLE_BLOCK = """
 <style>
 .process-code-table-wrap {
-    max-height: 440px;
+    max-height: 480px;
     overflow-y: auto;
-    overflow-x: auto;
     border: 1px solid rgba(120, 120, 120, 0.25);
     border-radius: 8px;
     margin-bottom: 0.4rem;
 }
 .process-code-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 0.85rem;
-    white-space: nowrap;
 }
+.process-code-table th,
+.process-code-table td {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+/* Fixed layout needs explicit per-column widths (they sum to 100%) so every
+   column stays visible without the table growing wider than its container. */
+.process-code-table th:nth-child(1), .process-code-table td:nth-child(1) { width: 11%; }  /* Process */
+.process-code-table th:nth-child(2), .process-code-table td:nth-child(2) { width: 6%; }   /* Code */
+.process-code-table th:nth-child(3), .process-code-table td:nth-child(3) { width: 6%; }   /* Code Aux */
+.process-code-table th:nth-child(4), .process-code-table td:nth-child(4) { width: 7%; }   /* Severity */
+.process-code-table th:nth-child(5), .process-code-table td:nth-child(5) { width: 6%; }   /* Priority */
+.process-code-table th:nth-child(6), .process-code-table td:nth-child(6) { width: 19%; }  /* Description Pattern */
+.process-code-table th:nth-child(7), .process-code-table td:nth-child(7) { width: 19%; }  /* Sample Description */
+.process-code-table th:nth-child(8), .process-code-table td:nth-child(8) { width: 7%; }   /* Occurrences */
+.process-code-table th:nth-child(9), .process-code-table td:nth-child(9) { width: 7%; }   /* Device Count */
+.process-code-table th:nth-child(10), .process-code-table td:nth-child(10) { width: 12%; } /* Devices */
 .process-code-table thead th {
     position: sticky;
     top: 0;
@@ -766,15 +783,9 @@ PROCESS_CODE_TABLE_STYLE_BLOCK = """
     border-bottom: 1px solid rgba(120, 120, 120, 0.15);
     vertical-align: top;
 }
-.process-code-table td.wrap-cell {
-    white-space: normal;
-    min-width: 200px;
-}
 .process-code-devices {
     max-height: 70px;
-    min-width: 140px;
     overflow-y: auto;
-    white-space: normal;
     word-break: break-word;
     padding-right: 0.3rem;
 }
@@ -813,10 +824,30 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
         device_count = len(devices)
         devices_inner = "".join(f"<div>{html.escape(str(device))}</div>" for device in devices)
         devices_text = "\n".join(str(device) for device in devices)
+        # navigator.clipboard needs a secure context (HTTPS or localhost) and this dashboard is
+        # typically served over plain HTTP on a LAN address, so it silently fails there. Fall back
+        # to the legacy execCommand('copy') path (via a temporary offscreen textarea) whenever the
+        # Clipboard API isn't available.
+        copy_button_js = (
+            "var t=this.dataset.devices;var b=this;"
+            "function fb(){"
+            "var ta=document.createElement('textarea');ta.value=t;"
+            "ta.style.position='fixed';ta.style.left='-9999px';"
+            "document.body.appendChild(ta);ta.focus();ta.select();"
+            "try{document.execCommand('copy');}catch(e){}"
+            "document.body.removeChild(ta);"
+            "b.textContent='Copied!';setTimeout(function(){b.textContent='Copy';},1200);"
+            "}"
+            "if(navigator.clipboard&&window.isSecureContext){"
+            "navigator.clipboard.writeText(t).then(function(){"
+            "b.textContent='Copied!';setTimeout(function(){b.textContent='Copy';},1200);"
+            "}).catch(fb);"
+            "}else{fb();}"
+        )
         copy_button = (
             "<button type='button' class='copy-devices-btn' title='Copy all device IDs' "
             f'data-devices="{html.escape(devices_text)}" '
-            "onclick=\"navigator.clipboard.writeText(this.dataset.devices)\">Copy</button>"
+            f'onclick="{html.escape(copy_button_js)}">Copy</button>'
         )
         row_chunks.append(
             "<tr>"
@@ -825,8 +856,8 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
             f"<td>{html.escape(code_aux)}</td>"
             f"<td>{html.escape(str(row.type))}</td>"
             f"<td>{html.escape(str(row.priority))}</td>"
-            f"<td class='wrap-cell'>{html.escape(str(row.description_pattern))}</td>"
-            f"<td class='wrap-cell'>{html.escape(str(row.sample_description))}</td>"
+            f"<td>{html.escape(str(row.description_pattern))}</td>"
+            f"<td>{html.escape(str(row.sample_description))}</td>"
             f"<td>{occurrences}</td>"
             f"<td>{device_count}</td>"
             f"<td>{copy_button}<div class='process-code-devices'>{devices_inner}</div></td>"
@@ -944,37 +975,23 @@ def _render_ota_page(ota_version: str) -> None:
 
     priority_groups = sorted(table["priority"].dropna().unique().tolist(), key=_priority_sort_key)
 
-    # Split into families (P0-P4, P100-P104, ...) so the 2-per-row pairing below resets at
-    # each family boundary instead of running as one flat sequence -- otherwise the last
-    # P0-P4 table (when that family has an odd count) would end up paired with P100.
-    families: list[list[str]] = []
-    for priority in priority_groups:
-        family_id = _priority_family(priority)
-        if not families or _priority_family(families[-1][-1]) != family_id:
-            families.append([])
-        families[-1].append(priority)
-
     st.markdown("### Process / code details by priority")
     st.markdown(PROCESS_CODE_TABLE_STYLE_BLOCK, unsafe_allow_html=True)
 
-    for family in families:
-        for pair_start in range(0, len(family), 2):
-            pair_cols = st.columns(2)
-            for index, priority in enumerate(family[pair_start:pair_start + 2]):
-                group_total = table[table["priority"] == priority]
-                group_filtered = (
-                    filtered[filtered["priority"] == priority]
-                    .sort_values("occurrences", ascending=False)
-                    .reset_index(drop=True)
-                )
-                priority_label = f"{priority} - {ERROR_PRIORITIES[priority]}" if priority in ERROR_PRIORITIES else priority
-                with pair_cols[index]:
-                    st.markdown(f"**{priority_label}**")
-                    if group_filtered.empty:
-                        st.info("No rows match the selected filters.")
-                    else:
-                        _render_process_code_table(group_filtered)
-                    st.caption(f"Showing {len(group_filtered)} of {len(group_total)} entries.")
+    for priority in priority_groups:
+        group_total = table[table["priority"] == priority]
+        group_filtered = (
+            filtered[filtered["priority"] == priority]
+            .sort_values("occurrences", ascending=False)
+            .reset_index(drop=True)
+        )
+        priority_label = f"{priority} - {ERROR_PRIORITIES[priority]}" if priority in ERROR_PRIORITIES else priority
+        st.markdown(f"**{priority_label}**")
+        if group_filtered.empty:
+            st.info("No rows match the selected filters.")
+        else:
+            _render_process_code_table(group_filtered)
+        st.caption(f"Showing {len(group_filtered)} of {len(group_total)} entries.")
 
 
 def main() -> None:
