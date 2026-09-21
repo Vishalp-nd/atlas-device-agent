@@ -607,6 +607,31 @@ def _inject_css() -> None:
             color: #ffffff !important;
         }
 
+        /* Same dark-mode-browser bleed-through as above, on st.checkbox/st.toggle (both share
+           the stCheckbox testid). Without this, the label text and the switch track render in
+           near-invisible dark-mode colors on this forced-white page. */
+        [data-testid="stCheckbox"],
+        [data-testid="stCheckbox"] * {
+            color: #111111 !important;
+        }
+
+        [data-testid="stCheckbox"] [role="checkbox"],
+        [data-testid="stCheckbox"] [role="switch"] {
+            background: #d8d8d8 !important;
+            border: 1px solid var(--border) !important;
+        }
+
+        [data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
+        [data-testid="stCheckbox"] [role="switch"][aria-checked="true"] {
+            background: var(--accent) !important;
+            border-color: var(--accent) !important;
+        }
+
+        [data-testid="stCheckbox"] [role="checkbox"] svg,
+        [data-testid="stCheckbox"] [role="switch"] svg {
+            fill: #ffffff !important;
+        }
+
         @media (max-width: 800px) {
             .hero { padding: 1rem; border-radius: 16px; }
             .hero h1 { font-size: 1.2rem; }
