@@ -629,29 +629,36 @@ def _inject_css() -> None:
         }
 
         /* The toggle's track takes its colour from theme.colors.borderColor when off and
-           theme.colors.primary when on -- both arrive as the wrong values here, so it renders
-           invisible-on-white when off and Streamlit's default orange when on. Neither the track
-           nor the knob has a testid or role of its own (the only role="switch" is on the hidden
-           input), so these hook onto emotion's stable target classes, with the DOM shape
-           (stCheckbox > switch > [hidden-input span] + track > knob) as the fallback.
-           Everything here is deliberately plain CSS: these selectors previously shared a rule
-           with a :has() one, and a browser that doesn't support :has() drops the whole
-           comma-separated rule -- including the selectors it does understand. */
-        [data-testid="stCheckbox"] .ew2p8o5,
-        [data-testid="stCheckbox"] > * > span + div {
-            background-color: #9aa0a6 !important;
+           theme.colors.primary when on -- both arrive as the wrong values here, so it is
+           invisible against white when off (only the hover colour shows) and Streamlit's
+           default orange when on. Neither track nor knob carries a testid, role or stable
+           class, so these match purely on position inside the widget:
+
+               stCheckbox > switch > [hidden-input span | track | label]
+                                                            `-> knob
+
+           Depth-based selectors are the one hook that doesn't depend on tag names, emotion's
+           hashed classes or the Streamlit version. They're also plain CSS by design -- an
+           unsupported :has() anywhere in a comma-separated rule makes a browser drop the
+           entire rule, including the selectors it does understand. */
+        [data-testid="stCheckbox"] > * > * {
+            background-color: #6b7280 !important;
+        }
+
+        [data-testid="stCheckbox"] > * > * > * {
+            background-color: #ffffff !important;
         }
 
         /* The switch wrapper gets data-selected while on, so the on-state colour needs no
-           :checked lookup. */
-        [data-testid="stCheckbox"] [data-selected] .ew2p8o5,
-        [data-testid="stCheckbox"] > [data-selected] > span + div {
+           :checked lookup. Only direct children match, so the knob stays white. */
+        [data-testid="stCheckbox"] [data-selected] > * {
             background-color: var(--accent) !important;
         }
 
-        [data-testid="stCheckbox"] .ew2p8o6,
-        [data-testid="stCheckbox"] > * > span + div > div {
-            background-color: #ffffff !important;
+        /* Last, so it wins ties: the label text itself never takes a fill. */
+        [data-testid="stCheckbox"] [data-testid="stWidgetLabel"],
+        [data-testid="stCheckbox"] [data-testid="stWidgetLabel"] * {
+            background-color: transparent !important;
         }
 
         @media (max-width: 800px) {
