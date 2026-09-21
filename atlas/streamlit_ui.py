@@ -608,40 +608,25 @@ def _inject_css() -> None:
         }
 
         /* Same dark-mode-browser bleed-through as above, on st.checkbox/st.toggle (both share
-           the stCheckbox testid). Without this, the label text and the switch track render in
-           near-invisible dark-mode colors on this forced-white page. The outer border on the
-           whole widget (rather than guessing at the switch's internal role/class, which isn't
-           reliably knowable from outside) is what actually guarantees visibility -- same
-           treatment as the boxed border already used for the date/device-id filter inputs. */
+           the stCheckbox testid): the label text rendered in near-invisible dark-mode colors. */
         [data-testid="stCheckbox"],
         [data-testid="stCheckbox"] * {
             color: #111111 !important;
         }
 
-        [data-testid="stCheckbox"] {
-            display: inline-flex !important;
-            align-items: center !important;
+        /* The toggle's visible track is an emotion-styled span with no testid or role of its
+           own -- the only role="switch" here is on the visually hidden <input>, so styling that
+           shows nothing. The track is always the element immediately before the widget label,
+           which does carry a testid, hence the :has() sibling match. Its child is the knob.
+           Both need an outline or they're white-on-white in the off state. */
+        [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) {
             border: 1.5px solid #111111 !important;
-            border-radius: 8px !important;
-            padding: 0.4rem 0.7rem !important;
-            background: #ffffff !important;
+            box-sizing: border-box !important;
         }
 
-        [data-testid="stCheckbox"] [role="checkbox"],
-        [data-testid="stCheckbox"] [role="switch"] {
-            background: #d8d8d8 !important;
+        [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) > * {
             border: 1px solid #111111 !important;
-        }
-
-        [data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
-        [data-testid="stCheckbox"] [role="switch"][aria-checked="true"] {
-            background: var(--accent) !important;
-            border-color: #111111 !important;
-        }
-
-        [data-testid="stCheckbox"] [role="checkbox"] svg,
-        [data-testid="stCheckbox"] [role="switch"] svg {
-            fill: #ffffff !important;
+            box-sizing: border-box !important;
         }
 
         @media (max-width: 800px) {
