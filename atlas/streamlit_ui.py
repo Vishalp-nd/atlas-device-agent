@@ -543,6 +543,70 @@ def _inject_css() -> None:
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* Same dark-mode-browser bleed-through as the buttons/chat-input above, just on
+           widget types that hadn't been touched yet: date pickers, multiselects, selectboxes
+           and plain text inputs all rendered with BaseWeb's dark-mode colors on this
+           forced-white page. */
+        [data-testid="stDateInput"] input,
+        [data-testid="stTextInput"] input {
+            background: #ffffff !important;
+            color: #111111 !important;
+            caret-color: #111111 !important;
+            border-color: var(--border) !important;
+        }
+
+        [data-testid="stDateInput"] input::placeholder,
+        [data-testid="stTextInput"] input::placeholder {
+            color: rgba(17, 17, 17, 0.55) !important;
+            opacity: 1 !important;
+        }
+
+        [data-testid="stDateInput"] svg {
+            fill: #007a3d !important;
+        }
+
+        [data-testid="stMultiSelect"] [data-baseweb="select"] > div,
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+            background: #ffffff !important;
+            border-color: var(--border) !important;
+        }
+
+        [data-testid="stMultiSelect"] [data-baseweb="select"] *,
+        [data-testid="stSelectbox"] [data-baseweb="select"] * {
+            color: #111111 !important;
+        }
+
+        [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+            background: var(--accent) !important;
+            border-color: var(--accent) !important;
+        }
+
+        [data-testid="stMultiSelect"] span[data-baseweb="tag"] * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+        }
+
+        /* Dropdown menus and the date-picker calendar render in a portal outside .stApp,
+           so -- like the header/toolbar rules above -- these are intentionally unscoped. */
+        div[data-baseweb="popover"],
+        div[data-baseweb="popover"] * {
+            background: #ffffff !important;
+            color: #111111 !important;
+        }
+
+        ul[role="listbox"] li[aria-selected="true"] {
+            background: rgba(0, 166, 81, 0.14) !important;
+        }
+
+        ul[role="listbox"] li:hover {
+            background: rgba(0, 166, 81, 0.08) !important;
+        }
+
+        div[data-baseweb="calendar"] button[aria-selected="true"] {
+            background: var(--accent) !important;
+            color: #ffffff !important;
+        }
+
         @media (max-width: 800px) {
             .hero { padding: 1rem; border-radius: 16px; }
             .hero h1 { font-size: 1.2rem; }

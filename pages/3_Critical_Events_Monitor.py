@@ -907,7 +907,7 @@ def _render_ota_page(ota_version: str) -> None:
         st.query_params.clear()
         st.rerun()
 
-    filter_cols = st.columns([1, 1, 1.6])
+    filter_cols = st.columns([1, 1, 2])
     min_date = min_ts.date()
     max_date = max_ts.date()
     default_start = max(min_date, (max_ts - pd.Timedelta(days=1)).date())
