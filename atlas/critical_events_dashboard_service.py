@@ -148,7 +148,7 @@ def _ota_where_sql(
     return " AND ".join(where_clauses)
 
 
-def load_ota_type_counts(
+def load_ota_process_code_table(
     config: DashboardConfig,
     ota_version: str,
     device_ids: list[str] | None = None,
@@ -158,308 +158,37 @@ def load_ota_type_counts(
     where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
     sql = f'''
         SELECT
-            type,
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql}
-        GROUP BY type
-        ORDER BY type
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["type", "events"])
-    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-def load_ota_priority_counts(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            priority,
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql} AND type = 'ERROR'
-        GROUP BY priority
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["priority", "events"])
-    frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
-    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame.sort_values("priority")
-
-
-def load_ota_daily_counts(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            toDate("TIMESTAMP") AS day,
-            type,
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql}
-        GROUP BY day, type
-        ORDER BY day, type
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["day", "type", "events"])
-    frame["day"] = pd.to_datetime(frame["day"], errors="coerce").dt.date
-    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-def load_ota_top_processes(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-    limit: int = 10,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            "PROCESS_NAME",
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql}
-        GROUP BY "PROCESS_NAME"
-        ORDER BY events DESC
-        LIMIT {int(limit)}
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["PROCESS_NAME", "events"])
-    frame["PROCESS_NAME"] = frame["PROCESS_NAME"].fillna("UNKNOWN").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-def load_ota_top_codes(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-    limit: int = 10,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            "CODE",
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql} AND type = 'ERROR'
-        GROUP BY "CODE"
-        ORDER BY events DESC
-        LIMIT {int(limit)}
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["CODE", "events"])
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-def load_ota_top_code_details(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-    limit: int = 10,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            "CODE",
-            replaceRegexpAll(ifNull("DESCRIPTION", ''), '\\S*\\d\\S*', '<N>') AS description_pattern,
-            min(ifNull("DESCRIPTION", '')) AS sample_description,
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        INNER JOIN (
-            SELECT
-                "CODE"
-            FROM {config.table_name}
-            WHERE {where_sql} AND type = 'ERROR'
-            GROUP BY "CODE"
-            ORDER BY sum("COUNT") DESC
-            LIMIT {int(limit)}
-        ) AS top_codes USING ("CODE")
-        WHERE {where_sql} AND type = 'ERROR'
-        GROUP BY "CODE", description_pattern
-        ORDER BY "CODE", events DESC, description_pattern
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["CODE", "description_pattern", "sample_description", "events"])
-    rename_map = {}
-    for column in frame.columns:
-        lowered = str(column).strip().lower()
-        if lowered == "code" or lowered.endswith(".code"):
-            rename_map[column] = "CODE"
-        elif lowered == "description_pattern":
-            rename_map[column] = "description_pattern"
-        elif lowered == "sample_description":
-            rename_map[column] = "sample_description"
-        elif lowered == "events":
-            rename_map[column] = "events"
-    frame = frame.rename(columns=rename_map)
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
-    frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED")
-    frame["sample_description"] = frame["sample_description"].fillna("")
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame[["CODE", "description_pattern", "sample_description", "events"]]
-
-
-def load_ota_priority_code_breakdown(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            priority,
-            "CODE",
-            replaceRegexpAll(ifNull("DESCRIPTION", ''), '\\S*\\d\\S*', '<N>') AS normalized_description,
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql} AND type = 'ERROR'
-        GROUP BY priority, "CODE", normalized_description
-        ORDER BY priority, events DESC, "CODE", normalized_description
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["priority", "CODE", "normalized_description", "events"])
-    frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
-    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
-    frame["normalized_description"] = frame["normalized_description"].fillna("UNMAPPED").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame[["priority", "CODE", "normalized_description", "events"]]
-
-
-def load_ota_priority_device_breakdown(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-    limit_per_priority: int = 15,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            priority_value AS priority,
-            "DEVICE_ID",
-            events
-        FROM (
-            SELECT
-                if(upperUTF8(trimBoth(ifNull(priority, ''))) = '', 'UNMAPPED', upperUTF8(trimBoth(ifNull(priority, '')))) AS priority_value,
-                "DEVICE_ID",
-                sum("COUNT") AS events
-            FROM {config.table_name}
-            WHERE {where_sql} AND type = 'ERROR'
-            GROUP BY priority_value, "DEVICE_ID"
-        )
-        ORDER BY priority_value, events DESC, "DEVICE_ID"
-        LIMIT {int(limit_per_priority)} BY priority_value
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["priority", "DEVICE_ID", "events"])
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper().str.strip()
-    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
-    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("UNKNOWN").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame[["priority", "DEVICE_ID", "events"]].sort_values(
-        ["priority", "events"], ascending=[True, False]
-    ).reset_index(drop=True)
-
-
-def load_ota_top_devices(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-    limit: int = 10,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    sql = f'''
-        SELECT
-            "DEVICE_ID",
-            sum("COUNT") AS events
-        FROM {config.table_name}
-        WHERE {where_sql}
-        GROUP BY "DEVICE_ID"
-        ORDER BY events DESC
-        LIMIT {int(limit)}
-    '''
-    frame = _read_clickhouse_df(config, sql)
-    if frame.empty:
-        return pd.DataFrame(columns=["DEVICE_ID", "events"])
-    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-def load_ota_detail(
-    config: DashboardConfig,
-    ota_version: str,
-    device_ids: list[str] | None = None,
-    start_ts: pd.Timestamp | None = None,
-    end_ts: pd.Timestamp | None = None,
-    limit: int | None = None,
-) -> pd.DataFrame:
-    where_sql = _ota_where_sql(ota_version, device_ids, start_ts, end_ts)
-    limit_sql = f"LIMIT {int(limit)}" if limit is not None else ""
-    sql = f'''
-        SELECT
-            "DEVICE_ID",
-            "TIMESTAMP",
             "PROCESS_NAME",
             "CODE",
             "CODE_AUX",
-            "COUNT",
-            "DESCRIPTION",
-            "DEVICE_VERSION",
+            type,
             priority,
-            type
+            replaceRegexpAll(ifNull("DESCRIPTION", ''), '\\S*\\d\\S*', '<N>') AS description_pattern,
+            min(ifNull("DESCRIPTION", '')) AS sample_description,
+            sum("COUNT") AS occurrences,
+            groupUniqArray("DEVICE_ID") AS devices
         FROM {config.table_name}
         WHERE {where_sql}
-        ORDER BY "TIMESTAMP" DESC
-        {limit_sql}
+        GROUP BY "PROCESS_NAME", "CODE", "CODE_AUX", type, priority, description_pattern
+        ORDER BY occurrences DESC
     '''
     frame = _read_clickhouse_df(config, sql)
+    columns = [
+        "PROCESS_NAME", "CODE", "CODE_AUX", "type", "priority",
+        "description_pattern", "sample_description", "occurrences", "devices",
+    ]
     if frame.empty:
-        return frame
-    frame["TIMESTAMP"] = pd.to_datetime(frame["TIMESTAMP"], errors="coerce")
-    frame["COUNT"] = pd.to_numeric(frame["COUNT"], errors="coerce").fillna(0)
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
-    frame["DEVICE_VERSION"] = frame["DEVICE_VERSION"].fillna("UNKNOWN").astype(str)
-    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("").astype(str)
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+        return pd.DataFrame(columns=columns)
+    frame["PROCESS_NAME"] = frame["PROCESS_NAME"].fillna("UNKNOWN").astype(str)
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
+    frame["CODE_AUX"] = pd.to_numeric(frame["CODE_AUX"], errors="coerce").astype("Int64")
     frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    return frame
+    frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
+    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
+    frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED")
+    frame["sample_description"] = frame["sample_description"].fillna("")
+    frame["occurrences"] = pd.to_numeric(frame["occurrences"], errors="coerce").fillna(0).astype("Int64")
+    frame["devices"] = frame["devices"].apply(
+        lambda value: sorted(str(v) for v in value) if hasattr(value, "__iter__") and not isinstance(value, str) else []
+    )
+    return frame[columns]

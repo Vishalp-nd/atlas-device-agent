@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import html
 import re
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 
 import pandas as pd
-import plotly.express as px
 import requests
 import streamlit as st
 
@@ -22,40 +20,6 @@ ERROR_PRIORITIES = {
     "P3": "connectivity/auxiliary impact",
     "P4": "minor/no immediate loss",
 }
-PRIORITY_BREAKDOWN_LABEL_LIMIT = 24
-
-CHART_CARD_STYLE_BLOCK = """
-<style>
-.chart-card-caption {
-    font-size: 0.84rem;
-    color: rgba(49, 51, 63, 0.68);
-    margin-bottom: 0.55rem;
-}
-div[data-testid="stPlotlyChart"] {
-    background: transparent;
-}
-div[data-testid="stPlotlyChart"] > div {
-    border-radius: 16px;
-}
-[data-testid="stMetric"] {
-    color: rgb(49, 51, 63) !important;
-}
-[data-testid="stMetricLabel"],
-[data-testid="stMetricLabel"] * {
-    color: rgb(49, 51, 63) !important;
-}
-[data-testid="stMetricValue"],
-[data-testid="stMetricValue"] * {
-    color: rgb(17, 17, 17) !important;
-}
-[data-testid="stMetricDelta"],
-[data-testid="stMetricDelta"] * {
-    color: rgb(49, 51, 63) !important;
-}
-</style>
-"""
-
-
 # Keeps the landing-page hero (title -> OTA manager -> overview pies) inside the first
 # viewport so both home pie charts are fully visible without scrolling. The global CSS
 # reserves 4.75rem above the main container for Streamlit's fixed toolbar; 2.6rem still
@@ -85,9 +49,6 @@ COMPACT_LAYOUT_STYLE_BLOCK = """
 [data-testid="stMainBlockContainer"] [data-testid="stCaptionContainer"],
 [data-testid="stMainBlockContainer"] .stCaption {
     margin-bottom: 0.1rem;
-}
-.chart-card-caption {
-    margin-bottom: 0.3rem !important;
 }
 /* The OTA manager row sits between the title and the pies, so keep it shallow. */
 [data-testid="stVerticalBlockBorderWrapper"]:has(.ota-manager-meta),
@@ -179,48 +140,6 @@ def _dashboard_api_delete(path: str, payload: dict[str, object]) -> dict[str, ob
     if not response.ok:
         _raise_dashboard_api_error(response)
     return response.json()
-
-
-def _apply_chart_theme(fig, title: str):
-    fig.update_layout(
-        title={"text": title, "x": 0.02, "xanchor": "left", "font": {"color": "rgb(17, 17, 17)"}},
-        paper_bgcolor="rgba(255,255,255,0)",
-        plot_bgcolor="rgba(255,255,255,0.92)",
-        font={"color": "rgb(49, 51, 63)"},
-        legend={
-            "bgcolor": "rgba(255,255,255,0.72)",
-            "font": {"color": "rgb(49, 51, 63)"},
-            "title": {"font": {"color": "rgb(49, 51, 63)"}},
-        },
-    )
-    fig.update_xaxes(
-        showgrid=True,
-        gridcolor="rgba(49, 51, 63, 0.08)",
-        zeroline=False,
-        linecolor="rgba(49, 51, 63, 0.12)",
-        tickfont={"color": "rgb(49, 51, 63)"},
-        title_font={"color": "rgb(49, 51, 63)"},
-    )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor="rgba(49, 51, 63, 0.08)",
-        zeroline=False,
-        linecolor="rgba(49, 51, 63, 0.12)",
-        tickfont={"color": "rgb(49, 51, 63)"},
-        title_font={"color": "rgb(49, 51, 63)"},
-    )
-    return fig
-
-
-def _render_chart_card(fig, title: str, caption: str | None = None, key: str | None = None) -> None:
-    # Note: no HTML wrapper div here. Each st.markdown() renders into its own sanitized DOM node,
-    # so a bare "<div class='chart-card'>" opening tag does not wrap the chart -- it renders as an
-    # empty, fully-styled box above it (and the matching "</div>" is dropped). Use st.container
-    # if a real card border is wanted.
-    st.markdown(CHART_CARD_STYLE_BLOCK, unsafe_allow_html=True)
-    if caption:
-        st.markdown(f"<div class='chart-card-caption'>{caption}</div>", unsafe_allow_html=True)
-    st.plotly_chart(_apply_chart_theme(fig, title), use_container_width=True, key=key)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
@@ -557,280 +476,25 @@ def _load_devices(ota_version: str, start_date: str | None, end_date_exclusive: 
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def _load_type_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
+def _load_process_code_table(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
     payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/type-counts",
+        f"/atlas/dashboard/critical-events/{ota_version}/process-code-table",
         _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
     )
     frame = _frame_from_rows(payload.get("rows", []))
+    columns = ["PROCESS_NAME", "CODE", "CODE_AUX", "type", "priority", "description_pattern", "sample_description", "occurrences", "devices"]
     if frame.empty:
-        return pd.DataFrame(columns=["type", "events"])
-    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_priority_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/priority-counts",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["priority", "events"])
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_daily_counts(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/daily-counts",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["day", "type", "events"])
-    frame["day"] = pd.to_datetime(frame["day"], errors="coerce")
-    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_top_processes(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/top-processes",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["PROCESS_NAME", "events"])
+        return pd.DataFrame(columns=columns)
     frame["PROCESS_NAME"] = frame["PROCESS_NAME"].fillna("UNKNOWN").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_top_codes(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/top-codes",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["CODE", "events"])
     frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/top-code-details",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["CODE", "description_pattern", "sample_description", "events"])
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
+    frame["CODE_AUX"] = pd.to_numeric(frame["CODE_AUX"], errors="coerce").astype("Int64")
+    frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
+    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+    frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED").astype(str)
     frame["sample_description"] = frame["sample_description"].fillna("").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_priority_code_breakdown(
-    ota_version: str,
-    device_ids: tuple[str, ...],
-    start_date: str | None,
-    end_date_exclusive: str | None,
-) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/priority-code-breakdown",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["priority", "CODE", "normalized_description", "events"])
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
-    frame["normalized_description"] = frame["normalized_description"].fillna("UNMAPPED").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_priority_device_breakdown(
-    ota_version: str,
-    device_ids: tuple[str, ...],
-    start_date: str | None,
-    end_date_exclusive: str | None,
-) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/priority-device-breakdown",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["priority", "DEVICE_ID", "events"])
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
-    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("UNKNOWN").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_top_devices(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/top-devices",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return pd.DataFrame(columns=["DEVICE_ID", "events"])
-    frame["DEVICE_ID"] = frame["DEVICE_ID"].fillna("").astype(str)
-    frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def _load_ota_page_data(ota_version: str, device_ids: tuple[str, ...], start_date: str | None, end_date_exclusive: str | None) -> dict[str, pd.DataFrame]:
-    loaders = {
-        "type_counts": lambda: _load_type_counts(ota_version, device_ids, start_date, end_date_exclusive),
-        "priority_counts": lambda: _load_priority_counts(ota_version, device_ids, start_date, end_date_exclusive),
-        "priority_breakdown": lambda: _load_priority_code_breakdown(ota_version, device_ids, start_date, end_date_exclusive),
-        "priority_device_breakdown": lambda: _load_priority_device_breakdown(ota_version, device_ids, start_date, end_date_exclusive),
-        "daily_counts": lambda: _load_daily_counts(ota_version, device_ids, start_date, end_date_exclusive),
-        "process_counts": lambda: _load_top_processes(ota_version, device_ids, start_date, end_date_exclusive),
-        "code_counts": lambda: _load_top_codes(ota_version, device_ids, start_date, end_date_exclusive),
-        "code_details": lambda: _load_top_code_details(ota_version, device_ids, start_date, end_date_exclusive),
-        "device_counts": lambda: _load_top_devices(ota_version, device_ids, start_date, end_date_exclusive),
-    }
-    with ThreadPoolExecutor(max_workers=len(loaders)) as executor:
-        futures = {name: executor.submit(loader) for name, loader in loaders.items()}
-    return {name: future.result() for name, future in futures.items()}
-
-
-def _pie(
-    data: pd.DataFrame,
-    names: str,
-    values: str,
-    title: str,
-    hole: float = 0.45,
-    height: int | None = None,
-):
-    fig = px.pie(data, names=names, values=values, hole=hole)
-    fig.update_traces(textposition="inside", textinfo="percent+label")
-    fig.update_layout(title=title, margin=dict(l=10, r=10, t=44, b=10), legend_title_text="")
-    if height is not None:
-        fig.update_layout(height=height)
-    return fig
-
-
-def _priority_label(priority: str) -> str:
-    description = ERROR_PRIORITIES.get(priority)
-    if not description:
-        return priority
-    return f"{priority} - {description}"
-
-
-def _bar(data: pd.DataFrame, x: str, y: str, color: str | None, title: str):
-    fig = px.bar(data, x=x, y=y, color=color, title=title)
-    fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), xaxis_title="", yaxis_title="Events")
-    return fig
-
-
-def _categorical_bar(data: pd.DataFrame, x: str, y: str, title: str):
-    plot_data = data.copy()
-    plot_data[x] = plot_data[x].astype(str)
-    fig = px.bar(plot_data, x=x, y=y, title=title)
-    fig.update_layout(
-        margin=dict(l=10, r=10, t=50, b=10),
-        xaxis_title="",
-        yaxis_title="Events",
-        xaxis={"type": "category", "categoryorder": "array", "categoryarray": plot_data[x].tolist()},
-    )
-    fig.update_xaxes(tickmode="array", tickvals=plot_data[x].tolist(), ticktext=plot_data[x].tolist())
-    return fig
-
-
-def _truncate_label(value: str, limit: int) -> str:
-    if len(value) <= limit:
-        return value
-    return f"{value[: max(limit - 3, 0)].rstrip()}..."
-
-
-def _priority_breakdown_bar(data: pd.DataFrame, priority: str):
-    plot_data = data.copy()
-    plot_data["full_label"] = plot_data.apply(
-        lambda row: f"{int(row['CODE']) if pd.notna(row['CODE']) else 'NA'} | {row['normalized_description']}",
-        axis=1,
-    )
-    plot_data["label"] = plot_data["full_label"].map(lambda value: _truncate_label(value, PRIORITY_BREAKDOWN_LABEL_LIMIT))
-    fig = px.bar(
-        plot_data,
-        x="label",
-        y="events",
-        hover_data={"CODE": True, "normalized_description": True, "full_label": True, "label": False},
-        title=f"{priority} breakdown",
-    )
-    fig.update_layout(
-        margin=dict(l=10, r=10, t=50, b=10),
-        xaxis_title="Code | Normalized description",
-        yaxis_title="Count",
-        xaxis={"type": "category", "categoryorder": "array", "categoryarray": plot_data["label"].tolist()},
-    )
-    fig.update_xaxes(tickangle=-35)
-    fig.update_traces(hovertemplate="Code=%{customdata[0]}<br>Normalized description=%{customdata[1]}<br>Full label=%{customdata[2]}<br>Count=%{y}<extra></extra>")
-    return fig
-
-
-def _priority_device_bar(data: pd.DataFrame, priority: str):
-    plot_data = data.sort_values("events", ascending=False).copy()
-    plot_data["DEVICE_ID"] = plot_data["DEVICE_ID"].astype(str)
-    plot_data["label"] = plot_data["DEVICE_ID"].map(lambda value: _truncate_label(value, PRIORITY_BREAKDOWN_LABEL_LIMIT))
-    fig = px.bar(
-        plot_data,
-        x="label",
-        y="events",
-        hover_data={"DEVICE_ID": True, "label": False},
-        title=f"{priority} by device",
-    )
-    fig.update_layout(
-        margin=dict(l=10, r=10, t=50, b=10),
-        xaxis_title="Device ID",
-        yaxis_title="Count",
-        xaxis={"type": "category", "categoryorder": "array", "categoryarray": plot_data["label"].tolist()},
-    )
-    fig.update_xaxes(tickangle=-35)
-    fig.update_traces(hovertemplate="Device=%{customdata[0]}<br>Count=%{y}<extra></extra>")
-    return fig
-
-
-def _set_priority_breakdown_query_params(ota_version: str, start_date: str, end_date_exclusive: str, device_ids: tuple[str, ...]) -> None:
-    st.query_params["ota"] = ota_version
-    st.query_params["view"] = "priority-breakdown"
-    st.query_params["start"] = start_date
-    st.query_params["end"] = end_date_exclusive
-    if device_ids:
-        st.query_params["devices"] = list(device_ids)
-    elif "devices" in st.query_params:
-        del st.query_params["devices"]
-
-
-def _clear_priority_breakdown_query_params() -> None:
-    if "view" in st.query_params:
-        del st.query_params["view"]
-    if "start" in st.query_params:
-        del st.query_params["start"]
-    if "end" in st.query_params:
-        del st.query_params["end"]
-    if "devices" in st.query_params:
-        del st.query_params["devices"]
+    frame["occurrences"] = pd.to_numeric(frame["occurrences"], errors="coerce").fillna(0).astype("Int64")
+    frame["devices"] = frame["devices"].map(lambda value: list(value) if isinstance(value, (list, tuple)) else [])
+    return frame[columns]
 
 
 OTA_TILE_STYLE_BLOCK = """
@@ -1071,6 +735,99 @@ def _render_home(summary: pd.DataFrame) -> None:
         )
 
 
+PROCESS_CODE_TABLE_STYLE_BLOCK = """
+<style>
+.process-code-table-wrap {
+    max-height: 620px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid rgba(120, 120, 120, 0.25);
+    border-radius: 8px;
+    margin-bottom: 0.4rem;
+}
+.process-code-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+.process-code-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--background-color, #ffffff);
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 2px solid rgba(120, 120, 120, 0.35);
+    z-index: 1;
+}
+.process-code-table tbody td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid rgba(120, 120, 120, 0.15);
+    vertical-align: top;
+}
+.process-code-table td.wrap-cell {
+    white-space: normal;
+    min-width: 220px;
+}
+.process-code-devices {
+    max-height: 70px;
+    min-width: 160px;
+    overflow-y: auto;
+    white-space: normal;
+    word-break: break-word;
+    padding-right: 0.3rem;
+}
+.process-code-devices div {
+    padding: 0.05rem 0;
+}
+</style>
+"""
+
+
+def _render_process_code_table(frame: pd.DataFrame) -> None:
+    headers = [
+        "Process", "Code", "Code Aux", "Severity", "Priority",
+        "Description Pattern", "Sample Description", "Occurrences", "Devices",
+    ]
+    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    row_chunks = []
+    for row in frame.itertuples(index=False):
+        code = "" if pd.isna(row.CODE) else str(int(row.CODE))
+        code_aux = "" if pd.isna(row.CODE_AUX) else str(int(row.CODE_AUX))
+        occurrences = 0 if pd.isna(row.occurrences) else int(row.occurrences)
+        devices = row.devices or []
+        devices_inner = "".join(f"<div>{html.escape(str(device))}</div>" for device in devices)
+        row_chunks.append(
+            "<tr>"
+            f"<td>{html.escape(str(row.PROCESS_NAME))}</td>"
+            f"<td>{html.escape(code)}</td>"
+            f"<td>{html.escape(code_aux)}</td>"
+            f"<td>{html.escape(str(row.type))}</td>"
+            f"<td>{html.escape(str(row.priority))}</td>"
+            f"<td class='wrap-cell'>{html.escape(str(row.description_pattern))}</td>"
+            f"<td class='wrap-cell'>{html.escape(str(row.sample_description))}</td>"
+            f"<td>{occurrences}</td>"
+            f"<td><div class='process-code-devices'>{devices_inner}</div>({len(devices)})</td>"
+            "</tr>"
+        )
+    table_html = (
+        "<div class='process-code-table-wrap'>"
+        "<table class='process-code-table'>"
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(row_chunks)}</tbody>"
+        "</table>"
+        "</div>"
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
+
+
+def _priority_sort_key(priority: str) -> tuple[int, int, str]:
+    match = re.fullmatch(r"P(\d+)", priority)
+    if match:
+        return (0, int(match.group(1)), priority)
+    return (1, 0, priority)
+
+
 def _render_ota_page(ota_version: str) -> None:
     st.subheader(f"OTA detail: {ota_version}")
     min_ts, max_ts = _load_date_bounds(ota_version)
@@ -1107,165 +864,70 @@ def _render_ota_page(ota_version: str) -> None:
         )
 
     selected_device_ids = tuple(selected_devices)
-    page_data = _load_ota_page_data(ota_version, selected_device_ids, start_date_str, end_date_exclusive_str)
-    type_counts = page_data["type_counts"]
-    if type_counts.empty:
-        st.info("No data found for the selected OTA and date range.")
-        return
-
-    priority_counts = page_data["priority_counts"]
-    daily_counts = page_data["daily_counts"]
-    process_counts = page_data["process_counts"]
-    code_counts = page_data["code_counts"]
-    code_details = page_data["code_details"]
-    device_counts = page_data["device_counts"]
 
     if st.button("Back to OTA overview"):
         st.query_params.clear()
         st.rerun()
 
-    top_row = st.columns(2)
-    with top_row[0]:
-        if priority_counts.empty:
-            st.info("No mapped error priorities found for this OTA.")
-        else:
-            priority_plot = priority_counts.copy()
-            priority_plot["priority_label"] = priority_plot["priority"].map(_priority_label)
-            _render_chart_card(
-                _pie(priority_plot, "priority_label", "events", "Error priority split"),
-                "Error priority split",
-                "Priority distribution for the selected OTA and filters.",
-                key=f"priority_split_{ota_version}",
-            )
-            if st.button("View priority breakdown details", key=f"priority_breakdown_{ota_version}", use_container_width=True):
-                _set_priority_breakdown_query_params(ota_version, start_date_str, end_date_exclusive_str, selected_device_ids)
-                st.rerun()
-    with top_row[1]:
-        _render_chart_card(
-            _pie(type_counts, "type", "events", "Errors vs Info"),
-            "Errors vs Info",
-            "Current selection split by event type.",
-            key=f"type_split_{ota_version}",
-        )
-
-    trend_cols = st.columns(2)
-    if not daily_counts.empty:
-        with trend_cols[0]:
-            _render_chart_card(
-                _bar(daily_counts, "day", "events", "type", "Daily event trend"),
-                "Daily event trend",
-                "Daily volume trend split by event type.",
-                key=f"daily_trend_{ota_version}",
-            )
-
-    with trend_cols[1]:
-        _render_chart_card(
-            _bar(process_counts, "PROCESS_NAME", "events", None, "Top noisy processes"),
-            "Top noisy processes",
-            "Processes contributing the highest event volume.",
-            key=f"top_processes_{ota_version}",
-        )
-
-    bottom_cols = st.columns(2)
-    with bottom_cols[0]:
-        if code_counts.empty:
-            st.info("No error codes found for this OTA selection.")
-        else:
-            _render_chart_card(
-                _categorical_bar(code_counts, "CODE", "events", "Top error codes"),
-                "Top error codes",
-                "Highest-frequency error codes for the current selection.",
-                key=f"top_codes_{ota_version}",
-            )
-    with bottom_cols[1]:
-        _render_chart_card(
-            _categorical_bar(device_counts, "DEVICE_ID", "events", "Most affected devices"),
-            "Most affected devices",
-            "Devices with the highest event counts in the current filter window.",
-            key=f"top_devices_{ota_version}",
-        )
-
-    st.markdown("### Top Error Code Details")
-    if code_details.empty:
-        st.info("No top error code detail rows found for this OTA selection.")
-    else:
-        detail_frame = code_details[["CODE", "description_pattern", "sample_description", "events"]].reset_index(drop=True)
-        st.caption("Breakdown of the current Top Error Codes by code, description pattern, and a sample description matching that pattern.")
-        st.table(detail_frame)
-
-
-def _render_priority_breakdown_page(ota_version: str) -> None:
-    start_date = st.query_params.get("start")
-    end_date_exclusive = st.query_params.get("end")
-    device_params = st.query_params.get_all("devices") if hasattr(st.query_params, "get_all") else []
-    selected_device_ids = tuple(device_params)
-
-    st.subheader(f"Priority breakdown: {ota_version}")
-    caption_parts = []
-    if start_date and end_date_exclusive:
-        end_inclusive = (pd.Timestamp(end_date_exclusive) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-        caption_parts.append(f"Date range: {start_date} to {end_inclusive}")
-    if selected_device_ids:
-        caption_parts.append(f"Devices: {len(selected_device_ids)} selected")
-    if caption_parts:
-        st.caption(" | ".join(caption_parts))
-
-    if st.button("Back to OTA detail", use_container_width=False):
-        _clear_priority_breakdown_query_params()
-        st.rerun()
-
-    page_data = _load_ota_page_data(ota_version, selected_device_ids, start_date, end_date_exclusive)
-    breakdown = page_data["priority_breakdown"]
-    device_breakdown = page_data["priority_device_breakdown"]
-    if breakdown.empty:
-        st.info("No priority breakdown rows found for this OTA selection.")
+    table = _load_process_code_table(ota_version, selected_device_ids, start_date_str, end_date_exclusive_str)
+    if table.empty:
+        st.info("No data found for the selected OTA and date range.")
         return
 
-    priorities = [f"P{level}" for level in range(5)]
-    st.markdown("### Code breakdown by priority")
-    chart_cols = st.columns(2)
-    for index, priority in enumerate(priorities):
-        priority_frame = breakdown[breakdown["priority"] == priority].copy()
-        target = chart_cols[index % 2]
-        with target:
-            if priority_frame.empty:
-                st.info(f"No rows found for {priority}.")
-            else:
-                _render_chart_card(
-                    _priority_breakdown_bar(priority_frame, priority),
-                    f"{priority} breakdown",
-                    "Code-level breakdown for this priority bucket.",
-                    key=f"priority_breakdown_chart_{priority}_{ota_version}",
-                )
+    priority_options = sorted(table["priority"].dropna().unique().tolist(), key=_priority_sort_key)
+    severity_options = sorted(table["type"].dropna().unique().tolist())
+    code_options = sorted(int(code) for code in table["CODE"].dropna().unique().tolist())
 
-    st.markdown("### Device breakdown by priority")
-    st.caption("Devices ranked from highest to lowest event count within each priority bucket.")
-    if device_breakdown.empty:
-        st.info("No device-level priority rows found for this OTA selection.")
-    else:
-        device_chart_cols = st.columns(2)
-        for index, priority in enumerate(priorities):
-            device_frame = device_breakdown[device_breakdown["priority"] == priority].copy()
-            target = device_chart_cols[index % 2]
-            with target:
-                if device_frame.empty:
-                    st.info(f"No device rows found for {priority}.")
-                else:
-                    _render_chart_card(
-                        _priority_device_bar(device_frame, priority),
-                        f"{priority} by device",
-                        "Highest-to-lowest device event counts for this priority bucket.",
-                        key=f"priority_device_chart_{priority}_{ota_version}",
-                    )
-
-    unmapped = breakdown[~breakdown["priority"].isin(priorities)].copy()
-    if not unmapped.empty:
-        st.markdown("### Unmapped priorities")
-        st.dataframe(
-            unmapped[["priority", "CODE", "normalized_description", "events"]].reset_index(drop=True),
-            use_container_width=True,
-            hide_index=True,
+    filter_row2 = st.columns([1, 1, 1, 2])
+    with filter_row2[0]:
+        selected_priorities = st.multiselect(
+            "Priority",
+            priority_options,
+            format_func=lambda value: f"{value} - {ERROR_PRIORITIES[value]}" if value in ERROR_PRIORITIES else value,
+            placeholder="All priorities",
+            key=f"priority_filter_{ota_version}",
         )
+    with filter_row2[1]:
+        selected_severities = st.multiselect(
+            "Severity",
+            severity_options,
+            placeholder="All severities",
+            key=f"severity_filter_{ota_version}",
+        )
+    with filter_row2[2]:
+        selected_codes = st.multiselect(
+            "Code",
+            code_options,
+            placeholder="All codes",
+            key=f"code_filter_{ota_version}",
+        )
+    with filter_row2[3]:
+        description_query = st.text_input(
+            "Description pattern contains",
+            placeholder="Search description pattern",
+            key=f"description_filter_{ota_version}",
+        )
+
+    filtered = table
+    if selected_priorities:
+        filtered = filtered[filtered["priority"].isin(selected_priorities)]
+    if selected_severities:
+        filtered = filtered[filtered["type"].isin(selected_severities)]
+    if selected_codes:
+        filtered = filtered[filtered["CODE"].isin(selected_codes)]
+    if description_query.strip():
+        filtered = filtered[
+            filtered["description_pattern"].str.contains(description_query.strip(), case=False, na=False, regex=False)
+        ]
+    filtered = filtered.sort_values("occurrences", ascending=False).reset_index(drop=True)
+
+    st.markdown("### Process / code details")
+    if filtered.empty:
+        st.info("No rows match the selected filters.")
+    else:
+        st.markdown(PROCESS_CODE_TABLE_STYLE_BLOCK, unsafe_allow_html=True)
+        _render_process_code_table(filtered)
+    st.caption(f"Showing {len(filtered)} of {len(table)} entries.")
 
 
 def main() -> None:
@@ -1284,11 +946,8 @@ def main() -> None:
         # the tiles down to that subset (2 versions) while the data held many more.
         summary = _load_summary(())
         selected_ota = st.query_params.get("ota")
-        selected_view = st.query_params.get("view")
 
-        if selected_ota and selected_view == "priority-breakdown":
-            _render_priority_breakdown_page(selected_ota)
-        elif selected_ota:
+        if selected_ota:
             _render_ota_page(selected_ota)
         else:
             _render_allowed_ota_versions_manager()
