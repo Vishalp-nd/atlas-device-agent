@@ -628,37 +628,31 @@ def _inject_css() -> None:
             color: #111111 !important;
         }
 
-        /* The toggle's track takes its colour from theme.colors.borderColor when off and
-           theme.colors.primary when on -- both arrive as the wrong values here, so it is
-           invisible against white when off (only the hover colour shows) and Streamlit's
-           default orange when on. Neither track nor knob carries a testid, role or stable
-           class, so these match purely on position inside the widget:
+        /* The toggle's track colour comes from the theme, which arrives with the wrong values
+           here, leaving it invisible against white when off. The rendered markup is BaseWeb's
+           checkbox:
 
-               stCheckbox > switch > [hidden-input span | track | label]
-                                                            `-> knob
+               div[data-testid=stCheckbox] > label[data-baseweb=checkbox]
+                   > div            <- track (knob is its child div)
+                   > input          <- carries the checked state
+                   > div            <- wraps the label text and help icon
 
-           Depth-based selectors are the one hook that doesn't depend on tag names, emotion's
-           hashed classes or the Streamlit version. They're also plain CSS by design -- an
-           unsupported :has() anywhere in a comma-separated rule makes a browser drop the
-           entire rule, including the selectors it does understand. */
-        [data-testid="stCheckbox"] > * > * {
-            background-color: #6b7280 !important;
+           Note this is BaseWeb, not the emotion/react-aria toggle that other Streamlit builds
+           render -- so no class-based or role-based hook is portable between them. The track
+           being the label's first div is the stable part. */
+        [data-testid="stCheckbox"] label[data-baseweb="checkbox"] > div:first-of-type {
+            background-color: #bfc4ca !important;
         }
 
-        [data-testid="stCheckbox"] > * > * > * {
+        [data-testid="stCheckbox"] label[data-baseweb="checkbox"] > div:first-of-type > div {
             background-color: #ffffff !important;
         }
 
-        /* The switch wrapper gets data-selected while on, so the on-state colour needs no
-           :checked lookup. Only direct children match, so the knob stays white. */
-        [data-testid="stCheckbox"] [data-selected] > * {
-            background-color: var(--accent) !important;
-        }
-
-        /* Last, so it wins ties: the label text itself never takes a fill. */
-        [data-testid="stCheckbox"] [data-testid="stWidgetLabel"],
-        [data-testid="stCheckbox"] [data-testid="stWidgetLabel"] * {
-            background-color: transparent !important;
+        /* The checked state lives on an input that follows the track, and CSS has no previous
+           sibling combinator, so this one needs :has(). Kept in its own rule: where :has() is
+           unsupported the track simply stays grey rather than the whole block being dropped. */
+        [data-testid="stCheckbox"] label[data-baseweb="checkbox"]:has(input:checked) > div:first-of-type {
+            background-color: #0b6b3a !important;
         }
 
         @media (max-width: 800px) {
