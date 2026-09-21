@@ -151,7 +151,13 @@ def _inject_css() -> None:
         [data-testid="collapsedControl"],
         [data-testid="stSidebarCollapsedControl"],
         [data-testid="collapsedControl"] *,
-        [data-testid="stSidebarCollapsedControl"] *,
+        [data-testid="stSidebarCollapsedControl"] * {
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        /* Kept in its own rule: a browser without :has() support discards the whole
+           comma-separated rule it appears in, taking the plain selectors down with it. */
         div:has(> button[kind="header"]) {
             opacity: 1 !important;
             visibility: visible !important;
@@ -476,7 +482,15 @@ def _inject_css() -> None:
             margin-left: 0 !important;
         }
 
-        [data-testid="stChatMessage"][aria-label="user"],
+        [data-testid="stChatMessage"][aria-label="user"] {
+            width: fit-content !important;
+            max-width: min(82%, 980px) !important;
+            margin-left: auto !important;
+            margin-right: 0 !important;
+        }
+
+        /* Split out for the same reason as the sidebar-control rule above: an unsupported
+           :has() would otherwise take the plain aria-label selector down with it. */
         [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
             width: fit-content !important;
             max-width: min(82%, 980px) !important;
@@ -617,21 +631,26 @@ def _inject_css() -> None:
         /* The toggle's track takes its colour from theme.colors.borderColor when off and
            theme.colors.primary when on -- both arrive as the wrong values here, so it renders
            invisible-on-white when off and Streamlit's default orange when on. Neither the track
-           nor the knob carries a testid or role (the only role="switch" is on the hidden input),
-           but emotion gives each a stable target class, which is the reliable hook. The
-           :has(+ label) selectors are a structural fallback if those classes ever change. */
+           nor the knob has a testid or role of its own (the only role="switch" is on the hidden
+           input), so these hook onto emotion's stable target classes, with the DOM shape
+           (stCheckbox > switch > [hidden-input span] + track > knob) as the fallback.
+           Everything here is deliberately plain CSS: these selectors previously shared a rule
+           with a :has() one, and a browser that doesn't support :has() drops the whole
+           comma-separated rule -- including the selectors it does understand. */
         [data-testid="stCheckbox"] .ew2p8o5,
-        [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) {
+        [data-testid="stCheckbox"] > * > span + div {
             background-color: #9aa0a6 !important;
         }
 
-        [data-testid="stCheckbox"]:has(input:checked) .ew2p8o5,
-        [data-testid="stCheckbox"]:has(input:checked) *:has(+ [data-testid="stWidgetLabel"]) {
+        /* The switch wrapper gets data-selected while on, so the on-state colour needs no
+           :checked lookup. */
+        [data-testid="stCheckbox"] [data-selected] .ew2p8o5,
+        [data-testid="stCheckbox"] > [data-selected] > span + div {
             background-color: var(--accent) !important;
         }
 
         [data-testid="stCheckbox"] .ew2p8o6,
-        [data-testid="stCheckbox"] *:has(+ [data-testid="stWidgetLabel"]) > * {
+        [data-testid="stCheckbox"] > * > span + div > div {
             background-color: #ffffff !important;
         }
 
