@@ -609,22 +609,34 @@ def _inject_css() -> None:
 
         /* Same dark-mode-browser bleed-through as above, on st.checkbox/st.toggle (both share
            the stCheckbox testid). Without this, the label text and the switch track render in
-           near-invisible dark-mode colors on this forced-white page. */
+           near-invisible dark-mode colors on this forced-white page. The outer border on the
+           whole widget (rather than guessing at the switch's internal role/class, which isn't
+           reliably knowable from outside) is what actually guarantees visibility -- same
+           treatment as the boxed border already used for the date/device-id filter inputs. */
         [data-testid="stCheckbox"],
         [data-testid="stCheckbox"] * {
             color: #111111 !important;
         }
 
+        [data-testid="stCheckbox"] {
+            display: inline-flex !important;
+            align-items: center !important;
+            border: 1.5px solid #111111 !important;
+            border-radius: 8px !important;
+            padding: 0.4rem 0.7rem !important;
+            background: #ffffff !important;
+        }
+
         [data-testid="stCheckbox"] [role="checkbox"],
         [data-testid="stCheckbox"] [role="switch"] {
             background: #d8d8d8 !important;
-            border: 1px solid var(--border) !important;
+            border: 1px solid #111111 !important;
         }
 
         [data-testid="stCheckbox"] [role="checkbox"][aria-checked="true"],
         [data-testid="stCheckbox"] [role="switch"][aria-checked="true"] {
             background: var(--accent) !important;
-            border-color: var(--accent) !important;
+            border-color: #111111 !important;
         }
 
         [data-testid="stCheckbox"] [role="checkbox"] svg,
