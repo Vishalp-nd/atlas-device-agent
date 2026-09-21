@@ -5805,7 +5805,7 @@
     "priority": "P102"
   },
   {
-    "description_pattern": "Installer active — ignored AWS_HOTSPOT_UPDATE",
+    "description_pattern": "Installer active \u2014 ignored AWS_HOTSPOT_UPDATE",
     "TYPE": "INFO",
     "priority": "P103"
   },
@@ -8356,6 +8356,431 @@
   },
   {
     "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"SOF freeze\" message=\"Sep <N> <N> (root) CMDOUT <N> <N> - keep_ali",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"lowmemorykiller\" message=\"Sep <N> <N> (root) CMDOUT <N> <N> - kee",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"lowmemorykiller\" message=\"Sep <N> <N> (root) CMDOUT <N> <N> - ke",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"SOF freeze\" message=\"Sep <N> <N> (root) CMDOUT <N> <N> - keep_al",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"mcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> mcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"bcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> bcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"critical temperature <N> C),shutting down\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> therma",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:TEGRA_BCCPLEX_WATCHDOG, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"bcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> bcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"mcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> mcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION: ADB_OR_RTC -- RESET_REASON: POWER_DOWN, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> nvme <N> I/O <N> QID <N> timeout, comple",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"CSI Error\" message=\"Sep <N> <N> tegra-ubuntu <N>         An FE packet was found and marked with",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG:LANAI_WAKE_EVENT -- RESET_REASON::DISCHARGE_STA",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "STA Mode - Trying To Connect To",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "pattern=\"ERROR_CRC\" message=\"Sep <N> <N>  <N> CAM_ERR: CAM-ISP: cam_ife_csid_irq: <N> C",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> card <N> removed\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> <N> card <N> removed\"",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"critical temperature <N> C),shutting down\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> therma",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"bcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> bcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"mcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> mcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Failed to read AwsIoT certificate or private key",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"nvme <N> I/O\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> nvme <N> I/O <N> QID <N> timeout, compl",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"lowmemorykiller\" message=\"Sep <N> <N>   <N> lowmemorykiller: Killing 'tac' <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> card <N> removed\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> <N> card <N> removed\"",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(OFF): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup:",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Cannot access alert file <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION:AON_WATCHDOG -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LAN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: D OFF, GPS: D ON, SCAP: E OFF, CAN: D OFF, CRANK_VOLT: D OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "pattern=\"ERROR_CRC\" message=\"Sep <N> <N> <N> CAM_ERR: CAM-ISP: cam_ife_csid_irq: <N> C",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"ERROR_CRC\" message=\"Sep <N> <N> CAM_ERR: CAM-ISP: cam_ife_csid_irq: <N> C",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:WAKEonMOTION_IMU:LANAI_WAKE_EVENT -- RESET_REASON::DISCHARGE_STATE:RESET_STAT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG:LANAI_WAKE_EVENT -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SH",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "UniUploadCM : qid is <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> SCF: Error Timeout: ISP port <N> time",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> SCF: Error Timeout: ISP port <N> tim",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backu",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Ba",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> B",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Security check failed for SSID Netradyne-SSID on <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "MC:, BC:, <N> Thehousebythesideoftheroad",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: OFF Prev: OFF <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Endoftheroad",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_IMU -- RESET_REASON::SHUTDOWN_STATE:LANAI_SHUTDOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [    <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "DNS resolution failed, <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "<N> card <N> removed\" message=\"Sep <N> <N> tegra-ubuntu kernel: [  <N> <N> card <N> removed\"",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:   WAKEonCRANK_VOLT -- RESET_REASON:  <N> POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON::SLEEP_STATE:LANAI_SUSPEND:EXTERNAL_PMIC_WATCHDOG",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Zipper exception!! File read error",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "bt_interface_->init failed",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "A_IGNS(OFF): D: (IGN: ON Prev: OFF <N> ON V: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: :POWER_DOWN:SW_REBOOT (Speed: <N> )",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "ADSM File create table failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"SOF freeze\" message=\"Sep <N> <N> CAM_ERR: CAM-CRM: __cam_req_mgr_process_s",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "dmsUnInit TIMEDOUT",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "MC:, BC:, Found:Offtherail",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup: <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"Lumia device not detected within <N> seconds. Status set to 'No USB device found'\" message=\"Sep <N> <N> tegra-ubunt",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonMOTION_AON:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RE",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"lowmemorykiller\" message=\"Sep <N> <N> <N> lowmemorykiller: Killing 'ext_cam'",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "!",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: WAKEonCRANK_VOLT: IGNITION: CAN: WAKEonMOTION: ADB_OR_RTC -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_WATCHDOG -- RESET_REASON::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "DHUB Offline -  <N> BC:, Found:Endoftheroad Endoftheroad",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: [ <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N> thermal cooling",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> <N> Port <N> <N> Bad Link!\" message=\"Sep <N> <N> tegra-ubuntu kernel: <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "q\u0001",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonMOTION_AON:LANAI_WAKE_EVENT -- RESET_REASON::SHUTDOWN_STATE:SUPERCAP_DISCHARGE:",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"bcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N> bcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"mcpu-throttle-alert cooling state: <N> -> <N> message=\"Sep <N> <N> tegra-ubuntu kernel: <N> mcpu-throttle-",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:AON_WATCHDOG -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DIS",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION:AON_WATCHDOG -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANA",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON:  WAKEonIGNITION WAKEonIGNITION -- RESET_REASON:  <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"EMEM address decode error (EMEM decode error)\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> tegra-mc <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"Unhandled context fault\" message=\"Sep <N> <N> tegra-ubuntu kernel: [   <N> arm-smmu <N> Unhandle",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:SU",
     "TYPE": "INFO",
     "priority": "P102"
   }
