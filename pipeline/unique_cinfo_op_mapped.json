@@ -8783,5 +8783,35 @@
     "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:IGNITION -- RESET_REASON::DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:LANAI_SUSPEND:SU",
     "TYPE": "INFO",
     "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backu",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Ba",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> B",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"CSI Error\" message=\"Sep <N> <N> tegra-ubuntu <N>         An FE packet was found and marked with",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> SCF: Error Timeout: ISP port <N> time",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> SCF: Error Timeout: ISP port <N> tim",
+    "TYPE": "ERROR",
+    "priority": "P3"
   }
 ]

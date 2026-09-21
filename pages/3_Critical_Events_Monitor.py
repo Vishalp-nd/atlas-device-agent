@@ -24,8 +24,6 @@ ERROR_PRIORITIES = {
     "P4": "minor/no immediate loss",
 }
 PRIORITY_BREAKDOWN_LABEL_LIMIT = 24
-# Home pies are sized to fit alongside the title and OTA manager inside the first viewport.
-HOME_PIE_HEIGHT = 360
 
 CHART_CARD_STYLE_BLOCK = """
 <style>
@@ -991,27 +989,9 @@ def _version_sort_key(version: str) -> list[tuple[int, int, str]]:
 
 
 def _render_home(summary: pd.DataFrame) -> None:
-    st.subheader("Production OTA overview")
     if summary.empty:
         st.info("No production critical-events data found.")
         return
-
-    col1, col2 = st.columns([1.2, 1])
-    with col1:
-        _render_chart_card(
-            _pie(summary, "DEVICE_VERSION", "events", "Event share by OTA", height=HOME_PIE_HEIGHT),
-            "Event share by OTA",
-            "Distribution of weighted events across configured OTA versions.",
-            key="home_event_share_by_ota",
-        )
-    with col2:
-        type_totals = summary.groupby("type", as_index=False)["events"].sum()
-        _render_chart_card(
-            _pie(type_totals, "type", "events", "Error vs Info split", height=HOME_PIE_HEIGHT),
-            "Error vs Info split",
-            "Overall production mix for the currently monitored OTA set.",
-            key="home_error_info_split",
-        )
 
     st.markdown("### OTA tiles")
     totals = summary.groupby("DEVICE_VERSION", as_index=False)["events"].sum()

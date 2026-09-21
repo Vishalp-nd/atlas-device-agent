@@ -103,7 +103,7 @@ testcase-count stat in the UI header.
 - **Critical-events data can come from production or staging** — `critical_events_agent_graph.py`
   runs read-only queries against the local ClickHouse production table
   `criticalinfo_snowflakes_data`, and can also query Snowflake staging table
-  `STAGE_IDMS_MAIN_DB.PUBLIC.DEVICE_CRITICAL_EVENT` for staging or compare asks.
+  `STAGE_IDMS_MAIN_DB.PUBLISHED_VIEWS.DEVICE_CRITICAL_EVENT` for staging or compare asks.
   The local production table is kept fresh by `pipeline/nightly_critical_events_poll.sh`,
   a cron job that runs daily at 01:00 IST, pulls the last rolling 24h window from
   Snowflake (`critical_events_pipeline.py`), classifies each row (INFO/ERROR via SVM),
