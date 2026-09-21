@@ -274,7 +274,7 @@ def load_ota_top_codes(
     frame = _read_clickhouse_df(config, sql)
     if frame.empty:
         return pd.DataFrame(columns=["CODE", "events"])
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame
 
@@ -292,6 +292,7 @@ def load_ota_top_code_details(
         SELECT
             "CODE",
             replaceRegexpAll(ifNull("DESCRIPTION", ''), '\\S*\\d\\S*', '<N>') AS description_pattern,
+            min(ifNull("DESCRIPTION", '')) AS sample_description,
             sum("COUNT") AS events
         FROM {config.table_name}
         INNER JOIN (
@@ -309,7 +310,7 @@ def load_ota_top_code_details(
     '''
     frame = _read_clickhouse_df(config, sql)
     if frame.empty:
-        return pd.DataFrame(columns=["CODE", "description_pattern", "events"])
+        return pd.DataFrame(columns=["CODE", "description_pattern", "sample_description", "events"])
     rename_map = {}
     for column in frame.columns:
         lowered = str(column).strip().lower()
@@ -317,13 +318,16 @@ def load_ota_top_code_details(
             rename_map[column] = "CODE"
         elif lowered == "description_pattern":
             rename_map[column] = "description_pattern"
+        elif lowered == "sample_description":
+            rename_map[column] = "sample_description"
         elif lowered == "events":
             rename_map[column] = "events"
     frame = frame.rename(columns=rename_map)
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED")
+    frame["sample_description"] = frame["sample_description"].fillna("")
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
-    return frame[["CODE", "description_pattern", "events"]]
+    return frame[["CODE", "description_pattern", "sample_description", "events"]]
 
 
 def load_ota_priority_code_breakdown(
@@ -350,7 +354,7 @@ def load_ota_priority_code_breakdown(
         return pd.DataFrame(columns=["priority", "CODE", "normalized_description", "events"])
     frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
     frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["normalized_description"] = frame["normalized_description"].fillna("UNMAPPED").astype(str)
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame[["priority", "CODE", "normalized_description", "events"]]

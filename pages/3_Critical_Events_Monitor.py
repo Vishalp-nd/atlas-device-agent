@@ -15,7 +15,6 @@ from atlas.streamlit_ui import API_BASE_URL, REQUEST_TIMEOUT, _render_sidebar_na
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DETAIL_TABLE_LIMIT = 10
 ERROR_PRIORITIES = {
     "P0": "direct video/data loss",
     "P1": "major telemetry/safety signal loss",
@@ -541,24 +540,6 @@ def _load_summary(ota_versions: tuple[str, ...]) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def _load_detail(
-    ota_version: str,
-    device_ids: tuple[str, ...],
-    start_date: str | None,
-    end_date_exclusive: str | None,
-) -> pd.DataFrame:
-    payload = _dashboard_api_post(
-        f"/atlas/dashboard/critical-events/{ota_version}/detail",
-        _filter_payload(ota_version, device_ids, start_date, end_date_exclusive, DETAIL_TABLE_LIMIT),
-    )
-    frame = _frame_from_rows(payload.get("rows", []))
-    if frame.empty:
-        return frame
-    frame["TIMESTAMP"] = pd.to_datetime(frame["TIMESTAMP"], errors="coerce")
-    return frame
-
-
-@st.cache_data(show_spinner=False, ttl=300)
 def _load_date_bounds(ota_version: str) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
     payload = _dashboard_api_get(f"/atlas/dashboard/critical-events/{ota_version}/date-bounds")
     min_ts = pd.to_datetime(payload.get("min_timestamp"), errors="coerce")
@@ -641,7 +622,7 @@ def _load_top_codes(ota_version: str, device_ids: tuple[str, ...], start_date: s
     frame = _frame_from_rows(payload.get("rows", []))
     if frame.empty:
         return pd.DataFrame(columns=["CODE", "events"])
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame
 
@@ -654,8 +635,9 @@ def _load_top_code_details(ota_version: str, device_ids: tuple[str, ...], start_
     )
     frame = _frame_from_rows(payload.get("rows", []))
     if frame.empty:
-        return pd.DataFrame(columns=["CODE", "description_pattern", "events"])
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+        return pd.DataFrame(columns=["CODE", "description_pattern", "sample_description", "events"])
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
+    frame["sample_description"] = frame["sample_description"].fillna("").astype(str)
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame
 
@@ -675,7 +657,7 @@ def _load_priority_code_breakdown(
     if frame.empty:
         return pd.DataFrame(columns=["priority", "CODE", "normalized_description", "events"])
     frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
-    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce")
+    frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["normalized_description"] = frame["normalized_description"].fillna("UNMAPPED").astype(str)
     frame["events"] = pd.to_numeric(frame["events"], errors="coerce").fillna(0)
     return frame
@@ -727,7 +709,6 @@ def _load_ota_page_data(ota_version: str, device_ids: tuple[str, ...], start_dat
         "code_counts": lambda: _load_top_codes(ota_version, device_ids, start_date, end_date_exclusive),
         "code_details": lambda: _load_top_code_details(ota_version, device_ids, start_date, end_date_exclusive),
         "device_counts": lambda: _load_top_devices(ota_version, device_ids, start_date, end_date_exclusive),
-        "filtered": lambda: _load_detail(ota_version, device_ids, start_date, end_date_exclusive),
     }
     with ThreadPoolExecutor(max_workers=len(loaders)) as executor:
         futures = {name: executor.submit(loader) for name, loader in loaders.items()}
@@ -1138,7 +1119,6 @@ def _render_ota_page(ota_version: str) -> None:
     code_counts = page_data["code_counts"]
     code_details = page_data["code_details"]
     device_counts = page_data["device_counts"]
-    filtered = page_data["filtered"]
 
     if st.button("Back to OTA overview"):
         st.query_params.clear()
@@ -1209,21 +1189,9 @@ def _render_ota_page(ota_version: str) -> None:
     if code_details.empty:
         st.info("No top error code detail rows found for this OTA selection.")
     else:
-        detail_frame = code_details[["CODE", "description_pattern", "events"]].reset_index(drop=True)
-        st.caption("Breakdown of the current Top Error Codes by code and description pattern.")
+        detail_frame = code_details[["CODE", "description_pattern", "sample_description", "events"]].reset_index(drop=True)
+        st.caption("Breakdown of the current Top Error Codes by code, description pattern, and a sample description matching that pattern.")
         st.table(detail_frame)
-
-    st.markdown("### Filtered rows")
-    if filtered.empty:
-        st.info(f"Showing 0 rows in the latest {DETAIL_TABLE_LIMIT} records for this selection.")
-        return
-    table_frame = (
-        filtered[["TIMESTAMP", "DEVICE_ID", "PROCESS_NAME", "CODE", "DESCRIPTION", "type", "priority", "COUNT"]]
-        .sort_values("TIMESTAMP", ascending=False)
-        .reset_index(drop=True)
-    )
-    st.caption(f"Showing the latest {len(table_frame)} rows for this selection. Charts are aggregated across the full selected date range.")
-    st.table(table_frame)
 
 
 def _render_priority_breakdown_page(ota_version: str) -> None:
