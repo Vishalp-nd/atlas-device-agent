@@ -489,7 +489,8 @@ def _load_process_code_table(ota_version: str, device_ids: tuple[str, ...], star
     frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["CODE_AUX"] = pd.to_numeric(frame["CODE_AUX"], errors="coerce").astype("Int64")
     frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    frame["priority"] = frame["priority"].fillna("UNMAPPED").astype(str).str.upper()
+    frame["priority"] = frame["priority"].astype(str).str.strip().str.upper()
+    frame.loc[frame["priority"].isin(["", "NAN", "NONE"]), "priority"] = pd.NA
     frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED").astype(str)
     frame["sample_description"] = frame["sample_description"].fillna("").astype(str)
     frame["occurrences"] = pd.to_numeric(frame["occurrences"], errors="coerce").fillna(0).astype("Int64")
@@ -738,7 +739,7 @@ def _render_home(summary: pd.DataFrame) -> None:
 PROCESS_CODE_TABLE_STYLE_BLOCK = """
 <style>
 .process-code-table-wrap {
-    max-height: 620px;
+    max-height: 440px;
     overflow-y: auto;
     overflow-x: auto;
     border: 1px solid rgba(120, 120, 120, 0.25);
@@ -767,11 +768,11 @@ PROCESS_CODE_TABLE_STYLE_BLOCK = """
 }
 .process-code-table td.wrap-cell {
     white-space: normal;
-    min-width: 220px;
+    min-width: 200px;
 }
 .process-code-devices {
     max-height: 70px;
-    min-width: 160px;
+    min-width: 140px;
     overflow-y: auto;
     white-space: normal;
     word-break: break-word;
@@ -780,6 +781,19 @@ PROCESS_CODE_TABLE_STYLE_BLOCK = """
 .process-code-devices div {
     padding: 0.05rem 0;
 }
+.copy-devices-btn {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.45rem;
+    margin-bottom: 0.3rem;
+    border: 1px solid rgba(120, 120, 120, 0.4);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+.copy-devices-btn:hover {
+    background: rgba(120, 120, 120, 0.15);
+}
 </style>
 """
 
@@ -787,7 +801,7 @@ PROCESS_CODE_TABLE_STYLE_BLOCK = """
 def _render_process_code_table(frame: pd.DataFrame) -> None:
     headers = [
         "Process", "Code", "Code Aux", "Severity", "Priority",
-        "Description Pattern", "Sample Description", "Occurrences", "Devices",
+        "Description Pattern", "Sample Description", "Occurrences", "Device Count", "Devices",
     ]
     header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
     row_chunks = []
@@ -796,7 +810,14 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
         code_aux = "" if pd.isna(row.CODE_AUX) else str(int(row.CODE_AUX))
         occurrences = 0 if pd.isna(row.occurrences) else int(row.occurrences)
         devices = row.devices or []
+        device_count = len(devices)
         devices_inner = "".join(f"<div>{html.escape(str(device))}</div>" for device in devices)
+        devices_text = "\n".join(str(device) for device in devices)
+        copy_button = (
+            "<button type='button' class='copy-devices-btn' title='Copy all device IDs' "
+            f'data-devices="{html.escape(devices_text)}" '
+            "onclick=\"navigator.clipboard.writeText(this.dataset.devices)\">Copy</button>"
+        )
         row_chunks.append(
             "<tr>"
             f"<td>{html.escape(str(row.PROCESS_NAME))}</td>"
@@ -807,7 +828,8 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
             f"<td class='wrap-cell'>{html.escape(str(row.description_pattern))}</td>"
             f"<td class='wrap-cell'>{html.escape(str(row.sample_description))}</td>"
             f"<td>{occurrences}</td>"
-            f"<td><div class='process-code-devices'>{devices_inner}</div>({len(devices)})</td>"
+            f"<td>{device_count}</td>"
+            f"<td>{copy_button}<div class='process-code-devices'>{devices_inner}</div></td>"
             "</tr>"
         )
     table_html = (
@@ -821,11 +843,22 @@ def _render_process_code_table(frame: pd.DataFrame) -> None:
     st.markdown(table_html, unsafe_allow_html=True)
 
 
+def _priority_family(priority: str) -> int:
+    # ERROR-severity priorities are P0-P4; INFO-severity priorities are P100-P104.
+    # Grouping by family (rather than one flat sequence) is what lets the caller
+    # reset the 2-per-row pairing at the family boundary, so P100 always starts a
+    # new row instead of pairing with P4.
+    match = re.fullmatch(r"P(\d+)", priority)
+    if not match:
+        return 2
+    return 0 if int(match.group(1)) < 100 else 1
+
+
 def _priority_sort_key(priority: str) -> tuple[int, int, str]:
     match = re.fullmatch(r"P(\d+)", priority)
     if match:
-        return (0, int(match.group(1)), priority)
-    return (1, 0, priority)
+        return (_priority_family(priority), int(match.group(1)), priority)
+    return (_priority_family(priority), 0, priority)
 
 
 def _render_ota_page(ota_version: str) -> None:
@@ -838,6 +871,10 @@ def _render_ota_page(ota_version: str) -> None:
     st.caption(
         f"Available data range: {min_ts.strftime('%Y-%m-%d %H:%M:%S')} to {max_ts.strftime('%Y-%m-%d %H:%M:%S')}"
     )
+
+    if st.button("Back to OTA overview"):
+        st.query_params.clear()
+        st.rerun()
 
     filter_cols = st.columns([1, 1, 1.6])
     min_date = min_ts.date()
@@ -865,43 +902,30 @@ def _render_ota_page(ota_version: str) -> None:
 
     selected_device_ids = tuple(selected_devices)
 
-    if st.button("Back to OTA overview"):
-        st.query_params.clear()
-        st.rerun()
-
     table = _load_process_code_table(ota_version, selected_device_ids, start_date_str, end_date_exclusive_str)
     if table.empty:
         st.info("No data found for the selected OTA and date range.")
         return
 
-    priority_options = sorted(table["priority"].dropna().unique().tolist(), key=_priority_sort_key)
     severity_options = sorted(table["type"].dropna().unique().tolist())
     code_options = sorted(int(code) for code in table["CODE"].dropna().unique().tolist())
 
-    filter_row2 = st.columns([1, 1, 1, 2])
+    filter_row2 = st.columns([1, 1, 2])
     with filter_row2[0]:
-        selected_priorities = st.multiselect(
-            "Priority",
-            priority_options,
-            format_func=lambda value: f"{value} - {ERROR_PRIORITIES[value]}" if value in ERROR_PRIORITIES else value,
-            placeholder="All priorities",
-            key=f"priority_filter_{ota_version}",
-        )
-    with filter_row2[1]:
         selected_severities = st.multiselect(
             "Severity",
             severity_options,
             placeholder="All severities",
             key=f"severity_filter_{ota_version}",
         )
-    with filter_row2[2]:
+    with filter_row2[1]:
         selected_codes = st.multiselect(
             "Code",
             code_options,
             placeholder="All codes",
             key=f"code_filter_{ota_version}",
         )
-    with filter_row2[3]:
+    with filter_row2[2]:
         description_query = st.text_input(
             "Description pattern contains",
             placeholder="Search description pattern",
@@ -909,8 +933,6 @@ def _render_ota_page(ota_version: str) -> None:
         )
 
     filtered = table
-    if selected_priorities:
-        filtered = filtered[filtered["priority"].isin(selected_priorities)]
     if selected_severities:
         filtered = filtered[filtered["type"].isin(selected_severities)]
     if selected_codes:
@@ -919,15 +941,40 @@ def _render_ota_page(ota_version: str) -> None:
         filtered = filtered[
             filtered["description_pattern"].str.contains(description_query.strip(), case=False, na=False, regex=False)
         ]
-    filtered = filtered.sort_values("occurrences", ascending=False).reset_index(drop=True)
 
-    st.markdown("### Process / code details")
-    if filtered.empty:
-        st.info("No rows match the selected filters.")
-    else:
-        st.markdown(PROCESS_CODE_TABLE_STYLE_BLOCK, unsafe_allow_html=True)
-        _render_process_code_table(filtered)
-    st.caption(f"Showing {len(filtered)} of {len(table)} entries.")
+    priority_groups = sorted(table["priority"].dropna().unique().tolist(), key=_priority_sort_key)
+
+    # Split into families (P0-P4, P100-P104, ...) so the 2-per-row pairing below resets at
+    # each family boundary instead of running as one flat sequence -- otherwise the last
+    # P0-P4 table (when that family has an odd count) would end up paired with P100.
+    families: list[list[str]] = []
+    for priority in priority_groups:
+        family_id = _priority_family(priority)
+        if not families or _priority_family(families[-1][-1]) != family_id:
+            families.append([])
+        families[-1].append(priority)
+
+    st.markdown("### Process / code details by priority")
+    st.markdown(PROCESS_CODE_TABLE_STYLE_BLOCK, unsafe_allow_html=True)
+
+    for family in families:
+        for pair_start in range(0, len(family), 2):
+            pair_cols = st.columns(2)
+            for index, priority in enumerate(family[pair_start:pair_start + 2]):
+                group_total = table[table["priority"] == priority]
+                group_filtered = (
+                    filtered[filtered["priority"] == priority]
+                    .sort_values("occurrences", ascending=False)
+                    .reset_index(drop=True)
+                )
+                priority_label = f"{priority} - {ERROR_PRIORITIES[priority]}" if priority in ERROR_PRIORITIES else priority
+                with pair_cols[index]:
+                    st.markdown(f"**{priority_label}**")
+                    if group_filtered.empty:
+                        st.info("No rows match the selected filters.")
+                    else:
+                        _render_process_code_table(group_filtered)
+                    st.caption(f"Showing {len(group_filtered)} of {len(group_total)} entries.")
 
 
 def main() -> None:

@@ -183,8 +183,8 @@ def load_ota_process_code_table(
     frame["CODE"] = pd.to_numeric(frame["CODE"], errors="coerce").astype("Int64")
     frame["CODE_AUX"] = pd.to_numeric(frame["CODE_AUX"], errors="coerce").astype("Int64")
     frame["type"] = frame["type"].fillna("UNKNOWN").astype(str).str.upper()
-    frame["priority"] = frame["priority"].fillna("").astype(str).str.upper().str.strip()
-    frame.loc[frame["priority"] == "", "priority"] = "UNMAPPED"
+    frame["priority"] = frame["priority"].astype(str).str.upper().str.strip()
+    frame.loc[frame["priority"].isin(["", "NAN", "NONE"]), "priority"] = pd.NA
     frame["description_pattern"] = frame["description_pattern"].fillna("UNMAPPED")
     frame["sample_description"] = frame["sample_description"].fillna("")
     frame["occurrences"] = pd.to_numeric(frame["occurrences"], errors="coerce").fillna(0).astype("Int64")
