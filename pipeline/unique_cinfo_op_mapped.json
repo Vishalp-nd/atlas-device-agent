@@ -1206,8 +1206,8 @@
   },
   {
     "description_pattern": "Record privacy is enabled <N>",
-    "TYPE": "ERROR",
-    "priority": "P0"
+    "TYPE": "INFO",
+    "priority": "P100"
   },
   {
     "description_pattern": "VOD Expired error..!",
@@ -6446,8 +6446,8 @@
   },
   {
     "description_pattern": "Upload privacy is enabled <N>",
-    "TYPE": "ERROR",
-    "priority": "P3"
+    "TYPE": "INFO",
+    "priority": "P100"
   },
   {
     "description_pattern": "Cannot receive from queue UniUpload",
@@ -8813,5 +8813,870 @@
     "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Sep <N> <N> tegra-ubuntu <N> SCF: Error Timeout: ISP port <N> tim",
     "TYPE": "ERROR",
     "priority": "P3"
+  },
+  {
+    "description_pattern": "rsn:MISC_LOWPOWER_WAKEUP_SHUTDOWN state:APPLIED <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "rsn:MISC_LOWPOWER_WAKEUP_SHUTDOWN state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "WOIGN: FAIL : E : FAIL, WOMOT: FAIL : E : FAIL, WOSMS: FAIL : D : FAIL, LUMIA: FAIL : E : FAIL",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "LD UNSET->GROW free <N> reserved <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "write_sample: write took <N> size: <N> bytes.",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "PTS sidecar missing: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Oct <N> <N> tegra-ubuntu kernel: <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"CSI Error\" message=\"Oct <N> <N> tegra-ubuntu <N>         An FE packet was found and marked with",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Oct <N> <N> tegra-ubuntu kernel: [ <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Oct <N> <N> tegra-ubuntu <N> CAM: serial no file already exists,",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Oct <N> <N> tegra-ubuntu <N> CAM: serial no file already exists",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"ISP port <N> timed out!\" message=\"Oct <N> <N> tegra-ubuntu <N> SCF: Error Timeout: ISP port <N> tim",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"waitCsiFrameStart timeout guid <N> message=\"Oct <N> <N> tegra-ubuntu <N> Error: waitCsiFrameStart",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"waitCsiFrameStart timeout guid <N> message=\"Oct <N> <N> tegra-ubuntu <N> Error: waitCsiFrameStar",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"waitCsiFrameStart timeout guid <N> message=\"Oct <N> <N> tegra-ubuntu <N> CAM: serial no file alre",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"SCF: Error Timeout: Worker thread ViCsiHw frameStart failed\" message=\"Oct <N> <N> tegra-ubuntu <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> message=\"Oct <N> <N> tegra-ubuntu <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> tegra_channel_error_recovery: attempting to reset the capture channel\" message=\"Oct <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"NvViErrorDecode CaptureError: ChanselFault <N> message=\"Oct <N> <N> tegra-ubuntu <N> NvViErrorD",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"NvViErrorDecode CaptureError: CsimuxStreamError <N> message=\"Oct <N> <N> tegra-ubuntu <N> NvViE",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "pattern=\"NvViErrorDecode CaptureError: CsimuxStreamError <N> message=\"Oct <N> <N> tegra-ubuntu <N> NvVi",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "rsn:CAM_CRASH_REBOOT state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "rsn:NONE state:NONE udid:- sid:- t:-",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: CAM_CRASH_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON: LOWPOWER_WAKEUP_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POW",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON: MISC_LOWPOWER_WAKEUP_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON: MISC_LOWPOWER_WAKEUP_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: IMU GPS",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_SUPERCAP(ON): D: (PFI: <N> V: <N> Prev: PFI: <N> V: <N> <N> PFI: <N> V: <N> Time: <N> Volt: <N> Backup:",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Ext eMMC - KINGSTON Last week <N> , <N> , <N> , <N> , Avg <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Int eMMC - WesternDigital Last week <N> , <N> , <N> , <N> , Avg <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Cam <N> - Video Not Available <N> Ignition: OFF",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Cam <N> - Video Not Available <N> Ignition: ON",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Cam <N> - Video Not Available <N> Ignition: OFF (Low Power Wakeup)",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Device Shutdown Initiated <N> <N> defer_consumed=NO)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "LOCALE: CA,resource_CA,MX,resource_MX,US,resource_US,resource_recovery ,DEFAULT: US ,STATUS: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "pattern=\"CsimuxFrameError_Regular\" message=\"Oct <N> <N> tegra-ubuntu <N> CsimuxFrameError_Regular : <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"nvcsi <N> <N> message=\"Oct <N> <N> tegra-ubuntu kernel: <N> nvcsi <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> message=\"Oct <N> <N> tegra-ubuntu <N> CILA_INTR_STATUS_CILA[",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> message=\"Oct <N> <N> tegra-ubuntu <N> CILA_INTR_STATUS_CILA",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> message=\"Oct <N> <N> tegra-ubuntu <N> CILB_INTR_STATUS_CILB[",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> message=\"Oct <N> <N> tegra-ubuntu <N> CILB_INTR_STATUS_CILB",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Hotspot client connected on <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "<N> | updateTime: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Oct <N> <N> tegra-ubuntu kernel: [  <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "A_CAN: Data Outage Count: <N>",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "USB Hub is not connected at service start <N> <N>",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Failed to fetch haptic accessory from DB, error: <N> such table: ACCESSORY",
+    "TYPE": "ERROR",
+    "priority": "P2"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  power_monitor diff: <N> Restarting Service",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  bagheera diff: <N> Restarting Service",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Keep alive timeout:  apm diff: <N> Restarting Service",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Oct <N> <N> tegra-ubuntu kernel: [  <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Oct <N> <N> tegra-ubuntu kernel: [   <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "pattern=\"PXL_SOF syncpt timeout! err\" message=\"Oct <N> <N> tegra-ubuntu kernel: [ <N> <N> <N> PXL_S",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> <N> no acknowledge from address <N> message=\"Oct <N> <N> tegra-ubuntu kernel: [   <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "<N> card <N> removed\" message=\"Oct <N> <N> tegra-ubuntu kernel: [  <N> <N> card <N> removed\"",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "<N> card <N> removed\" message=\"Oct <N> <N> tegra-ubuntu kernel: [   <N> <N> card <N> removed\"",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "PTS start time check failed, using legacy conversion: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "MPEG-TS creation with .pts failed, using legacy conversion: <N>",
+    "TYPE": "ERROR",
+    "priority": "P0"
+  },
+  {
+    "description_pattern": "rsn:DIRECT_SYSTEM_REBOOT state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:IGNITION_OFF_SHUTDOWN state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:DIRECT_SYSTEM_REBOOT state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:SVC_REBOOT state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:LOWPOWER_WAKEUP_SHUTDOWN state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "rsn:LOWPOWER_WAKEUP_SHUTDOWN state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:CAM_CRASH_REBOOT state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "rsn:IGNITION_OFF_SHUTDOWN state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:AWSIOT_REBOOT state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "rsn:AWSIOT_REBOOT state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:OTA_UPDATE_REBOOT state:APPLIED udid:- sid:- <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "rsn:INSTALLER_APP_REBOOT state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "rsn:SVC_REBOOT state:ALREADY_READ <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "rsn:INSTALLER_APP_REBOOT state:APPLIED <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: DIRECT_SYSTEM_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:POWER_UP -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_O",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: SVC_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON: LOWPOWER_WAKEUP_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: AWSIOT_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:IGNITION -- RESET_REASON: SVC_REBOOT::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON: DIRECT_SYSTEM_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: OTA_UPDATE_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_O",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::AON_RTC_WAKE_FROM_SHUTDOWN:WAKEonCRANK_VOLT:POWER_UP -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANA",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON: AWSIOT_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON: CAM_CRASH_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT:IGNITION -- RESET_REASON: IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: INSTALLER_APP_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP:WAKEonCRANK_VOLT -- RESET_REASON: SVC_REBOOT::POWER_DOWN:SW_REBOOT",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: IMU GPS CRANK_VOLT",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: IMU CRANK_VOLT",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "ON , IGN: ON, IMU: OFF, GPS: OFF, SCAP: OFF, CAN: OFF, CRANK: ON",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "IGN: E ON, IMU: E OFF, GPS: E OFF, SCAP: E OFF, CAN: E OFF, CRANK_VOLT: E OFF",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "A_CAN(OFF): D: (CAN: RPM: <N> <N> <N>",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: CRANK_VOLT",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: GPS CAN CRANK_VOLT",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: CAN CRANK_VOLT",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "has_pts is <N> but pts file is present, deleting it: <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "LD DELETE->GROW free <N> reserved <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "LD GROW->DELETE free <N> reserved <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "airtel.gprs",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "Ext eMMC - WesternDigital Last week <N> , <N> , <N> , <N> , Avg <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "No haptic motor accessory found in accessories DB",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Shutting Down in <N> - LONG LPW (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Shutdown postpone requested by: UniUpload, Client count: <N>",
+    "TYPE": "INFO",
+    "priority": "P103"
+  },
+  {
+    "description_pattern": "CYCLIC_REBOOT: service uptime: <N> < <N> Skipping",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "CYCLIC_REBOOT: Vehicle is moving(PWR), Skipping",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "CYCLIC_REBOOT: Soak done <N> rebooting",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "CYCLIC_REBOOT: Soak started <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "CYCLIC_REBOOT: Uptime Check Pass LOW",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "CYCLIC_REBOOT: Crank high recent <N> < <N> Skipping",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  DIRECT_SYSTEM_REBOOT::POWER_DOWN:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SUSPEND:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  IGNITION_OFF_SHUTDOWN::SHUTDOWN_STATE:LANAI_SHUTDOWN:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  SVC_REBOOT::SHUTDOWN_STATE:POWER_DOWN:POWER_ON_RESET (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  OTA_UPDATE_REBOOT::POWER_DOWN:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  AWSIOT_REBOOT::POWER_DOWN:SW_REBOOT (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown: DBSTATE_SHUTDOWN_LOWPOWER:NA (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON::POWER_UP -- RESET_REASON: SVC_REBOOT::POWER_DOWN:SW_REBOOT, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"nvcsi <N> <N> message=\"Oct <N> <N> tegra-ubuntu kernel: [  <N> nvcsi <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "pattern=\"nvcsi <N> <N> message=\"Oct <N> <N> tegra-ubuntu kernel: [ <N> nvcsi <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
+  },
+  {
+    "description_pattern": "LD UNSET->NEW free <N> reserved <N>",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue DIAGNOSTIC",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue AWSIOT",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "Alert:IgnAl <N> Ignition_ON_feedback.wav Play Failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:PrivacySt <N> privacy_mode_is_deactivated_en_f.wav Play Failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:LiveSt <N> live_streaming_outward_end.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue q_nd_central",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Alert:IgnAl <N> Ignition_ON_feedback.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:IgnAl <N> Ignition_ON_feedback.wav Play Failed, Replayed Failed",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Alert:IgnIdleAl <N> Ignition_ON_feedback.wav Play Failed, Replayed Success",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue q_power_monitor",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue SCH",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cannot receive from queue SPEED",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "pattern=\"ERROR_CRC\" message=\"Oct <N> <N>  <N> CAM_ERR: CAM-ISP: cam_ife_csid_irq: <N> C",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Cannot receive from queue TIME_SYNC",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "EA imgs deletion from table failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "EA imgs get from table failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "DB GET query failed whileCB broadcasted SC cleanup",
+    "TYPE": "ERROR",
+    "priority": "P4"
+  },
+  {
+    "description_pattern": "Update EA img error code in DB failed",
+    "TYPE": "ERROR",
+    "priority": "P3"
+  },
+  {
+    "description_pattern": "Cannot receive from queue WIFI_MGR",
+    "TYPE": "ERROR",
+    "priority": "P1"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: ALIVE_REBOOT: QCS_POWER_OFF: TEMP_SHUTDOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: DIRECT_SYSTEM_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: DIRECT_SYSTEM_REBOOT: ALIVE_REBOOT: QCS_POWER_OFF: TEMP_SHUTDOWN",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: IGNITION_OFF_SHUTDOWN: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: IGNITION -- RESET_REASON: IGNITION_OFF_SHUTDOWN: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: SVC_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: AWSIOT_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: DIRECT_SYSTEM_REBOOT: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: LOWPOWER_WAKEUP_SHUTDOWN: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: IGNITION_OFF_SHUTDOWN: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: ADB_OR_RTC -- RESET_REASON: MISC_LOWPOWER_WAKEUP_SHUTDOWN: QCS_POWER_OFF",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(ON): D: (VOLT: C: <N> <N> <N> true, BadBattery: true, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WOIGN: ON : E : ON, WOMOT: OFF : D : OFF, WOSMS: OFF : D : OFF, LUMIA: ON : E : ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "A_PWR_VOLT(OFF): D: (VOLT: C: <N> <N> <N> true, BadBattery: true, FusionActive: true)",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WOIGN: ON : E : ON, WOMOT: ON : D : OFF, WOSMS: OFF : D : OFF, LUMIA: ON : E : ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WOIGN: ON : E : ON, WOMOT: OFF : D : OFF, WOSMS: OFF : D : OFF, LUMIA: OFF : E : ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WOIGN: ON : E : ON, WOMOT: OFF : E : ON, WOSMS: OFF : D : OFF, LUMIA: ON : E : ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WOIGN: ON : E : ON, WOMOT: ON : E : ON, WOSMS: OFF : D : OFF, LUMIA: ON : E : ON",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Sensor disabled from override, monitoring enabled and decision disabled for: GPS CAN",
+    "TYPE": "INFO",
+    "priority": "P101"
+  },
+  {
+    "description_pattern": "LD NORMAL->GROW free <N> reserved <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "LD NEW->NORMAL free <N> reserved <N>",
+    "TYPE": "INFO",
+    "priority": "P100"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  ALIVE_REBOOT: QCS_POWER_OFF: TEMP_SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  DIRECT_SYSTEM_REBOOT: QCS_POWER_OFF (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  DIRECT_SYSTEM_REBOOT: ALIVE_REBOOT: QCS_POWER_OFF: TEMP_SHUTDOWN (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: DIRECT_SYSTEM_REBOOT: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "WAKEUP_REASON: POWER_UP -- RESET_REASON: SVC_REBOOT: QCS_POWER_OFF, RTC_JUMP: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  IGNITION_OFF_SHUTDOWN: QCS_POWER_OFF (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "Previous Shutdown:  AWSIOT_REBOOT: QCS_POWER_OFF (Speed: <N>",
+    "TYPE": "INFO",
+    "priority": "P102"
+  },
+  {
+    "description_pattern": "pattern=\"lowmemorykiller\" message=\"Oct <N> <N>  <N> lowmemorykiller: Killing <N>",
+    "TYPE": "INFO",
+    "priority": "P104"
   }
 ]
