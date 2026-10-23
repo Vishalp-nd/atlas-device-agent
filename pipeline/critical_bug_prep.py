@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Select devices/dates for each ERROR-severity row in a staging critical-info
-report, download their logs via lib/downloader.py, write a JSON map of every
-ERROR row (CODE/CODE_AUX/PROCESS/Sample_Description), then hand off to the
-bug-report agent.
+report, download logs (via lib/downloader.py) only for rows the report shows no
+related Jira bug for, write a JSON map of every ERROR row
+(CODE/CODE_AUX/PROCESS/Sample_Description plus related_bugs), then hand off to
+the bug-report agent for the rows without related bugs.
 """
 
 from __future__ import annotations
@@ -133,6 +134,16 @@ def _parse_report(report_path: Path) -> list[dict]:
                 timestamps.append(text)
             devices.append({"device_id": device_id, "timestamps": timestamps})
 
+        related_bugs = []
+        if "related bugs" in column_map:
+            for link in tds[column_map["related bugs"]].find_all("a", class_="jira-link"):
+                related_bugs.append({
+                    "key": link.get_text(strip=True),
+                    "summary": link.get("title", ""),
+                    "status": link.get("data-status", ""),
+                    "url": link.get("href", ""),
+                })
+
         rows.append({
             "process": tr.get("data-proc", ""),
             "code": _numeric_or_str(tr.get("data-code", "")),
@@ -141,13 +152,13 @@ def _parse_report(report_path: Path) -> list[dict]:
             "sample_description": tds[column_map["sample description"]].get_text(strip=True),
             "occurrences": int(tds[column_map["occurrences"]].get_text(strip=True).replace(",", "") or 0),
             "devices": devices,
+            "related_bugs": related_bugs,
         })
     return rows
 
 
-def _build_entries(error_rows: list[dict], max_devices: int) -> tuple[list[dict], set[tuple[str, str]]]:
+def _build_entries(error_rows: list[dict], max_devices: int) -> list[dict]:
     entries: list[dict] = []
-    pairs: set[tuple[str, str]] = set()
     for row in error_rows:
         targets = []
         for device in row["devices"][:max_devices]:
@@ -156,8 +167,6 @@ def _build_entries(error_rows: list[dict], max_devices: int) -> tuple[list[dict]
             most_recent = device["timestamps"][0]
             day = datetime.strptime(most_recent, TIMESTAMP_FMT).date()
             dates = [day.isoformat(), (day + timedelta(days=1)).isoformat()]
-            for d in dates:
-                pairs.add((device["device_id"], d))
             targets.append({
                 "device_id": device["device_id"],
                 "reference_timestamp": most_recent,
@@ -172,9 +181,23 @@ def _build_entries(error_rows: list[dict], max_devices: int) -> tuple[list[dict]
             "sample_description": row["sample_description"],
             "occurrences": row["occurrences"],
             "devices_in_report": [d["device_id"] for d in row["devices"]],
+            "related_bugs": row["related_bugs"],
             "download_targets": targets,
         })
-    return entries, pairs
+    return entries
+
+
+def _needs_analysis(entry: dict) -> bool:
+    return entry.get("severity") == "ERROR" and not entry.get("related_bugs")
+
+
+def _collect_pairs(entries: list[dict]) -> set[tuple[str, str]]:
+    return {
+        (target["device_id"], d)
+        for entry in entries if _needs_analysis(entry)
+        for target in entry["download_targets"]
+        for d in target["dates"]
+    }
 
 
 def _download_pairs(pairs: set[tuple[str, str]], count_only: bool) -> dict[tuple[str, str], bool]:
@@ -225,9 +248,9 @@ def _resolve_output_path(stdout: str, fallback: Path) -> Path:
     return fallback
 
 
-def _count_error_entries(map_path: Path) -> int:
+def _count_entries_needing_analysis(map_path: Path) -> int:
     data = json.loads(map_path.read_text(encoding="utf-8"))
-    return sum(1 for entry in data.get("entries", []) if entry.get("severity") == "ERROR")
+    return sum(1 for entry in data.get("entries", []) if _needs_analysis(entry))
 
 
 def main() -> int:
@@ -238,7 +261,12 @@ def main() -> int:
     report_path = Path(args.report) if args.report else _find_latest_report(Path(args.report_dir))
     rows = _parse_report(report_path)
     error_rows = [r for r in rows if r["severity"] == "ERROR"]
-    entries, pairs = _build_entries(error_rows, max_devices=args.max_devices)
+    entries = _build_entries(error_rows, max_devices=args.max_devices)
+    for entry in entries:
+        if entry["related_bugs"]:
+            keys = ", ".join(bug["key"] for bug in entry["related_bugs"])
+            print(f"[=] {entry['process']}/{entry['code']}: related bugs {keys}; skipping AI analysis")
+    pairs = _collect_pairs(entries)
 
     dry_run = args.no_download or args.count
     if dry_run:
@@ -262,13 +290,14 @@ def main() -> int:
         return 0
 
     bugs_path = DEFAULT_BUGS_DIR / f"{report_path.stem}_bugs.md"
-    total_entries = _count_error_entries(map_path)
-    if total_entries == 0:
+    if not entries:
         print("No ERROR entries found in report; skipping bug report generation.")
         return 0
+    total_entries = _count_entries_needing_analysis(map_path)
 
+    # With zero entries to analyze, one agent run still writes the Known Issues section.
     batch_size = max(1, args.agent_batch_size)
-    for start_index in range(0, total_entries, batch_size):
+    for start_index in range(0, max(total_entries, 1), batch_size):
         agent_command = [
             sys.executable, str(Path(args.agent_script)),
             "--map", str(map_path),
@@ -285,20 +314,21 @@ def main() -> int:
             return completed.returncode
         bugs_path = _resolve_output_path(completed.stdout, bugs_path)
 
-    index_command = [
-        sys.executable, str(Path(args.agent_script)),
-        "--map", str(map_path),
-        "--output", str(bugs_path),
-        "--jira-index-only",
-    ]
-    completed = subprocess.run(index_command, cwd=REPO_ROOT, capture_output=True, text=True)
-    if completed.stdout:
-        print(completed.stdout, end="" if completed.stdout.endswith("\n") else "\n")
-    if completed.stderr:
-        print(completed.stderr, file=sys.stderr, end="" if completed.stderr.endswith("\n") else "\n")
-    if completed.returncode != 0:
-        return completed.returncode
-    bugs_path = _resolve_output_path(completed.stdout, bugs_path)
+    if total_entries:
+        index_command = [
+            sys.executable, str(Path(args.agent_script)),
+            "--map", str(map_path),
+            "--output", str(bugs_path),
+            "--jira-index-only",
+        ]
+        completed = subprocess.run(index_command, cwd=REPO_ROOT, capture_output=True, text=True)
+        if completed.stdout:
+            print(completed.stdout, end="" if completed.stdout.endswith("\n") else "\n")
+        if completed.stderr:
+            print(completed.stderr, file=sys.stderr, end="" if completed.stderr.endswith("\n") else "\n")
+        if completed.returncode != 0:
+            return completed.returncode
+        bugs_path = _resolve_output_path(completed.stdout, bugs_path)
 
     if not bugs_path.is_file():
         print(

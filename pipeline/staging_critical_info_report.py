@@ -5,12 +5,15 @@ The script accepts explicit start/end dates plus optional OTA and device filters
 When OTA or device filters are omitted, it falls back to CINFO_REPORT and
 CINFO_DEVICES from the repo-root .env. One HTML report is written per OTA.
 When device IDs are provided, they are used only as an additional filter;
-devices on the same OTA remain grouped into the same report.
+devices on the same OTA remain grouped into the same report. Each ERROR entry is
+searched against Jira bugs (credentials from lib/jira_config.ini) and any matches
+are shown in the Related Bugs column.
 """
 
 from __future__ import annotations
 
 import argparse
+import configparser
 import html
 import os
 import re
@@ -20,6 +23,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 import pandas as pd
+import requests
 
 from cinfo_classifier import CinfoClassifier, DEFAULT_JSON_PATH, append_new_patterns_to_json
 from type_model import load_type_model
@@ -30,6 +34,8 @@ ENV_PATH = REPO_ROOT / ".env"
 DB_CREDENTIALS_PATH = REPO_ROOT / "db_credentials.ini"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "OUTPUT" / "staging_critical_info_reports"
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "minilm_ft"
+DEFAULT_JIRA_CONFIG = REPO_ROOT / "lib" / "jira_config.ini"
+JIRA_MAX_RESULTS = 10
 SNOWFLAKE_SECTION = "SNOWFLAKE_STAG_DB"
 # Snowflake source objects now live in PUBLISHED_VIEWS (migrated off PUBLIC).
 SNOWFLAKE_SCHEMA = "PUBLISHED_VIEWS"
@@ -344,6 +350,95 @@ def _build_report_rows(
     return process_rows, detail_rows, device_rows, len(devices), error_count, info_count
 
 
+def _load_jira_config(config_path: Path) -> tuple[str, str, str]:
+    parser = configparser.ConfigParser()
+    if not parser.read(config_path, encoding="utf-8") or not parser.has_section("JIRA"):
+        raise FileNotFoundError(f"Missing [JIRA] section in {config_path}")
+    section = parser["JIRA"]
+    server = section.get("server", "").strip().rstrip("/")
+    username = section.get("username", "").strip()
+    api_token = section.get("api_token", "").strip()
+    if not server or not username or not api_token:
+        raise ValueError(f"[JIRA] in {config_path} must define server, username and api_token")
+    return server, username, api_token
+
+
+def _jira_search_phrase(description: str) -> str:
+    # Keep only the words before the first one containing a digit, since what
+    # follows is usually dynamic (counts, IDs, coordinates, timestamps).
+    words: list[str] = []
+    for word in description.split():
+        if re.search(r"\d", word):
+            break
+        words.append(word)
+    # Lucene/JQL reserved characters break the query and are dropped by Jira's
+    # tokenizer anyway, so blank them out and phrase-match what remains.
+    return " ".join(re.sub(r"[^\w\s.']", " ", " ".join(words)).split())
+
+
+def _search_related_bugs(server: str, auth: tuple[str, str], phrase: str) -> list[dict[str, str]]:
+    response = requests.get(
+        f"{server}/rest/api/3/search/jql",
+        params={
+            "jql": f'type = Bug AND text ~ "\\"{phrase}\\"" ORDER BY created DESC',
+            "maxResults": JIRA_MAX_RESULTS,
+            "fields": "summary,status",
+        },
+        auth=auth,
+        headers={"Accept": "application/json"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    bugs = []
+    for issue in response.json().get("issues", []):
+        fields = issue.get("fields", {})
+        bugs.append({
+            "key": issue.get("key", ""),
+            "summary": fields.get("summary") or "",
+            "status": (fields.get("status") or {}).get("name", ""),
+            "url": f"{server}/browse/{issue.get('key', '')}",
+        })
+    return bugs
+
+
+def _attach_related_bugs(detail_rows: list[dict[str, object]], config_path: Path, ota_version: str) -> None:
+    for row in detail_rows:
+        row["related_bugs"] = []
+    try:
+        server, username, api_token = _load_jira_config(config_path)
+    except Exception as exc:
+        print(f"[{ota_version}] Skipping Jira related-bug lookup: {exc}")
+        return
+
+    cache: dict[str, list[dict[str, str]]] = {}
+    matched = 0
+    error_rows = [row for row in detail_rows if row["severity"] == "error"]
+    for row in error_rows:
+        phrase = _jira_search_phrase(str(row["sample_description"]))
+        if not phrase:
+            continue
+        if phrase not in cache:
+            try:
+                cache[phrase] = _search_related_bugs(server, (username, api_token), phrase)
+            except Exception as exc:
+                print(f"[{ota_version}] Jira lookup failed for {phrase!r}: {exc}")
+                cache[phrase] = []
+        row["related_bugs"] = cache[phrase]
+        matched += bool(cache[phrase])
+    print(f"[{ota_version}] Jira related bugs: {matched}/{len(error_rows)} ERROR entries matched")
+
+
+def _render_related_bugs(bugs: list[dict[str, str]]) -> str:
+    if not bugs:
+        return '<span class="muted">—</span>'
+    return "".join(
+        f"<div class=\"jira-bug\"><a class=\"jira-link mono\" href=\"{html.escape(bug['url'])}\" "
+        f"title=\"{html.escape(bug['summary'])}\" data-status=\"{html.escape(bug['status'])}\" target=\"_blank\">"
+        f"{html.escape(bug['key'])}</a> <span class=\"muted\">{html.escape(bug['status'])}</span></div>"
+        for bug in bugs
+    )
+
+
 def _render_html(
     ota_version: str,
     start_date: str,
@@ -435,6 +530,7 @@ def _render_html(
             f"<td><span class=\"badge badge-source\" title=\"Matched via {html.escape(source_label)}\">{html.escape(source_label)}</span></td>"
             f"<td class=\"desc-cell muted\">{html.escape(str(row['sample_description']))}</td>"
             f"<td class=\"num mono\">{int(row['occurrences']):,}</td>"
+            f"<td class=\"related-bugs\">{_render_related_bugs(row.get('related_bugs') or [])}</td>"
             f"<td class=\"device-tags\">{device_tags}</td></tr>"
         )
 
@@ -505,6 +601,10 @@ tr:hover > td {{ background:#fafcff }}
 .sev-error {{ color:var(--fail); font-weight:700 }}
 .sev-info {{ color:var(--pass); font-weight:700 }}
 .desc-cell {{ max-width:420px; word-break:break-word }}
+.related-bugs {{ min-width:130px; font-size:11px }}
+.jira-bug {{ white-space:nowrap }}
+.jira-link {{ color:var(--accent); text-decoration:none }}
+.jira-link:hover {{ text-decoration:underline }}
 .device-tags {{ min-width:280px; max-width:360px }}
 .device-entry {{ background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:8px }}
 .device-entry:last-child {{ margin-bottom:0 }}
@@ -594,7 +694,7 @@ tr:hover > td {{ background:#fafcff }}
    </div>
    <div class=\"scroll-table\">
     <table id=\"mainTable\">
-    <thead><tr><th>#</th><th>Process</th><th>Code</th><th>Code Aux</th><th>Severity</th><th>Priority</th><th>Source</th><th>Sample Description</th><th class=\"num\">Occurrences</th><th>Devices</th></tr></thead>
+    <thead><tr><th>#</th><th>Process</th><th>Code</th><th>Code Aux</th><th>Severity</th><th>Priority</th><th>Source</th><th>Sample Description</th><th class=\"num\">Occurrences</th><th>Related Bugs</th><th>Devices</th></tr></thead>
      <tbody>
      {''.join(detail_rows_html)}
      </tbody>
@@ -642,6 +742,7 @@ def generate_reports(
     aws_profile: str | None = None,
     ota_versions: list[str] | None = None,
     device_ids: list[str] | None = None,
+    jira_config_path: Path | None = DEFAULT_JIRA_CONFIG,
 ) -> list[Path]:
     env_ota_versions, env_device_ids = _load_filters()
     ota_versions = ota_versions if ota_versions is not None else env_ota_versions
@@ -666,6 +767,8 @@ def generate_reports(
                 rows,
                 classified,
             )
+            if jira_config_path is not None:
+                _attach_related_bugs(detail_rows, jira_config_path, ota_version)
             drive_minutes_by_device = _fetch_drive_minutes(
                 conn,
                 [row["device_id"] for row in device_rows],
@@ -744,6 +847,16 @@ def main() -> int:
         default=None,
         help="Optional AWS profile for Snowflake private-key lookup.",
     )
+    parser.add_argument(
+        "--jira-config",
+        default=str(DEFAULT_JIRA_CONFIG),
+        help="INI file with a [JIRA] section (server, username, api_token) used to find related bugs.",
+    )
+    parser.add_argument(
+        "--skip-jira-lookup",
+        action="store_true",
+        help="Don't search Jira for bugs related to ERROR entries.",
+    )
     args = parser.parse_args()
 
     today = date.today()
@@ -760,6 +873,7 @@ def main() -> int:
         aws_profile=args.aws_profile,
         ota_versions=ota_versions,
         device_ids=device_ids,
+        jira_config_path=None if args.skip_jira_lookup else Path(args.jira_config),
     )
     for path in written_files:
         print(path)

@@ -404,7 +404,7 @@ def _split_existing_report(markdown: str) -> tuple[str, list[str]]:
     return header, sections
 
 
-def _rewrite_index_only(output_path: Path, report_name: str, ota_version: str) -> None:
+def _rewrite_index_only(output_path: Path, report_name: str, ota_version: str, known_issues: str) -> None:
     markdown = output_path.read_text(encoding="utf-8")
     header, sections = _split_existing_report(markdown)
     try:
@@ -417,7 +417,7 @@ def _rewrite_index_only(output_path: Path, report_name: str, ota_version: str) -
     existing_bug_links = _assign_existing_bugs(sections, jira_issues)
     index = _build_index(sections, existing_bug_links)
     body = "\n\n---\n\n".join(sections)
-    output_path.write_text(f"{header}\n\n{index}\n---\n\n{body}\n", encoding="utf-8")
+    output_path.write_text(f"{header}\n\n{index}{known_issues}\n---\n\n{body}\n", encoding="utf-8")
 
 
 def _load_existing_sections(output_path: Path) -> list[str]:
@@ -468,11 +468,31 @@ def _build_index(sections: list[str], existing_bug_links: list[str]) -> str:
     return f"## Index\n\n| Sl No | Bug | Classification | Existing Bug |\n|---|---|---|---|\n{rows}\n"
 
 
-def _write_report(output_path: Path, report_name: str, sections: list[str], existing_bug_links: list[str]) -> None:
+def _build_known_issues(entries: list[dict]) -> str:
+    """Markdown table of ERROR entries skipped because Jira already has related bugs.
+    Lives between the index and the first '---' so _split_existing_report treats it as header."""
+    known = [e for e in entries if e.get("related_bugs")]
+    if not known:
+        return ""
+    rows = []
+    for i, entry in enumerate(known, start=1):
+        description = str(entry["sample_description"]).replace("|", "\\|")
+        bugs = ", ".join(f"[{bug['key']}]({bug['url']}) ({bug['status']})" for bug in entry["related_bugs"])
+        rows.append(f"| {i} | {entry['process']} | {entry['code']} | {entry['code_aux']} | {description} | {bugs} |")
+    return (
+        "\n## Known Issues\n\n"
+        "ERROR entries already covered by existing Jira bugs; not re-analyzed.\n\n"
+        "| Sl No | Process | Code | Code Aux | Sample Description | Related Bugs |\n"
+        "|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n"
+    )
+
+
+def _write_report(output_path: Path, report_name: str, sections: list[str], existing_bug_links: list[str],
+                  known_issues: str) -> None:
     header = f"# Critical Bug Report - {report_name}\nGenerated: {datetime.now():%Y-%m-%d %H:%M:%S}\n"
     index = _build_index(sections, existing_bug_links)
     body = "\n\n---\n\n".join(sections)
-    output_path.write_text(f"{header}\n{index}\n---\n\n{body}\n", encoding="utf-8")
+    output_path.write_text(f"{header}\n{index}{known_issues}\n---\n\n{body}\n", encoding="utf-8")
 
 
 def _slice_entries(entries: list[dict], start_index: int, limit: int | None) -> list[dict]:
@@ -490,7 +510,10 @@ def main() -> int:
     args = _parse_args()
     _configure_logfire()
     data = json.loads(Path(args.map).read_text(encoding="utf-8"))
-    entries = [e for e in data["entries"] if e["severity"] == "ERROR"]
+    error_entries = [e for e in data["entries"] if e["severity"] == "ERROR"]
+    known_issues = _build_known_issues(error_entries)
+    # Entries the staging report already linked to Jira bugs are listed under Known Issues, not re-analyzed.
+    entries = [e for e in error_entries if not e.get("related_bugs")]
     if args.only:
         entries = [e for e in entries if str(e["code"]) == args.only]
     entries = _slice_entries(entries, args.start_index, args.limit)
@@ -501,7 +524,7 @@ def main() -> int:
     ota_version = str(data.get("ota_version") or _extract_ota_from_report(data["report"])).strip()
 
     if args.jira_index_only:
-        _rewrite_index_only(output_path, data["report"], ota_version)
+        _rewrite_index_only(output_path, data["report"], ota_version, known_issues)
         print(output_path)
         return 0
 
@@ -513,7 +536,7 @@ def main() -> int:
             sections.append(analyze_entry(client, deployment, entry, log_root, ota_version, args.max_iterations).strip())
         except Exception as exc:
             sections.append(f"## [{entry['process']}] ANALYSIS FAILED\n\nAgent error: {exc}")
-        _write_report(output_path, data["report"], sections, ["TBD"] * len(sections))
+        _write_report(output_path, data["report"], sections, ["TBD"] * len(sections), known_issues)
 
     try:
         jira_issues = _search_jira_issues_for_ota(ota_version)
@@ -525,7 +548,7 @@ def main() -> int:
 
     existing_bug_links = _assign_existing_bugs(sections, jira_issues)
 
-    _write_report(output_path, data["report"], sections, existing_bug_links)
+    _write_report(output_path, data["report"], sections, existing_bug_links, known_issues)
     print(output_path)
     return 0
 
