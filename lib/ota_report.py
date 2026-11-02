@@ -1130,7 +1130,7 @@ def report_summary(ota, device_summaries, given, device_info, features):
     other_ota = [d for d in given if d not in device_summaries and d not in no_logs]
     detailed = [d for d in on_ota if device_info.get(d, {}).get('detailed_days')]
     minutes = {d: device_summaries[d]['drive']['drive_minutes_total'] for d in on_ota}
-    windows = {d: _boot_window_text(device_summaries[d]['boots']) for d in on_ota}
+    boots = {d: len(device_summaries[d]['boots']) for d in on_ota}
     estimated = {d for d in on_ota if device_summaries[d]['drive']['drive_minutes_estimated']}
     low_power = [d for d in on_ota if device_summaries[d]['drive']['low_power_boots']]
     active_all = [d for d in given if d not in no_logs]
@@ -1154,7 +1154,7 @@ def report_summary(ota, device_summaries, given, device_info, features):
         'devices_critical_only': [d for d in on_ota if d not in detailed],
         'drive_minutes_total': sum(minutes.values()),
         'drive_minutes_by_device': minutes,
-        'boot_window_by_device': windows,
+        'boots_by_device': boots,
         'devices_estimated_minutes': sorted(estimated),
         'devices_under_6h': sorted(d for d, m in minutes.items() if m <= 6 * 60),
         'devices_over_6h': sorted(d for d, m in minutes.items() if m > 6 * 60),
@@ -1254,18 +1254,6 @@ def _boot_label(b):
     if b['partial']:
         return f'{name} · partial, until {b["end"] or "end of logs"}'
     return f'{name} · {b["start"]} → {b["end"] or "end of logs"}'
-
-
-def _boot_window_text(boots):
-    """'1 boot: started before the logs (first log line ... in <file>) → ... (next boot started)'
-    for the OTA report: first boot's start → last boot's end on this OTA, with their sources."""
-    ws = [b.get('window') or {} for b in boots]
-    if not ws or not any(ws):
-        return ''
-    first, last = ws[0], ws[-1]
-    start = (f'{first["start_fmt"]} ({first["start_note"]})' if first.get('start') else 'before the logs')
-    end = (f'{last["end_fmt"]} ({last["end_note"]})' if last.get('end') else 'end of logs')
-    return f'{len(boots)} boot{"s" if len(boots) != 1 else ""}: {start} → {end}'
 
 
 def _fmt_minutes(ms):
@@ -1456,10 +1444,19 @@ section h2{font-size:16px;margin:0 0 16px;letter-spacing:-.005em}
 .tile b{display:block;font-size:26px;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .tile span{color:var(--muted);font-size:12.5px}.tile em{float:right;font-style:normal;color:var(--muted);font-size:12px}
 .tile.pick{cursor:pointer;transition:border-color .15s,background .15s}
-.tile.pick:hover{border-color:var(--accent)}.tile.pick.on{border-color:var(--accent);background:var(--accent-bg)}
+.tile.pick:hover{border-color:var(--accent);background:var(--accent-bg)}
+dialog.devs{width:min(560px,calc(100vw - 32px));max-height:min(640px,calc(100vh - 64px));padding:0;border:1px solid var(--line);
+border-radius:14px;background:var(--card);color:var(--fg);box-shadow:0 12px 40px rgba(0,0,0,.35)}
+dialog.devs[open]{display:flex;flex-direction:column}dialog.devs::backdrop{background:rgba(0,0,0,.5)}
+.devs header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.devs header h3{margin:0;font-size:15px;flex:1}.devs header span{color:var(--muted);font-size:13px}
+.devs button{border:1px solid var(--line);background:var(--head);color:var(--fg);border-radius:8px;padding:6px 12px;
+font:inherit;font-size:13px;cursor:pointer}.devs button:hover{border-color:var(--accent)}
+.devs button.copy{background:var(--accent);border-color:var(--accent);color:#fff}
+.devs ul{list-style:none;margin:0;padding:8px 20px 16px;overflow-y:auto;columns:3 140px;column-gap:16px;
+font-variant-numeric:tabular-nums;font-size:13px;line-height:2}
+.devs li{break-inside:avoid}.devs p{margin:0;padding:16px 20px;color:var(--muted)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
-.stack{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--none-bg);margin:18px 0 4px}
-.stack i{display:block;height:100%}
 .c-pass{background:var(--pass)}.c-fail{background:var(--fail)}.c-nt{background:var(--nt)}.c-none{background:var(--none)}.c-acc{background:var(--accent)}
 .tbl{border:1px solid var(--line);border-radius:10px;overflow:auto;margin-top:16px}
 .tbl.clip{max-height:430px}
@@ -1524,16 +1521,28 @@ document.querySelectorAll('tr.feat').forEach(r => r.addEventListener('click', e 
   if (e.target.closest('a')) return;
   r.classList.toggle('open'); r.nextElementSibling.hidden = !r.classList.contains('open');
 }));
-// Tiles filter their section's table
+// Device-count tiles open a dialog listing their devices, with copy to clipboard
+const paged = new Set(JSON.parse(document.getElementById('paged')?.textContent || '[]'));
+const dlg = document.createElement('dialog'); dlg.className = 'devs';
+dlg.innerHTML = '<header><h3></h3><span></span><button class="copy">Copy</button><button class="close">Close</button></header><ul></ul>';
+document.body.appendChild(dlg);
+let shown = [];
+dlg.querySelector('.close').addEventListener('click', () => dlg.close());
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });  // click on the backdrop
+dlg.querySelector('.copy').addEventListener('click', async e => {
+  const text = shown.join('\n'), btn = e.currentTarget;
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement('textarea'); t.value = text; dlg.appendChild(t); t.select();
+          document.execCommand('copy'); t.remove(); }
+  btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy', 1500);
+});
 document.querySelectorAll('.tile.pick').forEach(tile => tile.addEventListener('click', () => {
-  const on = !tile.classList.contains('on'), sec = tile.closest('section');
-  sec.querySelectorAll('.tile.pick').forEach(t => t.classList.remove('on'));
-  tile.classList.toggle('on', on);
-  const box = sec.querySelector('.tbl'), f = on ? tile.dataset.f : '';
-  box.querySelectorAll('.more').forEach(b => b.style.display = f ? 'none' : '');
-  box.querySelectorAll(':scope > table > tbody > tr').forEach((r, i) => {
-    r.hidden = f ? !r.dataset.f.split(' ').includes(f) : (i >= +box.dataset.limit && !box.classList.contains('clip'));
-  });
+  shown = tile.dataset.devices.split(' ').filter(Boolean);
+  dlg.querySelector('h3').textContent = tile.dataset.title;
+  dlg.querySelector('header span').textContent = `${shown.length} device${shown.length === 1 ? '' : 's'}`;
+  const link = d => paged.has(d) ? `<a href="devices/${d}.html">${d}</a>` : d;
+  dlg.querySelector('ul').innerHTML = shown.map(d => `<li>${link(d)}</li>`).join('');
+  dlg.showModal();
 }));
 // Left navigation follows the scroll
 const links = [...document.querySelectorAll('.side a')];
@@ -1551,17 +1560,13 @@ def _n(v):
     return f'{v:,}' if isinstance(v, (int, float)) else _esc(v)
 
 
-def _tile(value, label, pct=None, dot=None, pick=None):
+def _tile(value, label, pct=None, dot=None, devices=None):
+    """A KPI tile; given devices (non-empty), clicking it opens a dialog listing them."""
     dot_html = f'<i class="dot {dot}"></i>' if dot else ''
     pct_html = f'<em>{_esc(pct)}</em>' if pct else ''
-    attrs = f' class="tile pick" data-f="{pick}"' if pick else ' class="tile"'
+    attrs = (f' class="tile pick" data-title="{_esc(label)}" data-devices="{_esc(" ".join(devices))}"' if devices
+             else ' class="tile"')
     return f'<div{attrs}>{pct_html}<b>{_n(value)}</b><span>{dot_html}{_esc(label)}</span></div>'
-
-
-def _stack(parts):
-    total = sum(n for n, _ in parts) or 1
-    return '<div class="stack">' + ''.join(
-        f'<i class="{cls}" style="width:{100 * n / total:.2f}%"></i>' for n, cls in parts if n) + '</div>'
 
 
 def _table(head, rows, limit=12, foot='', box_id=''):
@@ -1576,60 +1581,42 @@ def _dev_link(d):
     return f'<a href="devices/{_esc(d)}.html">{_esc(d)}</a>'
 
 
-def _device_table(sm, box_id):
-    """Every given device with its status, log upload and drive time; rows tagged for the tile filters."""
-    minutes, detailed = sm['drive_minutes_by_device'], set(sm['logs_detailed'])
-    devices = [(d, 'Detailed') for d in sm['logs_detailed']] + [(d, 'Critical only') for d in sm['logs_critical_only']]
-    devices = sorted(devices, key=lambda dl: -minutes.get(dl[0], 0)) + [(d, 'None') for d in sm['devices_without_logs']]
-    rows = []
-    for d, logs in devices:
-        active = logs != 'None'
-        tags = ('active ' + ('detailed' if d in detailed else 'critical')) if active else 'inactive nologs'
-        m = minutes.get(d)
-        drive = (f'<td class="num{" zero" if not m else ""}">{m:,}</td>' if m is not None
-                 else '<td class="num zero" data-v="-1">—</td>')
-        rows.append(f'<tr data-f="{tags}"><td>{_dev_link(d) if m is not None else _esc(d)}</td>'
-                    f'<td>{"Active" if active else "Inactive"}</td><td>{logs}</td>{drive}</tr>')
-    return _table(['Device', 'Status', 'Logs uploaded', '#Drive min on this OTA'], rows, box_id=box_id)
-
-
 def _devices_section(sm):
-    given, active, inactive = sm['devices_given'], sm['devices_active'], sm['devices_without_logs']
+    given, inactive = sm['devices_given'], sm['devices_without_logs']
+    active = sm['logs_detailed'] + sm['logs_critical_only']
     return ('<section id="devices"><h2>Device Summary</h2><div class="tiles">'
-            + _tile(given, 'Devices')
-            + _tile(active, 'Active', _pct(active, given), 'c-pass', pick='active')
-            + _tile(len(inactive), 'Inactive', _pct(len(inactive), given), 'c-none', pick='inactive')
-            + '</div>' + _device_table(sm, 'device-table') + '</section>')
+            + _tile(given, 'Devices', devices=active + inactive)
+            + _tile(sm['devices_active'], 'Active', _pct(sm['devices_active'], given), 'c-pass', devices=active)
+            + _tile(len(inactive), 'Inactive', _pct(len(inactive), given), 'c-none', devices=inactive)
+            + '</div></section>')
 
 
 def _logs_section(sm):
     given = sm['devices_given']
     detailed, critical, none = sm['logs_detailed'], sm['logs_critical_only'], sm['devices_without_logs']
     return ('<section id="logs"><h2>Log Upload Summary</h2><div class="tiles">'
-            + _tile(len(detailed), 'Detailed logs uploaded', _pct(len(detailed), given), 'c-acc', pick='detailed')
-            + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), given), 'c-nt', pick='critical')
-            + _tile(len(none), 'No logs uploaded', _pct(len(none), given), 'c-none', pick='nologs')
-            + '</div>' + _device_table(sm, 'logs-table') + '</section>')
+            + _tile(len(detailed), 'Detailed logs uploaded', _pct(len(detailed), given), 'c-acc', devices=detailed)
+            + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), given), 'c-nt', devices=critical)
+            + _tile(len(none), 'No logs uploaded', _pct(len(none), given), 'c-none', devices=none)
+            + '</div></section>')
 
 
 def _drive_section(sm):
-    minutes, windows = sm['drive_minutes_by_device'], sm.get('boot_window_by_device', {})
-    low_power, total = set(sm['devices_low_power']), sm['drive_minutes_total']
-    rows = []
-    for d, m in sorted(minutes.items(), key=lambda kv: -kv[1]):
-        tags = ['under6' if m <= 360 else 'over6'] + (['over24'] if m > 1440 else []) + (['lp'] if d in low_power else [])
-        rows.append(f'<tr data-f="{" ".join(tags)}"><td>{_dev_link(d)}</td><td class="num{" zero" if not m else ""}">{m:,}</td>'
-                    f'<td class="num" data-v="{m / 60:.2f}">{m / 60:,.1f}</td>'
-                    f'<td class="wrap">{_esc(windows.get(d, ""))}</td></tr>')
+    minutes, boots = sm['drive_minutes_by_device'], sm.get('boots_by_device', {})
+    low_power, total = sm['devices_low_power'], sm['drive_minutes_total']
+    by_time = [d for d, _ in sorted(minutes.items(), key=lambda kv: -kv[1])]
+    rows = [f'<tr><td>{_dev_link(d)}</td><td class="num{" zero" if not minutes[d] else ""}">{minutes[d]:,}</td>'
+            f'<td class="num" data-v="{minutes[d] / 60:.2f}">{minutes[d] / 60:,.1f}</td>'
+            f'<td class="num">{boots.get(d, "")}</td></tr>' for d in by_time]
     return ('<section id="drive"><h2>Drive Summary</h2><div class="tiles">'
-            + _tile(sm['devices_on_ota'], 'Active devices')
+            + _tile(sm['devices_on_ota'], 'Active devices', devices=by_time)
             + _tile(f'{total / 60:,.1f} h', 'Total drive time')
-            + _tile(len(sm['devices_under_6h']), 'Running < 6 h', pick='under6')
-            + _tile(len(sm['devices_over_6h']), 'Running > 6 h', pick='over6')
-            + _tile(len(sm['devices_over_24h']), 'Running > 24 h', pick='over24')
-            + _tile(len(low_power), 'Low power mode', pick='lp')
+            + _tile(len(sm['devices_under_6h']), 'Running < 6 h', devices=sm['devices_under_6h'])
+            + _tile(len(sm['devices_over_6h']), 'Running > 6 h', devices=sm['devices_over_6h'])
+            + _tile(len(sm['devices_over_24h']), 'Running > 24 h', devices=sm['devices_over_24h'])
+            + _tile(len(low_power), 'Low power mode', devices=low_power)
             + '</div>'
-            + _table(['Device', '#Drive min', '#Hours', 'Boots on this OTA'], rows, box_id='drive-table')
+            + _table(['Device', '#Drive min', '#Hours', '#Boots on this OTA'], rows)
             + '</section>')
 
 
@@ -1640,7 +1627,7 @@ def _feature_sets_section(sm):
             + _tile(len(coverage), 'Total features')
             + _tile(enabled, 'Enabled', _pct(enabled, len(coverage)), 'c-pass')
             + _tile(len(coverage) - enabled, 'Disabled', _pct(len(coverage) - enabled, len(coverage)), 'c-none')
-            + '</div>' + _stack([(enabled, 'c-pass'), (len(coverage) - enabled, 'c-none')]) + '</section>')
+            + '</div></section>')
 
 
 def _api_calls_section(sm):
@@ -1695,7 +1682,9 @@ def render_html(report):
         body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
                  _api_calls_section(sm)]
     body.append(_feature_level_section(report))
-    return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body), f'<script>{REPORT_JS}</script>')
+    paged = json.dumps(sorted(sm.get('drive_minutes_by_device', {})))
+    return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body),
+                  f'<script type="application/json" id="paged">{paged}</script><script>{REPORT_JS}</script>')
 
 
 DEVICE_JS = r"""
@@ -2157,7 +2146,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             'config_keys_failing': len(report['config_failures']),
             'config_error': report['config_error'],
             'summary': {k: (len(v) if isinstance(v, list) else v) for k, v in report['summary'].items()
-                        if k not in ('drive_minutes_by_device', 'boot_window_by_device', 'api_calls_by_device',
+                        if k not in ('drive_minutes_by_device', 'boots_by_device', 'api_calls_by_device',
                                       'feature_coverage', 'feature_sets')},
         }
         log.info('%s: report written to %s/ota_report.html', ota, out_dir)
