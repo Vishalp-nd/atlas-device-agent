@@ -1444,18 +1444,18 @@ section h2{font-size:16px;margin:0 0 16px;letter-spacing:-.005em}
 .tile b{display:block;font-size:26px;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .tile span{color:var(--muted);font-size:12.5px}.tile em{float:right;font-style:normal;color:var(--muted);font-size:12px}
 .tile.pick{cursor:pointer;transition:border-color .15s,background .15s}
-.tile.pick:hover{border-color:var(--accent);background:var(--accent-bg)}
-dialog.devs{width:min(560px,calc(100vw - 32px));max-height:min(640px,calc(100vh - 64px));padding:0;border:1px solid var(--line);
-border-radius:14px;background:var(--card);color:var(--fg);box-shadow:0 12px 40px rgba(0,0,0,.35)}
-dialog.devs[open]{display:flex;flex-direction:column}dialog.devs::backdrop{background:rgba(0,0,0,.5)}
-.devs header{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
-.devs header h3{margin:0;font-size:15px;flex:1}.devs header span{color:var(--muted);font-size:13px}
-.devs button{border:1px solid var(--line);background:var(--head);color:var(--fg);border-radius:8px;padding:6px 12px;
-font:inherit;font-size:13px;cursor:pointer}.devs button:hover{border-color:var(--accent)}
-.devs button.copy{background:var(--accent);border-color:var(--accent);color:#fff}
-.devs ul{list-style:none;margin:0;padding:8px 20px 16px;overflow-y:auto;columns:3 140px;column-gap:16px;
-font-variant-numeric:tabular-nums;font-size:13px;line-height:2}
-.devs li{break-inside:avoid}.devs p{margin:0;padding:16px 20px;color:var(--muted)}
+.tile.pick:hover,.tile.pick.on{border-color:var(--accent);background:var(--accent-bg)}
+.bubble{position:absolute;z-index:20;width:min(460px,calc(100vw - 32px));background:var(--card);color:var(--fg);
+border:2px solid var(--accent);border-radius:18px;padding:14px 16px 12px;box-shadow:0 10px 28px rgba(0,0,0,.3)}
+.bubble::before,.bubble::after{content:"";position:absolute;left:var(--tail,40px);border:solid transparent}
+.bubble::before{top:-20px;border-width:0 12px 20px 4px;border-bottom-color:var(--accent)}
+.bubble::after{top:-15px;margin-left:3px;border-width:0 8px 15px 2px;border-bottom-color:var(--card)}
+.bubble header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bubble b{flex:1;font-size:14px}.bubble header span{color:var(--muted);font-size:12.5px}
+.bubble button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;padding:4px 12px;
+font:inherit;font-size:12.5px;cursor:pointer}
+.bubble p{margin:0;max-height:220px;overflow-y:auto;font-size:13px;line-height:1.7;word-break:break-word;
+font-variant-numeric:tabular-nums;user-select:all}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 .c-pass{background:var(--pass)}.c-fail{background:var(--fail)}.c-nt{background:var(--nt)}.c-none{background:var(--none)}.c-acc{background:var(--accent)}
 .tbl{border:1px solid var(--line);border-radius:10px;overflow:auto;margin-top:16px}
@@ -1521,29 +1521,40 @@ document.querySelectorAll('tr.feat').forEach(r => r.addEventListener('click', e 
   if (e.target.closest('a')) return;
   r.classList.toggle('open'); r.nextElementSibling.hidden = !r.classList.contains('open');
 }));
-// Device-count tiles open a dialog listing their devices, with copy to clipboard
-const paged = new Set(JSON.parse(document.getElementById('paged')?.textContent || '[]'));
-const dlg = document.createElement('dialog'); dlg.className = 'devs';
-dlg.innerHTML = '<header><h3></h3><span></span><button class="copy">Copy</button><button class="close">Close</button></header><ul></ul>';
-document.body.appendChild(dlg);
-let shown = [];
-dlg.querySelector('.close').addEventListener('click', () => dlg.close());
-dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });  // click on the backdrop
-dlg.querySelector('.copy').addEventListener('click', async e => {
-  const text = shown.join('\n'), btn = e.currentTarget;
+// Device-count tiles open a speech bubble with their devices, comma separated, with copy to clipboard
+const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.hidden = true;
+bubble.innerHTML = '<header><b></b><span></span><button>Copy</button></header><p></p>';
+document.body.appendChild(bubble);
+let owner = null;
+const hide = () => { bubble.hidden = true; owner?.classList.remove('on'); owner = null; };
+bubble.querySelector('button').addEventListener('click', async e => {
+  const text = bubble.querySelector('p').textContent, btn = e.currentTarget;
   try { await navigator.clipboard.writeText(text); }
-  catch { const t = document.createElement('textarea'); t.value = text; dlg.appendChild(t); t.select();
+  catch { const t = document.createElement('textarea'); t.value = text; bubble.appendChild(t); t.select();
           document.execCommand('copy'); t.remove(); }
   btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy', 1500);
 });
-document.querySelectorAll('.tile.pick').forEach(tile => tile.addEventListener('click', () => {
-  shown = tile.dataset.devices.split(' ').filter(Boolean);
-  dlg.querySelector('h3').textContent = tile.dataset.title;
-  dlg.querySelector('header span').textContent = `${shown.length} device${shown.length === 1 ? '' : 's'}`;
-  const link = d => paged.has(d) ? `<a href="devices/${d}.html">${d}</a>` : d;
-  dlg.querySelector('ul').innerHTML = shown.map(d => `<li>${link(d)}</li>`).join('');
-  dlg.showModal();
+document.querySelectorAll('.tile.pick').forEach(tile => tile.addEventListener('click', e => {
+  e.stopPropagation();
+  if (owner === tile) return hide();
+  hide(); owner = tile; tile.classList.add('on');
+  const ids = tile.dataset.devices.split(' ').filter(Boolean);
+  bubble.querySelector('b').textContent = tile.dataset.title;
+  bubble.querySelector('header span').textContent = `${ids.length} device${ids.length === 1 ? '' : 's'}`;
+  bubble.querySelector('p').textContent = ids.join(', ');
+  bubble.hidden = false; place();
 }));
+// Below the tile, kept inside the page; the tail points at the tile's centre
+function place() {
+  if (!owner) return;
+  const r = owner.getBoundingClientRect(), w = bubble.offsetWidth;
+  const left = Math.max(16, Math.min(r.left, document.documentElement.clientWidth - w - 16));
+  bubble.style.left = `${left + scrollX}px`; bubble.style.top = `${r.bottom + scrollY + 20}px`;
+  bubble.style.setProperty('--tail', `${Math.max(16, Math.min(r.left + r.width / 2 - left - 8, w - 40))}px`);
+}
+document.addEventListener('click', e => { if (!bubble.hidden && !bubble.contains(e.target)) hide(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
+window.addEventListener('resize', place);
 // Left navigation follows the scroll
 const links = [...document.querySelectorAll('.side a')];
 const spy = new IntersectionObserver(es => es.forEach(e => {
@@ -1561,7 +1572,7 @@ def _n(v):
 
 
 def _tile(value, label, pct=None, dot=None, devices=None):
-    """A KPI tile; given devices (non-empty), clicking it opens a dialog listing them."""
+    """A KPI tile; given devices (non-empty), clicking it opens a speech bubble listing them."""
     dot_html = f'<i class="dot {dot}"></i>' if dot else ''
     pct_html = f'<em>{_esc(pct)}</em>' if pct else ''
     attrs = (f' class="tile pick" data-title="{_esc(label)}" data-devices="{_esc(" ".join(devices))}"' if devices
@@ -1682,9 +1693,7 @@ def render_html(report):
         body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
                  _api_calls_section(sm)]
     body.append(_feature_level_section(report))
-    paged = json.dumps(sorted(sm.get('drive_minutes_by_device', {})))
-    return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body),
-                  f'<script type="application/json" id="paged">{paged}</script><script>{REPORT_JS}</script>')
+    return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body), f'<script>{REPORT_JS}</script>')
 
 
 DEVICE_JS = r"""
