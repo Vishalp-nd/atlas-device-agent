@@ -59,6 +59,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from array import array
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
@@ -1217,7 +1218,7 @@ def build_ota_summary(ota, device_summaries, tests):
             report['no_log_checks'].append({'tc_id': t['tc_id'], 'feature': t['feature'], 'name': t['name']})
             continue
         features[t['feature']].append({
-            'tc_id': t['tc_id'], 'name': t['name'], 'functionality': t['functionality'],
+            'key': t['key'], 'tc_id': t['tc_id'], 'name': t['name'], 'functionality': t['functionality'],
             'unresolved_steps': len(t['unresolved']),
             'boots': dict(tc_counts[t['key']]),
             'failed_in': tc_fail_boots[t['key']],
@@ -1346,22 +1347,6 @@ def _api_section(summary, devices=None):
     return '\n'.join(out)
 
 
-def _features_table(features, counts_of, extra_header=(), extra_cell=lambda i: ''):
-    """Feature rows sorted ON first; counts_of(i) -> {status: boots}; extra_header: column names for extra_cell."""
-    order = sorted(range(len(features)), key=lambda i: (-counts_of(i).get('ON', 0), -counts_of(i).get('OVERRIDDEN', 0),
-                                                       features[i]['name'].lower()))
-    rows = []
-    for i in order:
-        f = features[i]
-        needs = '<br>'.join(_condition_text(c) for c in f['conditions'][:4])
-        if len(f['conditions']) > 4:
-            needs = (f'<details><summary class="muted">{len(f["conditions"])} keys</summary><div class="body">'
-                     + '<br>'.join(_condition_text(c) for c in f['conditions']) + '</div></details>')
-        rows.append(f'<tr><td>{_esc(f["name"])}</td><td>{_summary_chips(counts_of(i), feature_status.STATUSES)}</td>'
-                    f'{extra_cell(i)}<td class="wrap">{needs}</td></tr>')
-    return _table(['Feature', 'Boots', *extra_header, 'Needs'], rows, limit=15)
-
-
 def _device_list(title, devices, limit=200):
     if not devices:
         return ''
@@ -1381,10 +1366,26 @@ def _pct(n, total):
     return f'{100 * n / total:.0f}%' if total else '—'
 
 
-FEATURES_NOTE = ('ON / OFF from the value each needed key had in that boot: the value the service logged at '
-                 'startup when found (read by the LLM), else the OTA default (bagheera_config.ini) for keys CFG_PRSR '
-                 'shows were not overridden. OVERRIDDEN: a key the feature needs was overridden in that boot; the value is not '
-                 'in the logs. NA: a key it needs is not in this OTA\'s default config.')
+FEATURES_NOTE = ('Enabled: the feature was on in at least one boot on this OTA, from the value each key it needs had '
+                 'in that boot (the value the service logged at startup, else the OTA default in bagheera_config.ini). '
+                 'Features whose keys are not in this OTA\'s config are not listed.')
+
+
+def _device_features_table(features, counts):
+    """Device page: Enabled (ON in some boot) / Disabled per feature, leaving out features that were
+    NA in every boot (not part of this OTA), the same rule as the OTA's Feature Set Summary."""
+    rows = []
+    shown = [i for i in range(len(features)) if any(n for st, n in counts[i].items() if st != 'NA')]
+    for i in sorted(shown, key=lambda i: (not counts[i].get('ON'), features[i]['name'].lower())):
+        f = features[i]
+        needs = '<br>'.join(_condition_text(c) for c in f['conditions'][:4])
+        if len(f['conditions']) > 4:
+            needs = (f'<details><summary class="muted">{len(f["conditions"])} keys</summary><div class="body">'
+                     + '<br>'.join(_condition_text(c) for c in f['conditions']) + '</div></details>')
+        status = ('<span class="chip on">Enabled</span>' if counts[i].get('ON')
+                  else '<span class="chip off">Disabled</span>')
+        rows.append(f'<tr><td>{_esc(f["name"])}</td><td>{status}</td><td class="wrap">{needs}</td></tr>')
+    return _table(['Feature', 'Enabled/Disabled', 'Needs'], rows, limit=15)
 
 
 DEVICE_STYLE = """
@@ -1405,6 +1406,8 @@ border-radius:4px;padding:1px 4px;word-break:break-all}
 .chip.not_triggered,.chip.overridden{color:var(--nt);background:var(--nt-bg)}
 .chip.no_log_checks,[class*="chip info_"],.chip.na,.chip.not_for_device,.chip.off{color:var(--muted);background:var(--none-bg)}
 .side a.back{color:var(--accent);margin-bottom:12px}
+details.flash{border-color:var(--fail);box-shadow:0 0 0 3px var(--fail-bg);transition:box-shadow .4s,border-color .4s}
+details[data-test]{scroll-margin-top:16px}
 """
 
 
@@ -1725,8 +1728,14 @@ def _feature_level_section(report):
         detail = []
         for tc in sorted(tcs, key=lambda tc: (-tc['boots'].get('FAIL', 0), -tc['boots'].get('PASS', 0), str(tc['tc_id']))):
             b = tc['boots']
-            failed = ' '.join(f'{_dev_link(dev)}<span class="n-fail"> ×{n}</span>'
-                              for dev, n in Counter(ref[0] for ref in tc['failed_in']).items())
+            # Each device links to its first failing boot, opened at this test case's failure
+            first_boot, fails = {}, Counter()
+            for dev, boot, *_ in tc['failed_in']:
+                first_boot.setdefault(dev, boot)
+                fails[dev] += 1
+            tc_ref = urllib.parse.quote(str(tc.get('key') or tc['tc_id']), safe='')
+            failed = ' '.join(f'<a href="devices/{_esc(dev)}.html#fail={first_boot[dev]}:{tc_ref}">{_esc(dev)}</a>'
+                              f'<span class="n-fail"> ({n})</span>' for dev, n in fails.items())
             detail.append(f'<tr><td>{_esc(tc["tc_id"])}</td><td class="wrap">{_esc(tc["functionality"])}</td>'
                           f'<td class="num n-pass">{b.get("PASS", 0) or ""}</td>'
                           f'<td class="num n-fail">{b.get("FAIL", 0) or ""}</td><td>{failed}</td></tr>')
@@ -1798,11 +1807,14 @@ function renderDrive(b) {
 function renderFeatures(b) {
   if (!D.features || !D.features.length) return '';
   if (!b.features) return '<h3>Features</h3><p class="muted">No CFG_PRSR startup lines in this boot, features not evaluated</p>';
-  const groups = {ON: [], OVERRIDDEN: [], OFF: [], NA: []};
-  b.features.forEach((st, i) => groups[STATUSES[st]].push(D.features[i].name));
+  // Enabled = ON in this boot; NA features (keys not in this OTA's config) are left out
+  const groups = {Enabled: [], Disabled: []};
+  b.features.forEach((st, i) => {
+    if (STATUSES[st] !== 'NA') groups[STATUSES[st] === 'ON' ? 'Enabled' : 'Disabled'].push(D.features[i].name);
+  });
   const out = ['<h3>Features</h3>'];
-  for (const st of ['ON', 'OVERRIDDEN', 'OFF', 'NA']) {
-    if (groups[st].length) out.push(`<p>${chip(st)} ${groups[st].map(esc).join(', ')}</p>`);
+  for (const [label, cls] of [['Enabled', 'on'], ['Disabled', 'off']]) {
+    if (groups[label].length) out.push(`<p><span class="chip ${cls}">${label}</span> ${groups[label].map(esc).join(', ')}</p>`);
   }
   const values = Object.entries(b.override_values || {});
   if (values.length) {
@@ -1874,7 +1886,7 @@ function renderBoot(b) {
     if (v === 'FAIL' || b.passes) {
       for (const i of ids) {
         const t = D.tests[i], r = results[v].get(i);
-        out.push(`<details><summary>${esc(t.feature)} · ${esc(t.tc_id)} — ${esc(t.functionality)}</summary>`
+        out.push(`<details data-test="${i}"><summary>${esc(t.feature)} · ${esc(t.tc_id)} — ${esc(t.functionality)}</summary>`
           + `<div class="body">${r.reason ? `<p>${esc(r.reason)}</p>` : ''}${stepsTable(t, r)}</div></details>`);
       }
     } else {
@@ -1891,14 +1903,39 @@ function renderBoot(b) {
 }
 
 // Boot details are rendered from the embedded data when first opened
-document.querySelectorAll('details[data-boot]').forEach(el => el.addEventListener('toggle', () => {
+function fillBoot(el) {
   const body = el.querySelector('.boot-body');
-  if (el.open && !body.dataset.done) {
+  if (!body.dataset.done) {
     body.innerHTML = renderBoot(D.boots[+el.dataset.boot]);
     body.dataset.done = '1';
   }
+}
+document.querySelectorAll('details[data-boot]').forEach(el => el.addEventListener('toggle', () => {
+  if (el.open) fillBoot(el);
 }));
+// #fail=<boot index>:<test key or tc id> (from the OTA report's "Failed on"): open that boot's failure of the test
+function openFailure(hash) {
+  const m = /^#fail=(\d+):(.+)$/.exec(hash);
+  if (!m) return false;
+  const boot = document.getElementById(`boot-${m[1]}`);
+  if (!boot) return false;
+  const ref = decodeURIComponent(m[2]);
+  boot.open = true;
+  fillBoot(boot);
+  // by test key; reports made before the key was in the link give the TC id: take the one that failed in this boot
+  const failed = D.boots[+boot.dataset.boot].failures.map(f => f.test);
+  let i = D.tests.findIndex(t => t.key === ref);
+  if (i < 0) i = failed.find(j => String(D.tests[j].tc_id) === ref) ?? -1;
+  const el = i >= 0 && boot.querySelector(`details[data-test="${i}"]`);
+  const target = el || boot;
+  for (let p = target; p; p = p.parentElement) if (p.tagName === 'DETAILS') p.open = true;
+  target.classList.add('flash');
+  target.scrollIntoView({block: 'start'});
+  setTimeout(() => target.classList.remove('flash'), 2500);
+  return true;
+}
 function openHash() {
+  if (openFailure(location.hash)) return;
   const el = location.hash && document.getElementById(location.hash.slice(1));
   if (el && el.tagName === 'DETAILS') { el.open = true; el.scrollIntoView(); }
 }
@@ -1935,7 +1972,7 @@ def _drive_rows(boots):
     return _table(head, rows)
 
 
-DEVICE_NAV = [('drives', 'Drives'), ('features', 'Features enabled'), ('api', 'API calls'),
+DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('api', 'API calls'),
               ('boot-summary', 'Boot summary'), ('boots', 'Boots')]
 
 
@@ -1944,7 +1981,7 @@ def render_device_html(doc):
     boots = doc['boots']
     out = [f'<div class="top"><h1>{_esc(device)}</h1><span>OTA {_esc(ota)} · {len(boots)} boot(s) · '
            f'days {_esc(", ".join(doc["days"]))}</span></div>',
-           '<section id="drives"><h2>Drives and power monitor</h2>', _drive_overview(doc.get('drive_summary')),
+           '<section id="drives"><h2>Drive Summary</h2>', _drive_overview(doc.get('drive_summary')),
            _drive_rows(boots), '</section>']
 
     features = doc.get('features') or []
@@ -1957,7 +1994,7 @@ def render_device_html(doc):
             for i, st in enumerate(b.get('features') or []):
                 counts[i][feature_status.STATUSES[st]] += 1
         out.append(f'<p class="muted">{_esc(FEATURES_NOTE)}</p>')
-        out.append(_features_table(features, lambda i: counts[i]))
+        out.append(_device_features_table(features, counts))
     else:
         out.append('<p class="muted">No features evaluated</p>')
     out.append('</section>')
@@ -1976,7 +2013,7 @@ def render_device_html(doc):
         rows.append(f'<tr><td><a href="#boot-{b["index"]}">{_esc(label)}</a></td><td class="num">{on}</td>'
                     f'<td class="num">{n_calls}</td><td>{_config_cell(b["config"])}</td><td>{_summary_chips(b["summary"])}</td></tr>')
     out.append('<section id="boot-summary"><h2>Boot summary</h2>'
-               + _table(['Boot', '#Features ON', '#API calls', 'Config keys', 'Test cases'], rows) + '</section>')
+               + _table(['Boot', '#Features enabled', '#API calls', 'Config keys', 'Test cases'], rows) + '</section>')
     out.append('<section id="boots"><h2>Boots</h2><p class="muted">Boots are named by UDID · open a boot for its drive, '
                'features, config coverage and test cases</p>')
     for pos, (b, label) in enumerate(zip(boots, labels)):
@@ -2297,7 +2334,27 @@ def refresh_callouts(reports_dir):
                  co['cached'], f", {co['error']}" if co.get('error') else '')
 
 
+def rerender(reports_dir):
+    """Rewrite the HTML of finished reports (ota_report.html, devices/*.html) from their JSON;
+    nothing is read from the logs and no LLM is called."""
+    for ota_dir in sorted(p.parent for p in Path(reports_dir).glob('*/ota_report.json')):
+        report = json.loads((ota_dir / 'ota_report.json').read_text())
+        with open(ota_dir / 'ota_report.html', 'w') as f:
+            f.write(render_html(report))
+        pages = sorted((ota_dir / 'devices').glob('*.json'))
+        for p in pages:
+            with open(p.with_suffix('.html'), 'w') as f:
+                f.write(render_device_html(json.loads(p.read_text())))
+        log.info('%s: OTA page and %d device page(s) rewritten', ota_dir.name, len(pages))
+
+
 def main():
+    if sys.argv[1:2] == ['rerender']:
+        # ota_report.py rerender <run reports dir> [...]: rewrite the HTML from the saved JSON
+        run_logging.configure([REPO_ROOT / 'logs' / 'ota_report.log'])
+        for reports_dir in sys.argv[2:]:
+            rerender(reports_dir)
+        return
     if sys.argv[1:2] == ['refresh-callouts']:
         # ota_report.py refresh-callouts <run reports dir> [...]: only the callouts, from the saved reports
         run_logging.configure([REPO_ROOT / 'logs' / 'ota_report.log'])
