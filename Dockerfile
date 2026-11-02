@@ -14,6 +14,12 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.ref.name="$VCS_BRANCH" \
 	org.opencontainers.image.revision="$VCS_REF"
 
+# 7z: the Log Analyzer reads downloaded log archives directly (lib/log_archive.py);
+# the CLI is ~2-3x faster than its py7zr fallback
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends p7zip-full \
+	&& rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -27,11 +27,16 @@ class Downloader:
     Downloader class  -> Which is used to download file from s3
     """
 
-    def __init__(self, server: str = 'stag', filetype: str = 'log', dd=False, count=False):
+    def __init__(self, server: str = 'stag', filetype: str = 'log', dd=False, count=False, extract_logs=True,
+                 log_root=os.path.join('OUTPUT', 'log')):
         '''
             server might be prod, stag
             filetype might be log, healthstat, lla.
             dd --> Don't Download
+            extract_logs --> merge the downloaded archives into <day>/logs. With False only
+                the archives are kept (~17x smaller); lib/ota_report.py and
+                lib/cfg_parser_logs.py read them directly (lib/log_archive.py)
+            log_root --> where filetype 'log' goes, as <log_root>/<device>/<date>/
         '''
         self.corrupted = {}
         self.filetype = filetype
@@ -46,6 +51,8 @@ class Downloader:
         self.bucket = None
         self.dest_dir = None
         self.count = count
+        self.extract_logs = extract_logs
+        self.log_root = log_root
 
     def _build_session(self):
         if self._is_running_on_ec2():
@@ -122,7 +129,7 @@ class Downloader:
     def __boto_download(self, s3file):
         destFile = None
         if self.filetype == 'log':
-            destFile = os.path.join('OUTPUT', 'log', *s3file.key.split('/')[1:])
+            destFile = os.path.join(self.log_root, *s3file.key.split('/')[1:])
         else:
             destFile = '/'.join(s3file.key.split('/')[1:])
         
@@ -159,7 +166,7 @@ class Downloader:
         """
         t = None
         if self.filetype == 'log':
-            existing_dir = os.path.join('OUTPUT', 'log', device, date)
+            existing_dir = os.path.join(self.log_root, device, date)
             if os.path.isdir(existing_dir):
                 print(f"{device} : {date} ==> skipped (already exists)")
                 self.dest_dir = existing_dir
@@ -182,7 +189,7 @@ class Downloader:
             executor.map(self.__boto_download, s3files)
         # t2 = time.perf_counter()
         # print(f'Finished in {round(t2-t1, 2)} seconds')
-        if self.filetype == 'log':
+        if self.filetype == 'log' and self.extract_logs:
             self.extract(device, date, self.dest_dir, False)
         return self.dest_dir
 
@@ -322,6 +329,92 @@ class ChronologicalAnalyzer():
 
         print(f"All logs merged and written to: {output_file}")
 
+class OTADownloader:
+    """
+    Download an OTA package from s3, pull out the requested files into
+    INPUT/<ota_version>/ and delete the downloaded package.
+
+    D475 (9.x) packages live in a different bucket as nd_app_setup.tar.gz,
+    with the actual OTA tarball nested inside under ota_packages/.
+    """
+
+    INPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'INPUT')
+    BUCKETS = ('idms-staging', 'idms-production')
+
+    # Major version (or the number after ".sp." for sp builds) -> s3 product folder
+    PRODUCT_BY_MAJOR = {
+        '2': 'krait',
+        '3': 'bagheera2',
+        '4': 'krait2',
+        '5': 'bagheera3',
+        '7': 'octo',
+        '9': 'D475'
+    }
+
+    # Products whose packages are not under <bucket>/ota_packages/<product>/
+    PRODUCT_S3_PATHS = {
+        'D475': 's3://netradyne-sharing/Products/Qualcomm_D475/Unified_OS_OTA/{ota_version}/nd_app_setup.tar.gz',
+    }
+
+    def __init__(self, ota_version, product_name=None, s3_path=None):
+        self.ota_version = ota_version
+        self.product_name = product_name or self.product_from_version(ota_version)
+        self.s3_path = s3_path
+        self.dir_name = os.path.join(self.INPUT_DIR, ota_version)
+
+    @classmethod
+    def product_from_version(cls, ota_version):
+        sp = re.search(r'\.sp\.(\d+)\.', ota_version)
+        major = sp.group(1) if sp else ota_version.split('.')[0]
+        if major not in cls.PRODUCT_BY_MAJOR:
+            raise ValueError(f'Cannot infer product for OTA {ota_version}, pass product_name')
+        return cls.PRODUCT_BY_MAJOR[major]
+
+    @staticmethod
+    def get_bucket_key(s3_path):
+        bucket = s3_path.split('/')[2].replace('amazonaws.com', '')
+        key = s3_path.split('/')[3:]
+        key = '/'.join(key)
+
+        return bucket, key
+
+    def download(self):
+        s3client = boto3.client('s3')
+
+        s3_path = self.s3_path or self.PRODUCT_S3_PATHS.get(self.product_name, '').format(ota_version=self.ota_version)
+        if s3_path:
+            candidates = [self.get_bucket_key(s3_path)]
+        else:
+            # Older OTAs are package.tar.gz, newer ones package.7z
+            candidates = [(bucket, f'ota_packages/{self.product_name}/{self.ota_version}/{name}')
+                          for bucket in self.BUCKETS for name in ('package.tar.gz', 'package.7z')]
+
+        for bucket, s3_file_path in candidates:
+            local_file = os.path.join(self.dir_name, os.path.basename(s3_file_path))
+            if os.path.exists(local_file) and os.path.getsize(local_file) > 0:
+                return local_file
+            try:
+                s3client.head_object(Bucket=bucket, Key=s3_file_path)
+            except s3client.exceptions.ClientError:
+                continue
+            print(f'[+] Downloading s3://{bucket}/{s3_file_path}')
+            os.makedirs(self.dir_name, exist_ok=True)
+            s3client.download_file(bucket, s3_file_path, local_file)
+            return local_file
+
+        raise FileNotFoundError(
+            f'OTA package not found: ' + ', '.join(f's3://{b}/{k}' for b, k in candidates))
+
+    def fetch_files(self, files=('bagheera_config.ini',)):
+        """Download the package, keep only `files` in INPUT/<ota_version>/, delete the rest."""
+        local_file = self.download()
+        try:
+            return extractor.Extract.extract_ota(local_file, files, self.dir_name)
+        finally:
+            if os.path.exists(local_file):
+                os.remove(local_file)
+
+
 def args_for_downloader():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -340,6 +433,9 @@ def args_for_downloader():
         "-p", help="point to production server", action="store_true")
     parser.add_argument(
         "--count", help="Return Log count without downloading log", action="store_true")
+    parser.add_argument(
+        "--no-extract", help="Keep only the downloaded log archives, don't merge them into <day>/logs",
+        action="store_true")
 
     return parser.parse_args()
 
@@ -381,7 +477,8 @@ def main():
         exit(0)
 
 
-    Downloader(server, filetype=args.filetype, dd=False).download_manager(deviceid, args.startdate, args.enddate)
+    Downloader(server, filetype=args.filetype, dd=False, extract_logs=not args.no_extract).download_manager(
+        deviceid, args.startdate, args.enddate)
     # if args.filetype == "log":
     #     print("[!!] Downloading completed... Chronological analyzer Started...")
     #     ChronologicalAnalyzer().run(deviceid.split(','))

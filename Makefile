@@ -13,6 +13,8 @@
 
 IMAGE_NAME := atlas-agent-api
 PORT       ?= 8501
+# The Log Analyzer rebuilds each log day in /dev/shm; Docker's default is too small
+SHM_SIZE   ?= 8g
 REPO_ROOT  := $(CURDIR)
 ENV_FILE   := .env
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
@@ -32,6 +34,7 @@ docker-run:
 	docker run --rm -it \
 		--name $(IMAGE_NAME) \
 		--add-host=host.docker.internal:host-gateway \
+		--shm-size=$(SHM_SIZE) \
 		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
@@ -44,6 +47,7 @@ docker-run-detached:
 		--restart unless-stopped \
 		--name $(IMAGE_NAME) \
 		--add-host=host.docker.internal:host-gateway \
+		--shm-size=$(SHM_SIZE) \
 		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \

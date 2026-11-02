@@ -4,6 +4,9 @@ import zipfile
 import subprocess
 import gzip
 import time
+import shutil
+import tarfile
+import tempfile
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -147,3 +150,65 @@ class Extract:
             return 0
         else:
             return 1
+
+    @staticmethod
+    def extract_ota(ota_package_path, files, dest_dir):
+        """
+            Extract only `files` (matched by file name) from an OTA package
+            (.tar.gz or .7z) into dest_dir. Packages nested under an ota_packages/ folder
+            (e.g. D475 nd_app_setup.tar.gz) are searched too.
+            Returns the list of extracted file paths.
+        """
+        if not os.path.exists(ota_package_path):
+            raise FileNotFoundError(f'OTA package not exist in this location {ota_package_path}')
+
+        os.makedirs(dest_dir, exist_ok=True)
+        wanted = set(files)
+        extracted = []
+        if py7zr.is_7zfile(ota_package_path):
+            Extract._extract_from_7z(ota_package_path, wanted, dest_dir, extracted)
+        else:
+            with tarfile.open(ota_package_path, 'r:gz') as tar:
+                Extract._extract_from_tar(tar, wanted, dest_dir, extracted)
+
+        if wanted:
+            print(f"[-] {', '.join(sorted(wanted))} not found in {ota_package_path}")
+        return extracted
+
+    @staticmethod
+    def _extract_from_7z(path, wanted, dest_dir, extracted):
+        with py7zr.SevenZipFile(path) as archive:
+            # Shallowest match per file name, e.g. bagheera_config.ini at the root
+            targets = {}
+            for name in sorted(archive.getnames(), key=lambda n: n.count('/')):
+                base = os.path.basename(name)
+                if base in wanted and base not in targets:
+                    targets[base] = name
+            if not targets:
+                return
+            with tempfile.TemporaryDirectory(dir=dest_dir) as tmp:
+                archive.extract(path=tmp, targets=list(targets.values()))
+                for base, name in targets.items():
+                    dest_path = os.path.join(dest_dir, base)
+                    shutil.move(os.path.join(tmp, name), dest_path)
+                    os.chmod(dest_path, 0o644)  # archive keeps it read-only
+                    extracted.append(dest_path)
+                    wanted.discard(base)
+
+    @staticmethod
+    def _extract_from_tar(tar, wanted, dest_dir, extracted):
+        for member in tar:
+            if not wanted:
+                return
+            if not member.isfile():
+                continue
+            name = os.path.basename(member.name)
+            if name in wanted:
+                dest_path = os.path.join(dest_dir, name)
+                with tar.extractfile(member) as src, open(dest_path, 'wb') as dst:
+                    shutil.copyfileobj(src, dst)
+                extracted.append(dest_path)
+                wanted.discard(name)
+            elif '/ota_packages/' in f'/{member.name}' and name.endswith('.tar.gz'):
+                with tar.extractfile(member) as src, tarfile.open(fileobj=src, mode='r|gz') as inner:
+                    Extract._extract_from_tar(inner, wanted, dest_dir, extracted)
