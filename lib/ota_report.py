@@ -45,6 +45,7 @@ Usage:
 import argparse
 import bisect
 import contextlib
+import errno
 import fcntl
 import gzip
 import html
@@ -1952,13 +1953,28 @@ def load_tests(tests_dir, snapshot=None):
             for t in testcase_log_steps.extract_all_cached(tests_dir, snapshot) if 'error' not in t]
 
 
+# Hit spool and other temp files a day writes next to its rebuilt logs, as a share of them
+DAY_TMP_EXTRA = 0.05
+# Times a day that ran out of temp space is tried again (alone) before its device fails
+NO_SPACE_RETRIES = 2
+
+
 def _day_bytes(day_dir):
-    """Size of a day's downloaded logs (archives, else the extracted logs/), to order the reads."""
+    """Temp space reading a day takes: its archives' unpacked size from their headers (else
+    17x their size), or the extracted logs/ when there are no archives."""
     archives = log_archive.archives(day_dir)
     if archives:
-        # 7z/zip archives hold about 17x their size in logs
-        return 17 * sum(p.stat().st_size for p in archives)
+        total = 0
+        for p in archives:
+            size = log_archive.unpacked_bytes(p)
+            total += size if size is not None else 17 * p.stat().st_size
+        return int(total * (1 + DAY_TMP_EXTRA))
     return sum(p.stat().st_size for p in (Path(day_dir) / 'logs').rglob('*') if p.is_file())
+
+
+def _day_job_bytes(job):
+    device, day = job
+    return device, day, _day_bytes(LOG_BASE_DIR / device / day)
 
 
 RUN_TMP_PREFIX = 'ota_report_'
@@ -2036,8 +2052,11 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     # are set, so they inherit them.
     device_day_list = {d: device_days(d, start, end) for d in devices}
     # Biggest days first, so the slowest reads don't run alone at the end
-    day_jobs = sorted(((d, day, _day_bytes(LOG_BASE_DIR / d / day)) for d in devices for day in device_day_list[d]),
-                      key=lambda job: -job[2])
+    # (Reading every archive header takes ~0.1 s a day, so it is spread over the workers)
+    jobs = [(d, day) for d in devices for day in device_day_list[d]]
+    with timed(log, 'size_days', timings, device_days=len(jobs)):
+        with ProcessPoolExecutor(min(workers, max(1, len(jobs)))) as sizer:
+            day_jobs = sorted(sizer.map(_day_job_bytes, jobs, chunksize=4), key=lambda job: -job[2])
     n_days = len(day_jobs)
     budget = day_budget(workers)
     log.info('Processing %d device(s), %d device-day(s) with %d worker(s), %s → %s; days in flight up to %.1f GB in %s',
@@ -2069,13 +2088,16 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
         try:
             pending, results = {}, defaultdict(list)
             days_left = {d: len(v) for d, v in device_day_list.items() if v}
-            in_flight = {}  # day future -> estimated bytes of its rebuilt logs
+            in_flight = {}  # day future -> (device, day, estimated temp bytes)
+            spools = defaultdict(int)  # device -> bytes of its read days' hit spools, kept in temp until finished
+            no_space = Counter()  # (device, day) -> times it ran out of temp space
 
             def feed():
                 # Keep the workers busy, but only start a day whose rebuilt logs fit next to the
-                # ones being read (the biggest that fits; always one when nothing is running)
+                # ones being read and the spools waiting for their device to finish
+                # (the biggest that fits; always one when nothing is running)
                 while day_jobs and len(in_flight) < workers:
-                    room = budget - sum(in_flight.values())
+                    room = budget - sum(job[2] for job in in_flight.values()) - sum(spools.values())
                     pick = next((i for i, job in enumerate(day_jobs) if job[2] <= room), None)
                     if pick is None:
                         if in_flight:
@@ -2084,7 +2106,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
                     device, day, size = day_jobs.pop(pick)
                     future = pool.submit(scan_device_day, device, day)
                     pending[future] = ('day', device)
-                    in_flight[future] = size
+                    in_flight[future] = (device, day, size)
 
             feed()
             try:
@@ -2092,20 +2114,33 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
                     finished, _ = wait(pending, return_when=FIRST_COMPLETED)
                     for future in finished:
                         kind, device = pending.pop(future)
-                        in_flight.pop(future, None)
+                        job = in_flight.pop(future, None)
                         try:
                             result = future.result()
-                        except Exception as exc:  # one broken device must not sink the run
+                        except Exception as exc:
+                            if (kind == 'day' and isinstance(exc, OSError) and exc.errno == errno.ENOSPC
+                                    and no_space[job[:2]] < NO_SPACE_RETRIES):
+                                # Out of temp space (its estimate was low): read it again once
+                                # nothing else is being read, by asking for the whole budget
+                                no_space[job[:2]] += 1
+                                log.warning('%s %s: out of temp space, retrying it alone (%d/%d)',
+                                            device, job[1], no_space[job[:2]], NO_SPACE_RETRIES)
+                                day_jobs.append((device, job[1], budget))
+                                continue
+                            # one broken device must not sink the run
                             log.exception('%s: %s failed: %s', device, 'reading a day' if kind == 'day' else 'finishing', exc)
                             error = f'{type(exc).__name__}: {exc}'
                             if kind == 'day':
                                 device_errors.setdefault(device, error)
                             else:
+                                spools.pop(device, None)
                                 device_done(device, error)
                             result = None
                         if kind == 'day':
                             if result is not None:
                                 results[device].append(result)
+                                with contextlib.suppress(OSError):
+                                    spools[device] += os.path.getsize(result['spool'])
                             days_left[device] -= 1
                             if days_left[device] == 0:
                                 day_results = results.pop(device, [])
@@ -2113,11 +2148,13 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
                                     for r in day_results:
                                         with contextlib.suppress(FileNotFoundError):
                                             os.unlink(r['spool'])
+                                    spools.pop(device, None)
                                     device_done(device, device_errors[device])
                                 else:
                                     pending[pool.submit(finish_device, device, day_results, product,
                                                         report_dir, otas)] = ('finish', device)
                         elif result is not None:
+                            spools.pop(device, None)  # finish_device deleted them
                             _, summaries, device_timings, device_info[device] = result
                             timings.extend(device_timings)
                             for ota, summary in summaries.items():

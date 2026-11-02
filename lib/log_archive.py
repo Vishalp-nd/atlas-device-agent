@@ -21,6 +21,7 @@ system temp folder.
 """
 
 import contextlib
+import errno
 import logging
 import os
 import shutil
@@ -58,6 +59,20 @@ def archives(day_dir):
     return sorted(p for p in Path(day_dir).iterdir() if p.is_file() and p.name.endswith(ARCHIVE_SUFFIXES))
 
 
+def unpacked_bytes(path):
+    """Bytes an archive unpacks to, read from its header (an upper bound for what
+    merge_archives writes from it), or None if the header can't be read."""
+    path = Path(path)
+    try:
+        if '.zip' in path.name:
+            with zipfile.ZipFile(path) as z:
+                return sum(i.file_size for i in z.infolist())
+        with py7zr.SevenZipFile(path) as z:
+            return z.archiveinfo().uncompressed
+    except Exception:
+        return None
+
+
 def has_logs(day_dir):
     """True if the day has archives or an extracted logs/ folder."""
     day_dir = Path(day_dir)
@@ -82,8 +97,11 @@ def _archive_members(path, work):
     shutil.rmtree(out, ignore_errors=True)
     if SEVEN_ZIP:
         result = subprocess.run([SEVEN_ZIP, 'x', '-y', '-bd', f'-o{out}', str(path)],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         if result.returncode != 0:
+            # A full temp folder is not a corrupt archive: raise, so the day is retried
+            if b'space' in result.stderr.lower() or _no_space(work):
+                raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC), str(path))
             return None
     else:
         try:
@@ -99,6 +117,13 @@ def _archive_members(path, work):
                 members.append((os.path.relpath(full, out), f.read()))
     members.sort()
     return members
+
+
+def _no_space(folder, slack=64 * 1024 ** 2):
+    try:
+        return shutil.disk_usage(folder).free < slack
+    except OSError:
+        return False
 
 
 def merge_archives(day_archives, logs_dir, work):
