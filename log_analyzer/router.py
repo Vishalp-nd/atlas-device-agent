@@ -2,7 +2,7 @@
 
 Trigger a boot-wise config/test-case report (lib/ota_report.py) for an OTA version
 or a device list, and follow it: runs, per-step timings, live log, report files.
-The UI (log_analyzer/ui/, served at /log-analyzer/ui/) only talks to these routes.
+The UI (log_analyzer/ui/) runs separately (log_analyzer/serve_ui.py) and only talks to these routes.
 
 Handlers are plain `def`: they do short blocking Postgres calls, which FastAPI
 runs in its worker thread pool. The analysis itself runs in a separate worker
@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 import psycopg2
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse
 
 from . import db, service
 from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR
@@ -70,19 +70,6 @@ def _run_or_404(run_id: int) -> dict:
 def _check_environment(environment: str | None) -> None:
     if environment is not None and environment not in ENVIRONMENTS:
         raise HTTPException(status_code=422, detail=f"Unknown environment {environment!r}")
-
-
-@router.get("/", include_in_schema=False)
-def ui_redirect():
-    return RedirectResponse("/log-analyzer/ui/")
-
-
-@router.get("/ui/config.js", include_in_schema=False)
-def ui_config():
-    """Served by the backend itself, the UI calls its own origin; config.js only matters
-    for a UI hosted elsewhere (log_analyzer/serve_ui.py), so this one sets nothing."""
-    return Response("// served by the Atlas backend: the UI uses this origin\n",
-                    media_type="application/javascript")
 
 
 @router.get("/health")

@@ -2,9 +2,8 @@
 // API base, first match wins:
 //   1. ?api=<base url> in the page URL
 //   2. ATLAS_API_URL from .env, delivered as window.ATLAS_API_URL by config.js
-//      (log_analyzer/serve_ui.py); a full URL ("http://host:8502") or just a port ("8502")
-//   3. the page's own origin when the backend serves it (/log-analyzer/ui/)
-//   4. the backend on port 8501 of the same host
+//      (log_analyzer/serve_ui.py), e.g. http://172.16.18.142:8502
+//   3. the backend on port 8501 of the same host
 'use strict';
 
 const BACKEND_PORT = 8501;
@@ -13,13 +12,11 @@ const API = (() => {
   const host = location.hostname || 'localhost';
   const toBase = (v) => {
     v = String(v).trim().replace(/\/+$/, '').replace(/\/log-analyzer$/, '');
-    if (/^:?\d+$/.test(v)) v = `${proto}//${host}:${v.replace(':', '')}`;  // port only
     return v + '/log-analyzer';
   };
   const given = new URLSearchParams(location.search).get('api');
   if (given) return toBase(given);
   if (window.ATLAS_API_URL) return toBase(window.ATLAS_API_URL);
-  if (location.protocol.startsWith('http') && location.pathname.startsWith('/log-analyzer/ui')) return '/log-analyzer';
   return `${proto}//${host}:${BACKEND_PORT}/log-analyzer`;
 })();
 const ACTIVE = new Set(['queued', 'running']);

@@ -19,10 +19,7 @@ import os
 import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 
-from log_analyzer.config import UI_DIR as LOG_ANALYZER_UI_DIR
 from log_analyzer.router import router as log_analyzer_router
 
 from .router import router as atlas_router
@@ -30,23 +27,22 @@ from .router import router as atlas_router
 app = FastAPI(title="Atlas Device Agent", version="1.0.0")
 
 app.include_router(atlas_router)
-# Log Analyzer: its own API under /log-analyzer and a standalone UI (not Streamlit) at /log-analyzer/ui/
+# Log Analyzer API under /log-analyzer. The UI (log_analyzer/ui/) is NOT served here: it runs on its own,
+# e.g. `python -m log_analyzer.serve_ui`, and calls this API at ATLAS_API_URL
 app.include_router(log_analyzer_router)
-# The Log Analyzer UI may be served from elsewhere (another port, a file) and call this
-# backend; LOG_ANALYZER_CORS_ORIGINS: comma-separated origins, default any
+# The UI is on another origin, so allow cross-origin calls; LOG_ANALYZER_CORS_ORIGINS: comma-separated origins, default any
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.environ.get("LOG_ANALYZER_CORS_ORIGINS", "*").split(",") if o.strip()],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
-app.mount("/log-analyzer/ui", StaticFiles(directory=LOG_ANALYZER_UI_DIR, html=True), name="log-analyzer-ui")
 
 
 @app.get("/", include_in_schema=False)
-def root_redirect():
-    """Nothing lives at /; send browsers to the Log Analyzer UI."""
-    return RedirectResponse("/log-analyzer/ui/")
+def root():
+    """API only; the endpoint list is at /docs."""
+    return {"service": "atlas-device-agent", "docs": "/docs"}
 
 # configure() raises LogfireConfigError with no token/local auth (e.g. a fresh
 # EC2 host before `logfire auth` or LOGFIRE_TOKEN is set); instrument_fastapi()

@@ -5,7 +5,7 @@ SSH tunnel). Reads ATLAS_API_URL from atlas-device-agent/.env (or the environmen
 and hands only that value to the browser as config.js; nothing else in .env is exposed.
 
     # .env on the UI server
-    ATLAS_API_URL=http://<this-server>:8502     # or just the port: ATLAS_API_URL=8502
+    ATLAS_API_URL=http://172.16.18.142:8502     # full URL: http://<host>:<port>
 
     python -m log_analyzer.serve_ui --port 8080          # serve log_analyzer/ui/
     python -m log_analyzer.serve_ui --write              # or write ui/config.js for nginx etc.
@@ -60,9 +60,12 @@ def main() -> None:
     parser.add_argument("--write", action="store_true", help="write ui/config.js and exit instead of serving")
     args = parser.parse_args()
 
-    if not api_url():
+    url = api_url()
+    if not url:
         print(f"warning: ATLAS_API_URL is not set in the environment or {ENV_FILE}; "
               "the UI will fall back to port 8501 on its own host")
+    elif not url.startswith(("http://", "https://")):
+        parser.error(f"ATLAS_API_URL must be a full URL like http://172.16.18.142:8502, got {url!r}")
     if args.write:
         (UI_DIR / "config.js").write_bytes(config_js())
         print(f"wrote {UI_DIR / 'config.js'} (ATLAS_API_URL={api_url()!r})")
