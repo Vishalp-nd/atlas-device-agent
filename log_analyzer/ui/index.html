@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log Analyzer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%2315803d'/%3E%3Cpath d='M4 11V5m4 6V3m4 8V7' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=5">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">
+      <span class="logo" aria-hidden="true"></span>
+      <span>Log Analyzer</span>
+    </a>
+    <span class="tagline">Boot-wise config coverage &amp; test-case reports from device logs</span>
+    <div class="top-right">
+      <span class="health" id="health" title="API status"><span class="dot"></span><span class="label">connecting</span></span>
+      <button type="button" class="ghost debug-toggle" id="debug-toggle" aria-pressed="false" title="Show timings, devices and the run log">Debug</button>
+      <div class="env-switch" id="env-switch" role="radiogroup" aria-label="Environment">
+        <button type="button" role="radio" class="env-opt" data-env="stag" aria-checked="true">Staging</button>
+        <button type="button" role="radio" class="env-opt" data-env="prod" aria-checked="false">Production</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card form-card" aria-labelledby="new-title">
+      <h2 id="new-title">New analysis <span class="env-badge" id="form-env">Staging</span></h2>
+      <form id="run-form" novalidate>
+        <div class="segmented" role="tablist" aria-label="Analyse by">
+          <button type="button" role="tab" class="seg active" data-mode="ota" aria-selected="true">OTA version</button>
+          <button type="button" role="tab" class="seg" data-mode="devices" aria-selected="false">Device IDs</button>
+        </div>
+
+        <div class="field" data-for="ota">
+          <label for="ota">OTA version</label>
+          <input id="ota" name="ota" list="ota-list" placeholder="e.g. 5.6.17.rc.1" autocomplete="off" spellcheck="false">
+          <datalist id="ota-list"></datalist>
+          <p class="hint">Up to 200 devices currently on this OTA are analysed; only boots on this OTA are reported.</p>
+        </div>
+
+        <div class="field hidden" data-for="devices">
+          <label for="devices">Device IDs <span class="count" id="device-count"></span></label>
+          <textarea id="devices" name="devices" rows="5" placeholder="103182502310, 103182502300&#10;one per line or comma separated" spellcheck="false"></textarea>
+          <p class="hint">Every OTA found in these devices' logs gets its own report.</p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="start">From</label>
+            <input id="start" name="start" type="date" required>
+          </div>
+          <div class="field">
+            <label for="end">To</label>
+            <input id="end" name="end" type="date" required>
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="field">
+            <label for="product">Product</label>
+            <input id="product" name="product" placeholder="auto" spellcheck="false">
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="max_devices">Max devices</label>
+              <input id="max_devices" name="max_devices" type="number" min="1" placeholder="OTA 200 · list 500">
+            </div>
+            <div class="field">
+              <label for="workers">Workers</label>
+              <input id="workers" name="workers" type="number" min="1" max="64" placeholder="auto">
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="extract_logs" name="extract_logs"> Also extract logs to disk (needed by other tools)</label>
+        </details>
+
+        <p class="form-error" id="form-error" role="alert"></p>
+        <button class="primary" type="submit" id="submit">
+          <span>Run analysis</span>
+        </button>
+      </form>
+    </section>
+
+    <section class="card main-card" id="view" aria-live="polite"></section>
+  </main>
+
+  <template id="tpl-empty">
+    <div class="empty">
+      <div class="empty-mark" aria-hidden="true"></div>
+      <p>No runs yet. Start one from the form.</p>
+    </div>
+  </template>
+
+  <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
+  <script src="config.js"></script>
+  <script src="app.js?v=6"></script>
+</body>
+</html>

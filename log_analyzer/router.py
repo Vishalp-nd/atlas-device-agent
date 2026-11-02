@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 import psycopg2
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from . import db, service
 from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR
@@ -75,6 +75,14 @@ def _check_environment(environment: str | None) -> None:
 @router.get("/", include_in_schema=False)
 def ui_redirect():
     return RedirectResponse("/log-analyzer/ui/")
+
+
+@router.get("/ui/config.js", include_in_schema=False)
+def ui_config():
+    """Served by the backend itself, the UI calls its own origin; config.js only matters
+    for a UI hosted elsewhere (log_analyzer/serve_ui.py), so this one sets nothing."""
+    return Response("// served by the Atlas backend: the UI uses this origin\n",
+                    media_type="application/javascript")
 
 
 @router.get("/health")
