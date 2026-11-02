@@ -7,7 +7,8 @@ CINFO_DEVICES from the repo-root .env. One HTML report is written per OTA.
 When device IDs are provided, they are used only as an additional filter;
 devices on the same OTA remain grouped into the same report. Each ERROR entry is
 searched against Jira bugs (credentials from lib/jira_config.ini) and any matches
-are shown in the Related Bugs column.
+are shown in the Related Bugs column. Pass -p/--production to read production
+Snowflake (SNOWFLAKE_DB) instead of staging (SNOWFLAKE_STAG_DB).
 """
 
 from __future__ import annotations
@@ -36,14 +37,17 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "OUTPUT" / "staging_critical_info_reports"
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "minilm_ft"
 DEFAULT_JIRA_CONFIG = REPO_ROOT / "lib" / "jira_config.ini"
 JIRA_MAX_RESULTS = 10
-SNOWFLAKE_SECTION = "SNOWFLAKE_STAG_DB"
 # Snowflake source objects now live in PUBLISHED_VIEWS (migrated off PUBLIC).
 SNOWFLAKE_SCHEMA = "PUBLISHED_VIEWS"
-SNOWFLAKE_TABLE = f"STAGE_IDMS_MAIN_DB.{SNOWFLAKE_SCHEMA}.DEVICE_CRITICAL_EVENT"
-DRIVE_MINUTES_TABLE = (
-    f"STAGE_IDMS_MAIN_DB.{SNOWFLAKE_SCHEMA}."
-    "IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW"
-)
+# Per environment: db_credentials.ini section, table qualifier, report file prefix, report label.
+# Production qualifies by schema only and resolves the database from the SNOWFLAKE_DB section,
+# matching critical_events_pipeline.py.
+SNOWFLAKE_ENVIRONMENTS = {
+    "staging": ("SNOWFLAKE_STAG_DB", f"STAGE_IDMS_MAIN_DB.{SNOWFLAKE_SCHEMA}", "staging_critical_info", "staging"),
+    "production": ("SNOWFLAKE_DB", SNOWFLAKE_SCHEMA, "production_critical_info", "production"),
+}
+CRITICAL_EVENT_TABLE = "DEVICE_CRITICAL_EVENT"
+DRIVE_MINUTES_TABLE = "IDMS_DAILY_DEVICE_DRIVE_METRICS_BY_OTA_VERSION_VIEW"
 
 NORMALIZE_DYNAMIC_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 NON_ALPHA_TAIL_RE = re.compile(r" *[^A-Z ].*$")
@@ -106,11 +110,11 @@ def _sql_literal(value: str) -> str:
     return value.replace("'", "''")
 
 
-def _connect_staging_snowflake(aws_profile: str | None):
-    conn = connect_to_snowflake(str(DB_CREDENTIALS_PATH), SNOWFLAKE_SECTION, aws_profile=aws_profile)
+def _connect_snowflake(section: str, aws_profile: str | None):
+    conn = connect_to_snowflake(str(DB_CREDENTIALS_PATH), section, aws_profile=aws_profile)
     if conn is None:
         raise ConnectionError(
-            f"Failed to connect to Snowflake using section {SNOWFLAKE_SECTION}"
+            f"Failed to connect to Snowflake using section {section}"
         )
     return conn
 
@@ -127,6 +131,7 @@ def _build_classifier(json_path: Path = DEFAULT_JSON_PATH, model_path: Path = DE
 
 def _fetch_rows(
     conn,
+    table_prefix: str,
     ota_version: str,
     device_ids: list[str],
     start_ts: str,
@@ -154,7 +159,7 @@ def _fetch_rows(
             SYS_UPTIME,
             IGNITION_STATUS,
             TENANT_ID
-        FROM {SNOWFLAKE_TABLE}
+        FROM {table_prefix}.{CRITICAL_EVENT_TABLE}
         WHERE {' AND '.join(filters)}
         ORDER BY PROCESS_NAME, CODE, TIMESTAMP DESC
     """
@@ -170,6 +175,7 @@ def _fetch_rows(
 
 def _fetch_drive_minutes(
     conn,
+    table_prefix: str,
     device_ids: list[str],
     start_date: str,
     end_date: str,
@@ -182,7 +188,7 @@ def _fetch_drive_minutes(
         SELECT
             DEVICE_ID,
             SUM(VALID_DRIVE_TIME_IN_MINUTES) AS TOTAL_DRIVE_MINUTES
-        FROM {DRIVE_MINUTES_TABLE}
+        FROM {table_prefix}.{DRIVE_MINUTES_TABLE}
         WHERE DEVICE_ID IN ({device_list})
           AND RECORD_DATE BETWEEN '{_sql_literal(start_date)}' AND '{_sql_literal(end_date)}'
         GROUP BY DEVICE_ID
@@ -452,6 +458,7 @@ def _render_html(
     error_count: int,
     info_count: int,
     total_drive_minutes: float,
+    environment_label: str = "staging",
 ) -> str:
     device_rows_html = []
     for index, row in enumerate(device_rows, start=1):
@@ -633,7 +640,7 @@ tr:hover > td {{ background:#fafcff }}
  <div class=\"top-inner\">
   <h1>Unique Critical Info Report</h1>
   <div class=\"meta\">
-   <span><b>Source:</b> Snowflake staging critical info</span>
+   <span><b>Source:</b> Snowflake {html.escape(environment_label)} critical info</span>
    <span><b>Generated:</b> {html.escape(generated_at)}</span>
    <span><b>Date Range:</b> {html.escape(start_date)} to {html.escape(end_date)}</span>
    <span><b>OTA:</b> {html.escape(ota_version)}</span>
@@ -743,6 +750,7 @@ def generate_reports(
     ota_versions: list[str] | None = None,
     device_ids: list[str] | None = None,
     jira_config_path: Path | None = DEFAULT_JIRA_CONFIG,
+    production: bool = False,
 ) -> list[Path]:
     env_ota_versions, env_device_ids = _load_filters()
     ota_versions = ota_versions if ota_versions is not None else env_ota_versions
@@ -756,12 +764,15 @@ def generate_reports(
     end_ts = f"{(end_date + timedelta(days=1)).isoformat()} 00:00:00"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     classifier = _build_classifier()
+    section, table_prefix, file_prefix, environment_label = SNOWFLAKE_ENVIRONMENTS[
+        "production" if production else "staging"
+    ]
 
-    conn = _connect_staging_snowflake(aws_profile)
+    conn = _connect_snowflake(section, aws_profile)
     try:
         written_files: list[Path] = []
         for ota_version in ota_versions:
-            rows = _fetch_rows(conn, ota_version, device_ids, start_ts, end_ts)
+            rows = _fetch_rows(conn, table_prefix, ota_version, device_ids, start_ts, end_ts)
             classified = _classify_rows(classifier, rows, ota_version)
             process_rows, detail_rows, device_rows, device_count, error_count, info_count = _build_report_rows(
                 rows,
@@ -771,6 +782,7 @@ def generate_reports(
                 _attach_related_bugs(detail_rows, jira_config_path, ota_version)
             drive_minutes_by_device = _fetch_drive_minutes(
                 conn,
+                table_prefix,
                 [row["device_id"] for row in device_rows],
                 start_date.isoformat(),
                 end_date.isoformat(),
@@ -793,9 +805,10 @@ def generate_reports(
                 error_count=error_count,
                 info_count=info_count,
                 total_drive_minutes=sum(float(row["drive_minutes"]) for row in device_rows),
+                environment_label=environment_label,
             )
             output_path = output_dir / (
-                f"staging_critical_info_{_slugify(ota_version)}_"
+                f"{file_prefix}_{_slugify(ota_version)}_"
                 f"{start_date.isoformat()}_{end_date.isoformat()}.html"
             )
             output_path.write_text(report_html, encoding="utf-8")
@@ -848,6 +861,12 @@ def main() -> int:
         help="Optional AWS profile for Snowflake private-key lookup.",
     )
     parser.add_argument(
+        "-p",
+        "--production",
+        action="store_true",
+        help="Read production Snowflake (SNOWFLAKE_DB) instead of staging (SNOWFLAKE_STAG_DB).",
+    )
+    parser.add_argument(
         "--jira-config",
         default=str(DEFAULT_JIRA_CONFIG),
         help="INI file with a [JIRA] section (server, username, api_token) used to find related bugs.",
@@ -874,6 +893,7 @@ def main() -> int:
         ota_versions=ota_versions,
         device_ids=device_ids,
         jira_config_path=None if args.skip_jira_lookup else Path(args.jira_config),
+        production=args.production,
     )
     for path in written_files:
         print(path)
