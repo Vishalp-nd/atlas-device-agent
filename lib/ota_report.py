@@ -1142,8 +1142,11 @@ def report_summary(ota, device_summaries, given, device_info, features):
     for d in with_set:
         sets[tuple(device_summaries[d]['feature_set'])] += 1
     all_names = [f['name'] for f in features]
-    coverage = [{'name': name, 'devices_on': sum(1 for d in with_set if name in device_summaries[d]['feature_set'])}
-                for name in all_names]
+    # A feature counts as enabled on a device when it was ON in any of the device's boots on this OTA
+    no_counts = [{}] * len(features)
+    coverage = [{'name': f['name'],
+                 'devices_on': sum(1 for d in on_ota if (device_summaries[d].get('features') or no_counts)[i].get('ON'))}
+                for i, f in enumerate(features)]
     return {
         'devices_given': len(given),
         'devices_without_logs': no_logs,
@@ -1606,7 +1609,7 @@ def _logs_section(sm):
     given = sm['devices_given']
     detailed, critical, none = sm['logs_detailed'], sm['logs_critical_only'], sm['devices_without_logs']
     return ('<section id="logs"><h2>Log Upload Summary</h2><div class="tiles">'
-            + _tile(len(detailed), 'Detailed logs uploaded', _pct(len(detailed), given), 'c-acc', devices=detailed)
+            + _tile(len(detailed), 'Detailed logs enabled', _pct(len(detailed), given), 'c-acc', devices=detailed)
             + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), given), 'c-nt', devices=critical)
             + _tile(len(none), 'No logs uploaded', _pct(len(none), given), 'c-none', devices=none)
             + '</div></section>')
@@ -1634,11 +1637,15 @@ def _drive_section(sm):
 def _feature_sets_section(sm):
     coverage = sm.get('feature_coverage') or []
     enabled = sum(1 for f in coverage if f['devices_on'])
+    rows = [f'<tr><td>{_esc(f["name"])}</td>'
+            + ('<td class="n-pass">Enabled</td>' if f['devices_on'] else '<td class="zero">Disabled</td>') + '</tr>'
+            for f in sorted(coverage, key=lambda f: (not f['devices_on'], f['name'].lower()))]
     return ('<section id="feature-sets"><h2>Feature Set Summary</h2><div class="tiles">'
             + _tile(len(coverage), 'Total features')
             + _tile(enabled, 'Enabled', _pct(enabled, len(coverage)), 'c-pass')
             + _tile(len(coverage) - enabled, 'Disabled', _pct(len(coverage) - enabled, len(coverage)), 'c-none')
-            + '</div></section>')
+            + '</div>' + (_table(['Feature Name', 'Enabled/Disabled'], rows, limit=15) if rows else '')
+            + '</section>')
 
 
 def _api_calls_section(sm):
