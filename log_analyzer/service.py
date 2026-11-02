@@ -13,7 +13,7 @@ import time
 from datetime import date, datetime, timezone
 
 from . import db
-from .config import REPO_ROOT, RUNS_DIR, SERVICE_LOG
+from .config import REPO_ROOT, RUNS_DIR, SERVICE_LOG, runs_relative
 
 log = logging.getLogger("log_analyzer.service")
 
@@ -69,7 +69,7 @@ def start_run(run_id: int) -> int:
         cwd=REPO_ROOT, stdout=out, stderr=subprocess.STDOUT, env=env, start_new_session=True,
     )
     out.close()
-    db.update_run(run_id, pid=proc.pid, output_dir=str(folder), log_path=str(folder / "run.log"))
+    db.update_run(run_id, pid=proc.pid, output_dir=runs_relative(folder), log_path=runs_relative(folder / "run.log"))
     # Reap the child when it exits so it doesn't linger as a zombie in the API process
     threading.Thread(target=proc.wait, daemon=True).start()
     log.info("run %s: worker started (pid %s)", run_id, proc.pid)
@@ -119,8 +119,9 @@ def reconcile() -> None:
 
 
 def read_log(run: dict, offset: int, max_bytes: int = 256 * 1024) -> tuple[str, int]:
-    path = run.get("log_path")
-    if not path or not os.path.exists(path):
+    # Always this backend's own RUNS_DIR: the stored log_path may be from another mount
+    path = RUNS_DIR / str(run["id"]) / "run.log"
+    if not path.exists():
         return "", offset
     with open(path, "rb") as f:
         size = os.fstat(f.fileno()).st_size

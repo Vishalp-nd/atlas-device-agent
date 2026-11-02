@@ -12,6 +12,23 @@ UI_DIR = Path(__file__).resolve().parent / "ui"
 
 # One folder per run: run.log, reports/<ota>/ota_report.html, reports/<ota>/devices/...
 RUNS_DIR = Path(os.environ.get("LOG_ANALYZER_RUNS_DIR", REPO_ROOT / "OUTPUT" / "log_analyzer_runs"))
+
+
+def runs_relative(path: str | os.PathLike) -> str:
+    """Path as stored in the DB: relative to RUNS_DIR ("4/reports/<ota>/ota_report.html"),
+    so the same rows work wherever the repo is mounted (host, /repo in Docker, another server)."""
+    return Path(os.path.relpath(path, RUNS_DIR)).as_posix()
+
+
+def run_subpath(run_id: int, stored: str, under: str = "") -> Path:
+    """Part of a stored path below <run_id>/<under>, for rows saved relative (current) or as
+    absolute paths from another mount (older rows, e.g. /home/ubuntu/... read inside /repo)."""
+    parts = Path(stored).parts
+    anchor = [str(run_id)] + ([under] if under else [])
+    for i in range(len(parts) - len(anchor), -1, -1):
+        if list(parts[i:i + len(anchor)]) == anchor:
+            return Path(*parts[i + len(anchor):])
+    raise ValueError(f"{stored!r} is not under run {run_id}/{under}")
 LOG_DIR = Path(os.environ.get("ATLAS_LOG_DIR", REPO_ROOT / "logs"))
 SERVICE_LOG = LOG_DIR / "log_analyzer.log"
 

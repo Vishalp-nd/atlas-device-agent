@@ -13,7 +13,7 @@ import psycopg2.extras
 
 from db_login.db_login import db_connect
 
-from .config import DB_SECTION, SCHEMA_SQL
+from .config import DB_SECTION, SCHEMA_SQL, runs_relative
 
 log = logging.getLogger("log_analyzer.db")
 
@@ -200,7 +200,7 @@ def save_reports(run_id: int, reports: dict[str, dict]) -> None:
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (run_id, ota, r["devices"], r["boots"], v.get("PASS", 0), v.get("FAIL", 0),
                  v.get("NOT_TRIGGERED", 0), r["config_keys"], r["config_keys_failing"],
-                 r["config_error"], r["path"], json.dumps(r.get("summary") or {})),
+                 r["config_error"], runs_relative(r["path"]), json.dumps(r.get("summary") or {})),
             )
 
 

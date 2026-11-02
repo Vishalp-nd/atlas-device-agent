@@ -22,7 +22,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from .config import (ENVIRONMENTS, LIB_DIR, OTA_DEVICE_LIMIT, REPO_ROOT, RUN_LOCK_KEY, RUNS_DIR,
-                     SERVICE_LOG, TESTS_DIR, TESTS_SNAPSHOT, WORKERS)
+                     SERVICE_LOG, TESTS_DIR, TESTS_SNAPSHOT, WORKERS, runs_relative)
 
 # lib/ modules import each other as top-level modules
 sys.path.insert(0, str(LIB_DIR))
@@ -133,7 +133,7 @@ def main(run_id: int) -> int:
              run["start_date"], run["end_date"], run["options"])
     log.info("environment %s: logs s3://%s -> %s, devices from %s", run["environment"], env["bucket"],
              env["log_root"], env["device_db"])
-    db.update_run(run_id, pid=os.getpid(), output_dir=str(folder), log_path=str(log_path), stage="queued")
+    db.update_run(run_id, pid=os.getpid(), output_dir=runs_relative(folder), log_path=runs_relative(log_path), stage="queued")
 
     timings: list[dict] = []
     t0 = time.perf_counter()

@@ -23,7 +23,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from . import db, service
-from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR
+from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR, run_subpath
 from .models import (Environment, Environments, OtaSuggestions, Run, RunCreateRequest, RunDetail, RunList, RunLog,
                      RunReport)
 
@@ -120,7 +120,7 @@ def get_run(run_id: int) -> RunDetail:
     run = _run_or_404(run_id)
     reports = []
     for r in db.get_reports(run_id):
-        rel = Path(r["report_path"]).relative_to(RUNS_DIR / str(run_id) / "reports")
+        rel = run_subpath(run_id, r["report_path"], "reports")
         reports.append(RunReport(**r, url=f"/log-analyzer/runs/{run_id}/files/{rel.as_posix()}"))
     return RunDetail(run=Run(**run), reports=reports, steps=db.step_summary(run_id),
                      devices=db.device_timings(run_id))
