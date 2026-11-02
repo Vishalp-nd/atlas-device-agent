@@ -258,6 +258,16 @@ def assign_udids(events, boots):
         if index not in assigned and (udid, drive_start) not in used:
             assigned[index] = events.udids[(udid, drive_start)]
             used.add((udid, drive_start))
+    # The boot before the first detected one started before the logs, so its start can't be
+    # matched; it gets the latest unused drive that started before its end and ended with it
+    for b in boots:
+        if b['start'] is None and b['end'] is not None and b['index'] not in assigned:
+            inside = [r for r in events.udid_list if (r['udid'], r['drive_start']) not in used
+                      and r['drive_start'] < b['end'] and r['drive_end'] <= b['end'] + UDID_MATCH_MS]
+            if inside:
+                rec = max(inside, key=lambda r: r['drive_start'])
+                assigned[b['index']] = events.udids[(rec['udid'], rec['drive_start'])]
+                used.add((rec['udid'], rec['drive_start']))
     return assigned
 
 

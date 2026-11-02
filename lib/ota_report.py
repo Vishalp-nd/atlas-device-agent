@@ -296,7 +296,7 @@ def log_span(logs_dir, day):
     return {k: v for k, v in (('first', first), ('last', last)) if v}
 
 
-def boot_window(boot, span):
+def boot_window(boot, span, drive=None):
     """Start/end of a boot as shown in the reports, each with where it came from. A boot
     detected in the logs starts at its service restarts and ends where the next boot starts;
     the boot before the first detected one starts before the logs (shown from the first
@@ -305,6 +305,9 @@ def boot_window(boot, span):
     w = {}
     if boot['start'] is not None:
         w['start'], w['start_note'] = boot['start'], 'boot start: services restarted'
+    elif drive and drive.get('drive_start'):
+        w['start'] = drive['drive_start']
+        w['start_note'] = 'started before the logs; drive start from time_sync udid_node'
     elif first and (boot['end'] is None or first[0] < boot['end']):
         w['start'] = first[0]
         w['start_note'] = f'started before the logs; first log line in {first[1]}'
@@ -832,9 +835,9 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None)
     for boot in boots:
         if boot['ota'] is None or (boot['partial'] and not partial_used):
             continue
-        detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']),
-                      window=boot_window(boot, span))
+        detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']))
         detail.update(drive_metrics.boot_metrics(events, boot['start'], boot['end'], udid_records.get(boot['index'])))
+        detail['window'] = boot_window(boot, span, detail['drive'])
         detail['label'] = boot_name(detail)
         detail['api_calls'] = api_calls.boot_calls(calls_by_api, boot['start'], boot['end'])
         ini_keys = ini_keys_by_ota.get(boot['ota'])
@@ -1242,7 +1245,7 @@ def _boot_label(b):
     name = b.get('label') or boot_name(b)
     w = b.get('window') or {}
     if w:
-        start = (f'started before the logs (first log line {w["start_fmt"]})' if b['partial'] and w.get('start')
+        start = (f'started before the logs ({w["start_fmt"]})' if b['partial'] and w.get('start')
                  else w.get('start_fmt') or 'before the logs')
         end = w.get('end_fmt') or 'end of logs'
         if not b['partial'] and b.get('end') is None and w.get('end'):
