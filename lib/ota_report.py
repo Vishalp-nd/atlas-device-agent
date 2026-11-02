@@ -256,6 +256,66 @@ def ota_versions(logs_dirs):
     return sorted(versions)
 
 
+LOG_SPAN_CHUNK = 64 * 1024
+DAY_MS = 86_400_000
+LOG_TS_MIN = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def log_span(logs_dir, day):
+    """Earliest and latest timestamped log line of a day, over every log file:
+    {'first': [ts, file, line], 'last': [ts, file, line]} (file relative to logs/).
+
+    Only each file's head and tail are read (log files are written in time order). A day's
+    upload can hold much older lines (a device that was offline), so those count; only
+    impossible timestamps (before 2020, unsynced RTC, or after the folder's day) are ignored.
+    """
+    lo = LOG_TS_MIN
+    hi = int(datetime.strptime(day, '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp() * 1000) + 2 * DAY_MS
+    first = last = None
+    for path in sorted(p for p in Path(logs_dir).rglob('*') if p.is_file()):
+        try:
+            with open(path, 'rb') as f:
+                head = f.read(LOG_SPAN_CHUNK)
+                size = f.seek(0, os.SEEK_END)
+                f.seek(max(0, size - LOG_SPAN_CHUNK))
+                tail = f.read()
+        except OSError:
+            continue
+        rel = path.relative_to(logs_dir).as_posix()
+        for chunk, newest in ((head, False), (tail, True)):
+            lines = chunk.decode('latin-1').splitlines()
+            for line in (reversed(lines) if newest else lines):
+                ts = line_timestamp(line)
+                if ts is not None and lo <= ts < hi:
+                    hit = [ts, rel, line[:MATCH_LINE_CHARS]]
+                    if newest and (last is None or ts > last[0]):
+                        last = hit
+                    if not newest and (first is None or ts < first[0]):
+                        first = hit
+                    break
+    return {k: v for k, v in (('first', first), ('last', last)) if v}
+
+
+def boot_window(boot, span):
+    """Start/end of a boot as shown in the reports, each with where it came from. A boot
+    detected in the logs starts at its service restarts and ends where the next boot starts;
+    the boot before the first detected one starts before the logs (shown from the first
+    log line), the last one ends at the last log line."""
+    first, last = span.get('first'), span.get('last')
+    w = {}
+    if boot['start'] is not None:
+        w['start'], w['start_note'] = boot['start'], 'boot start: services restarted'
+    elif first and (boot['end'] is None or first[0] < boot['end']):
+        w['start'] = first[0]
+        w['start_note'] = f'started before the logs; first log line in {first[1]}'
+    if boot['end'] is not None:
+        w['end'], w['end_note'] = boot['end'], 'next boot started'
+    elif last and (boot['start'] is None or last[0] >= boot['start']):
+        w['end'], w['end_note'] = last[0], f'end of logs; last log line in {last[1]}'
+    w['start_fmt'], w['end_fmt'] = _fmt_ts(w.get('start')), _fmt_ts(w.get('end'))
+    return w
+
+
 def boot_ota(versions, start, end):
     """First version logged in [start, end), else the last one before start."""
     lo = 0 if start is None else bisect.bisect_left(versions, (start,))
@@ -690,12 +750,14 @@ def scan_device_day(device, day):
                     with timed(log, 'evidence_grep', timings, level=logging.DEBUG, device=device, day=day):
                         evidence.scan_day(logs_dir, line_timestamp)
                     detailed = has_detailed_logs(logs_dir)
+                    with timed(log, 'log_span', timings, level=logging.DEBUG, device=device, day=day):
+                        span = log_span(logs_dir, day)
     except BaseException:
         os.unlink(spool_file.name)
         raise
     return {'day': day, 'versions': versions, 'services': services, 'events': events,
             'evidence': evidence.lines, 'detailed': detailed, 'spool': spool_file.name, 'timings': timings,
-            'api_calls': calls}
+            'api_calls': calls, 'log_span': span}
 
 
 def process_device(device, start, end, product=None, report_dir=None, otas=None):
@@ -723,6 +785,9 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None)
     if not days:
         return device, {}, timings, info
     versions, services, calls = set(), set(), set()
+    firsts = [r['log_span']['first'] for r in day_results if r.get('log_span', {}).get('first')]
+    lasts = [r['log_span']['last'] for r in day_results if r.get('log_span', {}).get('last')]
+    span = {k: v for k, v in (('first', min(firsts, default=None)), ('last', max(lasts, default=None))) if v}
     events = drive_metrics.DriveEvents()
     evidence = override_llm.EvidenceCollector({k for f in _FEATURES for _, k, _ in f['conditions']})
     try:
@@ -767,7 +832,8 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None)
     for boot in boots:
         if boot['ota'] is None or (boot['partial'] and not partial_used):
             continue
-        detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']))
+        detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']),
+                      window=boot_window(boot, span))
         detail.update(drive_metrics.boot_metrics(events, boot['start'], boot['end'], udid_records.get(boot['index'])))
         detail['label'] = boot_name(detail)
         detail['api_calls'] = api_calls.boot_calls(calls_by_api, boot['start'], boot['end'])
@@ -899,6 +965,7 @@ def summarize_boots(device, boot_details, ini_keys):
                     tc_fail_boots[key].append([device, b['index'], b['label']])
     return {
         'boots': [{'index': b['index'], 'partial': b['partial'], 'start': b['start_fmt'], 'end': b['end_fmt'],
+                   'window': b.get('window'),
                    'label': b['label'], 'udid': b['udid'], 'udid_source': b['udid_source'],
                    'duration_min': (b['drive'] or {}).get('duration_min'),
                    'config': {k: v for k, v in b['config'].items() if k in ('summary', 'error')},
@@ -1060,8 +1127,12 @@ def report_summary(ota, device_summaries, given, device_info, features):
     other_ota = [d for d in given if d not in device_summaries and d not in no_logs]
     detailed = [d for d in on_ota if device_info.get(d, {}).get('detailed_days')]
     minutes = {d: device_summaries[d]['drive']['drive_minutes_total'] for d in on_ota}
+    windows = {d: _boot_window_text(device_summaries[d]['boots']) for d in on_ota}
     estimated = {d for d in on_ota if device_summaries[d]['drive']['drive_minutes_estimated']}
     low_power = [d for d in on_ota if device_summaries[d]['drive']['low_power_boots']]
+    active_all = [d for d in given if d not in no_logs]
+    api_by_device = {d: {int(api): st['calls'] for api, st in (device_summaries[d].get('api') or {}).get('apis', {}).items()}
+                     for d in on_ota}
 
     sets = Counter()
     with_set = [d for d in on_ota if device_summaries[d].get('feature_set') is not None]
@@ -1080,8 +1151,13 @@ def report_summary(ota, device_summaries, given, device_info, features):
         'devices_critical_only': [d for d in on_ota if d not in detailed],
         'drive_minutes_total': sum(minutes.values()),
         'drive_minutes_by_device': minutes,
+        'boot_window_by_device': windows,
         'devices_estimated_minutes': sorted(estimated),
+        'devices_under_6h': sorted(d for d, m in minutes.items() if m <= 6 * 60),
         'devices_over_6h': sorted(d for d, m in minutes.items() if m > 6 * 60),
+        'logs_detailed': [d for d in active_all if device_info.get(d, {}).get('detailed_days')],
+        'logs_critical_only': [d for d in active_all if not device_info.get(d, {}).get('detailed_days')],
+        'api_calls_by_device': api_by_device,
         'devices_over_24h': sorted(d for d, m in minutes.items() if m > 24 * 60),
         'devices_low_power': low_power,
         'feature_devices': len(with_set),
@@ -1164,9 +1240,29 @@ def boot_name(b):
 
 def _boot_label(b):
     name = b.get('label') or boot_name(b)
+    w = b.get('window') or {}
+    if w:
+        start = (f'started before the logs (first log line {w["start_fmt"]})' if b['partial'] and w.get('start')
+                 else w.get('start_fmt') or 'before the logs')
+        end = w.get('end_fmt') or 'end of logs'
+        if not b['partial'] and b.get('end') is None and w.get('end'):
+            end += ' (last log line)'
+        return f'{name} · {start} → {end}'
     if b['partial']:
         return f'{name} · partial, until {b["end"] or "end of logs"}'
     return f'{name} · {b["start"]} → {b["end"] or "end of logs"}'
+
+
+def _boot_window_text(boots):
+    """'1 boot: started before the logs (first log line ... in <file>) → ... (next boot started)'
+    for the OTA report: first boot's start → last boot's end on this OTA, with their sources."""
+    ws = [b.get('window') or {} for b in boots]
+    if not ws or not any(ws):
+        return ''
+    first, last = ws[0], ws[-1]
+    start = (f'{first["start_fmt"]} ({first["start_note"]})' if first.get('start') else 'before the logs')
+    end = (f'{last["end_fmt"]} ({last["end_note"]})' if last.get('end') else 'end of logs')
+    return f'{len(boots)} boot{"s" if len(boots) != 1 else ""}: {start} → {end}'
 
 
 def _fmt_minutes(ms):
@@ -1290,76 +1386,6 @@ def _pct(n, total):
     return f'{100 * n / total:.0f}%' if total else '—'
 
 
-def _summary_section(sm):
-    """Report summary: devices, drives, feature sets (report_summary())."""
-    given, active, on_ota = sm['devices_given'], sm['devices_active'], sm['devices_on_ota']
-    detailed = len(sm['devices_detailed_logs'])
-    hours = sm['drive_minutes_total'] / 60
-    out = ['<h2>Report summary</h2>', '<h3>Devices</h3><div class="kpis">']
-    for label, value, sub_ in [
-        ('Devices given', given, ''),
-        ('Active (logs in the window)', active, _pct(active, given)),
-        ('Inactive (no logs)', len(sm['devices_without_logs']), _pct(len(sm['devices_without_logs']), given)),
-        ('Active on this OTA', on_ota, ''),
-        ('Detailed logs enabled', detailed, f'{_pct(detailed, on_ota)} of active on this OTA'),
-        ('Critical logs only', len(sm['devices_critical_only']), _pct(len(sm['devices_critical_only']), on_ota)),
-    ]:
-        out.append(f'<div class="kpi"><b>{value}</b><span class="muted">{_esc(label)}'
-                   f'{"<br>" + _esc(sub_) if sub_ else ""}</span></div>')
-    out.append('</div>')
-    out.append('<p class="muted">Active: the device has logs in the date range. Detailed logs enabled: besides the '
-               'critical _c.log files it uploads the non-critical logs (anything but bhcopy/timer logs).</p>')
-    out += [_plain_list('Inactive devices', sm['devices_without_logs']),
-            _plain_list('Active, but no boots on this OTA', sm['devices_other_ota_only']),
-            _device_list('Critical logs only', sm['devices_critical_only'])]
-
-    out.append('<h3>Drive summary</h3><div class="kpis">')
-    for label, value in [('Total drive time', f'{sm["drive_minutes_total"]:,} min ({hours:,.1f} h)'),
-                         ('Devices driving > 6 h', len(sm['devices_over_6h'])),
-                         ('Devices driving > 24 h', len(sm['devices_over_24h'])),
-                         ('Devices in low power mode', len(sm['devices_low_power']))]:
-        out.append(f'<div class="kpi"><b>{_esc(value)}</b><span class="muted">{_esc(label)}</span></div>')
-    out.append('</div>')
-    out.append('<p class="muted">Drive time per boot is the time_sync udid_node drive (start → end); devices without '
-               'detailed logs have no udid_node lines, so their drive time is estimated from power monitor runs '
-               'longer than 350 s. Low power mode: the low power wakeup counter went up, or the power monitor ran '
-               'for less than 350 s (a low power wakeup).</p>')
-    out += [_device_list('Devices driving > 6 h', sm['devices_over_6h']),
-            _device_list('Devices driving > 24 h', sm['devices_over_24h']),
-            _device_list('Devices in low power mode', sm['devices_low_power']),
-            _device_list('Drive time estimated from power monitor runs', sm['devices_estimated_minutes'])]
-    by_device = sorted(sm['drive_minutes_by_device'].items(), key=lambda kv: -kv[1])
-    if by_device:
-        out.append('<details><summary>Drive time per device</summary><div class="body"><table>'
-                   '<tr><th>Device</th><th class="num">Minutes</th><th class="num">Hours</th></tr>')
-        out += [f'<tr><td><a href="devices/{_esc(d)}.html">{_esc(d)}</a></td><td class="num">{m:,}</td>'
-                f'<td class="num">{m / 60:.1f}</td></tr>' for d, m in by_device]
-        out.append('</table></div></details>')
-
-    out.append('<h3>Feature set summary</h3>')
-    n = sm['feature_devices']
-    if not n:
-        out.append('<p class="muted">No device had a boot with feature information.</p>')
-        return '\n'.join(out)
-    out.append(f'<p class="muted">Feature set of a device: features ON in its latest boot on this OTA '
-               f'({n} device(s) with feature information), against all {len(sm["feature_coverage"])} features '
-               'in feature_mapping.ini.</p>')
-    out.append('<div class="scroll"><table><tr><th>Feature</th><th class="num">Devices ON</th><th style="width:40%"></th></tr>')
-    for f in sorted(sm['feature_coverage'], key=lambda f: (-f['devices_on'], f['name'].lower())):
-        width = 100 * f['devices_on'] / n
-        out.append(f'<tr><td>{_esc(f["name"])}</td><td class="num">{f["devices_on"]} / {n} ({_pct(f["devices_on"], n)})</td>'
-                   f'<td><div class="bar"><span style="width:{width:.1f}%"></span></div></td></tr>')
-    out.append('</table></div>')
-    out.append(f'<details><summary>{len(sm["feature_sets"])} distinct feature set(s)</summary><div class="body"><table>'
-               '<tr><th class="num">Devices</th><th>Features ON</th><th class="num">Not ON (of all)</th></tr>')
-    for fs in sm['feature_sets']:
-        on = ', '.join(fs['features']) or '<none>'
-        out.append(f'<tr><td class="num">{fs["devices"]}</td><td>{_esc(on)}</td>'
-                   f'<td class="num">{len(fs["missing"])}</td></tr>')
-    out.append('</table></div></details>')
-    return '\n'.join(out)
-
-
 FEATURES_NOTE = ('ON / OFF from the value each needed key had in that boot: the value the service logged at '
                  'startup when found (read by the LLM), else the OTA default (bagheera_config.ini) for keys CFG_PRSR '
                  'shows were not overridden. OVERRIDDEN: a key the feature needs was overridden in that boot; the value is not '
@@ -1418,82 +1444,279 @@ def _config_cell(cfg):
     return _summary_chips(cfg['summary'], ['FAIL', 'PASS'])
 
 
-def render_html(report):
-    ota = report['ota_version']
-    devices = report['devices']
-    n_boots = sum(len(b) for b in devices.values())
-    totals = Counter()
-    for feat in report['features'].values():
-        totals.update(feat['summary'])
-    out = [f'<h1>OTA {_esc(ota)}</h1>',
-           f'<div class="muted">Generated {_esc(report["generated_at"])} · {len(devices)} device(s) · '
-           f'{n_boots} boot(s) · verdicts below count one per test case per boot; test cases not triggered '
-           'in a boot, and those for other device types, are left out</div>',
-           ]
-    if report.get('summary'):
-        out.append(_summary_section(report['summary']))
-    out.append('<h2>Test cases and config</h2><div class="kpis">')
-    kpis = [('Devices', len(devices)), ('Boots', n_boots), *[(v, totals.get(v, 0)) for v in ('FAIL', 'PASS')],
-            ('Config keys failing', len(report['config_failures']))]
-    for label, value in kpis:
-        out.append(f'<div class="kpi"><b>{value}</b><span class="muted">{_esc(label)}</span></div>')
-    out.append('</div>')
+REPORT_STYLE = """
+:root{--bg:#f6f7f9;--card:#fff;--fg:#14171c;--muted:#6b7280;--line:#e3e6eb;--head:#f1f3f6;--hover:#f7f9fc;
+--accent:#2f6fde;--accent-bg:#e8f0fd;--pass:#17864a;--pass-bg:#e3f6ea;--fail:#d03b3b;--fail-bg:#fde9e9;
+--nt:#a46a00;--nt-bg:#fdf3dc;--none:#9aa3af;--none-bg:#eef0f3}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0e1116;--card:#161b22;
+--fg:#e6edf3;--muted:#8b949e;--line:#2a313b;--head:#1b212a;--hover:#1c232c;--accent:#5b9bff;--accent-bg:#16253d;
+--pass:#3fb970;--pass-bg:#11291b;--fail:#f26d6d;--fail-bg:#311616;--nt:#e0a42e;--nt-bg:#2e2410;--none:#6e7681;--none-bg:#21262d}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0e1116;--card:#161b22;--fg:#e6edf3;--muted:#8b949e;--line:#2a313b;
+--head:#1b212a;--hover:#1c232c;--accent:#5b9bff;--accent-bg:#16253d;--pass:#3fb970;--pass-bg:#11291b;--fail:#f26d6d;
+--fail-bg:#311616;--nt:#e0a42e;--nt-bg:#2e2410;--none:#6e7681;--none-bg:#21262d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh;background:linear-gradient(to right,var(--card) 229px,var(--line) 229px 230px,transparent 230px)}
+.side{position:sticky;top:0;height:100vh;padding:28px 14px;background:var(--card);overflow-y:auto}
+.brand{padding:0 10px 22px}.brand small{display:block;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.brand b{display:block;font-size:19px;margin-top:2px;word-break:break-all}
+.side a{display:block;padding:8px 10px;margin:2px 0;border-radius:8px;color:var(--muted);font-weight:500}
+.side a:hover{background:var(--hover);color:var(--fg);text-decoration:none}
+.side a.active{background:var(--accent-bg);color:var(--accent)}
+.content{padding:28px 32px 80px;max-width:1240px;width:100%}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.top h1{font-size:26px;margin:0;letter-spacing:-.01em}.top span{color:var(--muted);font-size:13px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:20px;scroll-margin-top:20px}
+section h2{font-size:16px;margin:0 0 16px;letter-spacing:-.005em}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+.tile b{display:block;font-size:26px;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile span{color:var(--muted);font-size:12.5px}.tile em{float:right;font-style:normal;color:var(--muted);font-size:12px}
+.tile.pick{cursor:pointer;transition:border-color .15s,background .15s}
+.tile.pick:hover{border-color:var(--accent)}.tile.pick.on{border-color:var(--accent);background:var(--accent-bg)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.stack{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--none-bg);margin:18px 0 4px}
+.stack i{display:block;height:100%}
+.c-pass{background:var(--pass)}.c-fail{background:var(--fail)}.c-nt{background:var(--nt)}.c-none{background:var(--none)}.c-acc{background:var(--accent)}
+.lists{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.lists details{border:1px solid var(--line);border-radius:10px;padding:0}
+.lists summary{cursor:pointer;padding:6px 12px;font-size:13px;color:var(--muted)}
+.lists .ids{padding:4px 12px 10px;font-size:12.5px;max-width:720px;line-height:1.9}
+.ids a,.ids span{margin-right:10px;font-variant-numeric:tabular-nums}
+.tbl{border:1px solid var(--line);border-radius:10px;overflow:auto;margin-top:16px}
+.tbl.clip{max-height:430px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;white-space:nowrap}
+tr>:first-child{border-left:0}tr>:last-child{border-right:0}thead tr:first-child th{border-top:0}tbody tr:last-child td{border-bottom:0}
+th{position:sticky;top:0;background:var(--head);font-weight:600;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;z-index:1}
+th:hover{color:var(--fg)}th.asc::after{content:" ▲";font-size:9px}th.desc::after{content:" ▼";font-size:9px}
+tbody tr:hover td{background:var(--hover)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.wrap{white-space:normal;min-width:320px;color:var(--muted);font-size:12.5px}
+td.zero{color:var(--none)}
+tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
+.more{display:block;width:100%;border:0;border-top:1px solid var(--line);background:var(--head);color:var(--accent);
+padding:8px;font:inherit;font-size:13px;cursor:pointer;position:sticky;bottom:0}
+.n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
+.mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
+tr.feat{cursor:pointer}tr.feat td:first-child::before{content:"▸";display:inline-block;width:14px;color:var(--muted);transition:transform .15s}
+tr.feat.open td:first-child::before{transform:rotate(90deg)}
+tr.tcs>td{padding:0;background:var(--bg)}tr.tcs table{font-size:12.5px}tr.tcs th{position:static}
+tr.tcs td,tr.tcs th{padding:6px 12px}tr.tcs td.wrap{min-width:260px}
+.filter{float:right;font-size:12px;color:var(--muted);font-weight:400}.filter a{margin-left:8px;cursor:pointer}
+@media (max-width:820px){.layout{display:block}.side{position:sticky;height:auto;display:flex;gap:4px;overflow-x:auto;
+padding:8px 16px;border-bottom:1px solid var(--line);z-index:5}.brand{display:none}.side a{white-space:nowrap;margin:0}
+.content{padding:16px}section{padding:16px}}
+"""
 
-    out.append('<h2>Drives and power monitor</h2>'
-               '<p class="muted">Per boot: UDID, drive start/end and sessions from time_sync / ndcentral / circ_buff, '
-               'power monitor events from power_mon (DRIVE_METRICS_LOGIC.md).</p>')
-    out.append(_drive_overview(report.get('drive')))
+REPORT_JS = r"""
+// Sortable tables: click a header
+document.querySelectorAll('table.sort').forEach(t => {
+  t.querySelectorAll('thead th').forEach((th, col) => th.addEventListener('click', () => {
+    const body = t.tBodies[0], dir = th.classList.contains('asc') ? -1 : 1;
+    t.querySelectorAll('thead th').forEach(h => h.classList.remove('asc', 'desc'));
+    th.classList.add(dir === 1 ? 'asc' : 'desc');
+    const val = r => { const c = r.cells[col]; const v = c.dataset.v ?? c.textContent.trim();
+                       return v !== '' && !isNaN(v) ? +v : v.toLowerCase(); };
+    const groups = [...body.rows].filter(r => !r.classList.contains('tcs'))
+      .map(r => [r, r.nextElementSibling && r.nextElementSibling.classList.contains('tcs') ? r.nextElementSibling : null]);
+    groups.sort((a, b) => { const x = val(a[0]), y = val(b[0]); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+    groups.forEach(([r, d]) => { body.appendChild(r); if (d) body.appendChild(d); });
+  }));
+});
+// Long tables: show the first rows, expand on demand
+document.querySelectorAll('.tbl[data-limit]').forEach(box => {
+  const limit = +box.dataset.limit, rows = [...box.querySelectorAll(':scope > table > tbody > tr:not(.tcs)')];
+  if (rows.length <= limit) return;
+  const btn = document.createElement('button'); btn.className = 'more';
+  const set = open => {
+    box.classList.toggle('clip', open);
+    rows.forEach((r, i) => {
+      r.hidden = !open && i >= limit;
+      const d = r.nextElementSibling;  // a feature's test cases stay closed with it
+      if (d && d.classList.contains('tcs') && r.hidden) { d.hidden = true; r.classList.remove('open'); }
+    });
+    btn.textContent = open ? 'Show less' : `Show all ${rows.length}`;
+  };
+  btn.addEventListener('click', () => set(btn.textContent !== 'Show less'));
+  box.appendChild(btn); set(false);
+});
+// Feature rows expand into their test cases
+document.querySelectorAll('tr.feat').forEach(r => r.addEventListener('click', e => {
+  if (e.target.closest('a')) return;
+  r.classList.toggle('open'); r.nextElementSibling.hidden = !r.classList.contains('open');
+}));
+// Drive tiles filter the drive table
+document.querySelectorAll('.tile.pick').forEach(tile => tile.addEventListener('click', () => {
+  const on = !tile.classList.contains('on');
+  document.querySelectorAll('.tile.pick').forEach(t => t.classList.remove('on'));
+  tile.classList.toggle('on', on);
+  const box = document.getElementById('drive-table'), f = on ? tile.dataset.f : '';
+  box.querySelectorAll('.more').forEach(b => b.style.display = f ? 'none' : '');
+  box.querySelectorAll(':scope > table > tbody > tr').forEach((r, i) => {
+    r.hidden = f ? !r.dataset.f.split(' ').includes(f) : (i >= +box.dataset.limit && !box.classList.contains('clip'));
+  });
+}));
+// Left navigation follows the scroll
+const links = [...document.querySelectorAll('.side a')];
+const spy = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
+}), { rootMargin: '-10% 0px -80% 0px' });
+document.querySelectorAll('section[id]').forEach(s => spy.observe(s));
+"""
 
-    cf = report.get('config_features')
-    if cf:
-        out.append('<h2>Features enabled</h2>')
-        if cf['error']:
-            out.append(f'<p class="muted">{_esc(cf["error"])}</p>')
-        else:
-            out.append(f'<p class="muted">{_esc(FEATURES_NOTE)}</p>')
-            feats = cf['features']
-            out.append(_features_table(feats, lambda i: feats[i]['boots'], '<th class="num">Devices ON</th>',
-                                       lambda i: f'<td class="num">{feats[i]["devices_on"]} / {len(devices)}</td>'))
+NAV = [('devices', 'Device Summary'), ('logs', 'Log Upload Summary'), ('drive', 'Drive Summary'),
+       ('feature-sets', 'Feature Set Summary'), ('api', 'API Call Summary'), ('features', 'Feature Level Summary')]
 
-    if report.get('api_calls'):
-        out.append('<h2>API calls</h2>')
-        out.append(_api_section(report['api_calls'], devices=len(devices)))
 
-    out.append('<h2>Config coverage (bagheera_config.ini vs CFG_PRSR lines of each boot)</h2>')
-    if report['config_error']:
-        out.append(f'<p>{_chip("FAIL")} Could not fetch bagheera_config.ini: {_esc(report["config_error"])}</p>')
-    else:
-        out.append(f'<p class="muted">{report["config_keys"]} keys checked on {report["config_boots_checked"]} '
-                   f'boot(s); {len(report["config_failures"])} key(s) not mentioned in at least one boot.</p>')
-        if report['config_failures']:
-            out.append('<details><summary>Keys not mentioned</summary><div class="body"><table>'
-                       '<tr><th>Section</th><th>Key</th><th>Failed boots</th></tr>')
-            for k in report['config_failures']:
-                out.append(f'<tr><td>{_esc(k["section"])}</td><td><code>{_esc(k["key"])}</code></td>'
-                           f'<td class="num">{k["failed_boots"]} / {report["config_boots_checked"]}</td></tr>')
-            out.append('</table></div></details>')
+def _n(v):
+    return f'{v:,}' if isinstance(v, (int, float)) else _esc(v)
 
-    out.append('<h2>Test cases by feature</h2>')
+
+def _tile(value, label, pct=None, dot=None, pick=None):
+    dot_html = f'<i class="dot {dot}"></i>' if dot else ''
+    pct_html = f'<em>{_esc(pct)}</em>' if pct else ''
+    attrs = f' class="tile pick" data-f="{pick}"' if pick else ' class="tile"'
+    return f'<div{attrs}>{pct_html}<b>{_n(value)}</b><span>{dot_html}{_esc(label)}</span></div>'
+
+
+def _stack(parts):
+    total = sum(n for n, _ in parts) or 1
+    return '<div class="stack">' + ''.join(
+        f'<i class="{cls}" style="width:{100 * n / total:.2f}%"></i>' for n, cls in parts if n) + '</div>'
+
+
+def _ids(title, devices, link=False):
+    if not devices:
+        return ''
+    items = ''.join(f'<a href="devices/{_esc(d)}.html">{_esc(d)}</a>' if link else f'<span>{_esc(d)}</span>'
+                    for d in devices)
+    return f'<details><summary>{_esc(title)} · {len(devices)}</summary><div class="ids">{items}</div></details>'
+
+
+def _table(head, rows, limit=12, foot='', box_id=''):
+    """Bordered, sortable table; more than `limit` rows collapse behind "Show all"."""
+    ths = ''.join(f'<th class="num">{_esc(h[1:])}</th>' if h.startswith('#') else f'<th>{_esc(h)}</th>' for h in head)
+    ident = f' id="{box_id}"' if box_id else ''
+    return (f'<div class="tbl"{ident} data-limit="{limit}"><table class="sort"><thead><tr>{ths}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody>{foot}</table></div>')
+
+
+def _dev_link(d):
+    return f'<a href="devices/{_esc(d)}.html">{_esc(d)}</a>'
+
+
+def _devices_section(sm):
+    given, active, inactive = sm['devices_given'], sm['devices_active'], sm['devices_without_logs']
+    return ('<section id="devices"><h2>Device Summary</h2><div class="tiles">'
+            + _tile(given, 'Devices')
+            + _tile(active, 'Active', _pct(active, given), 'c-pass')
+            + _tile(len(inactive), 'Inactive', _pct(len(inactive), given), 'c-none')
+            + '</div>' + _stack([(active, 'c-pass'), (len(inactive), 'c-none')])
+            + '<div class="lists">' + _ids('Inactive', inactive) + '</div></section>')
+
+
+def _logs_section(sm):
+    given = sm['devices_given']
+    detailed, critical, none = sm['logs_detailed'], sm['logs_critical_only'], sm['devices_without_logs']
+    return ('<section id="logs"><h2>Log Upload Summary</h2><div class="tiles">'
+            + _tile(len(detailed), 'Detailed logs uploaded', _pct(len(detailed), given), 'c-acc')
+            + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), given), 'c-nt')
+            + _tile(len(none), 'No logs uploaded', _pct(len(none), given), 'c-none')
+            + '</div>' + _stack([(len(detailed), 'c-acc'), (len(critical), 'c-nt'), (len(none), 'c-none')])
+            + '<div class="lists">' + _ids('Detailed', detailed) + _ids('Critical only', critical)
+            + _ids('No logs', none) + '</div></section>')
+
+
+def _drive_section(sm):
+    minutes, windows = sm['drive_minutes_by_device'], sm.get('boot_window_by_device', {})
+    low_power, total = set(sm['devices_low_power']), sm['drive_minutes_total']
+    rows = []
+    for d, m in sorted(minutes.items(), key=lambda kv: -kv[1]):
+        tags = ['under6' if m <= 360 else 'over6'] + (['over24'] if m > 1440 else []) + (['lp'] if d in low_power else [])
+        rows.append(f'<tr data-f="{" ".join(tags)}"><td>{_dev_link(d)}</td><td class="num{" zero" if not m else ""}">{m:,}</td>'
+                    f'<td class="num" data-v="{m / 60:.2f}">{m / 60:,.1f}</td>'
+                    f'<td class="wrap">{_esc(windows.get(d, ""))}</td></tr>')
+    return ('<section id="drive"><h2>Drive Summary</h2><div class="tiles">'
+            + _tile(sm['devices_on_ota'], 'Active devices')
+            + _tile(f'{total / 60:,.1f} h', 'Total drive time')
+            + _tile(len(sm['devices_under_6h']), 'Running < 6 h', pick='under6')
+            + _tile(len(sm['devices_over_6h']), 'Running > 6 h', pick='over6')
+            + _tile(len(sm['devices_over_24h']), 'Running > 24 h', pick='over24')
+            + _tile(len(low_power), 'Low power mode', pick='lp')
+            + '</div>'
+            + _table(['Device', '#Drive min', '#Hours', 'Boots on this OTA'], rows, box_id='drive-table')
+            + '</section>')
+
+
+def _feature_sets_section(sm):
+    coverage = sm.get('feature_coverage') or []
+    enabled = sum(1 for f in coverage if f['devices_on'])
+    return ('<section id="feature-sets"><h2>Feature Set Summary</h2><div class="tiles">'
+            + _tile(len(coverage), 'Total features')
+            + _tile(enabled, 'Enabled', _pct(enabled, len(coverage)), 'c-pass')
+            + _tile(len(coverage) - enabled, 'Disabled', _pct(len(coverage) - enabled, len(coverage)), 'c-none')
+            + '</div>' + _stack([(enabled, 'c-pass'), (len(coverage) - enabled, 'c-none')]) + '</section>')
+
+
+def _api_calls_section(sm):
+    by_device, minutes = sm.get('api_calls_by_device') or {}, sm['drive_minutes_by_device']
+    apis = [a for a in api_calls.WITH_PATTERN if any(c.get(a) for c in by_device.values())]
+    rows, totals = [], Counter()
+    for d in sorted(by_device, key=lambda d: -minutes.get(d, 0)):
+        calls = by_device[d]
+        totals.update(calls)
+        cells = ''.join(f'<td class="num{"" if calls.get(a) else " zero"}">{calls.get(a, 0):,}</td>' for a in apis)
+        rows.append(f'<tr><td>{_dev_link(d)}</td><td class="num">{minutes.get(d, 0):,}</td>{cells}</tr>')
+    foot = ('<tfoot><tr><td>Total</td><td class="num">' + f'{sum(minutes.get(d, 0) for d in by_device):,}</td>'
+            + ''.join(f'<td class="num">{totals.get(a, 0):,}</td>' for a in apis) + '</tr></tfoot>')
+    head = ['Device ID', '#Total drive min'] + [f'#{api_calls.APIS[a][0]}' for a in apis]
+    return f'<section id="api"><h2>API Call Summary</h2>{_table(head, rows, foot=foot)}</section>'
+
+
+def _feature_level_section(report):
+    rows = []
     for feature, feat in report['features'].items():
-        out.append(f'<details><summary>{_esc(feature)} · {len(feat["test_cases"])} TCs · '
-                   f'{_summary_chips(feat["summary"])}</summary><div class="body"><table>'
-                   '<tr><th>TC</th><th>Functionality</th><th>Boots</th><th>Failed in</th></tr>')
-        tcs = sorted((tc for tc in feat['test_cases'] if tc['boots'].get('FAIL') or tc['boots'].get('PASS')),
-                     key=lambda tc: (-tc['boots'].get('FAIL', 0), -tc['boots'].get('PASS', 0)))
-        if not tcs:
-            continue
-        for tc in tcs:
-            # One link per device page (its boots are listed there), with the failed boot count
-            failed = ', '.join(
-                f'<a href="devices/{_esc(dev)}.html">{_esc(dev)}</a> <span class="muted">({n})</span>'
-                for dev, n in Counter(ref[0] for ref in tc["failed_in"]).items())
-            note = (f'<br><span class="muted">{tc["unresolved_steps"]} step(s) only known at runtime, not checked</span>'
-                    if tc['unresolved_steps'] else '')
-            out.append(f'<tr><td>{_esc(tc["tc_id"])}</td><td>{_esc(tc["functionality"])}{note}</td>'
-                       f'<td>{_summary_chips(tc["boots"])}</td><td>{failed}</td></tr>')
-        out.append('</table></div></details>')
+        tcs = feat['test_cases']
+        triggered = [tc for tc in tcs if tc['boots'].get('PASS') or tc['boots'].get('FAIL')]
+        fail = [tc for tc in triggered if tc['boots'].get('FAIL')]
+        npass, nfail, nt = len(triggered) - len(fail), len(fail), len(tcs) - len(triggered)
+        bar = (f'<div class="mini">' + ''.join(f'<i class="{c}" style="width:{100 * n / (len(tcs) or 1):.1f}%"></i>'
+                                              for n, c in ((npass, 'c-pass'), (nfail, 'c-fail'), (nt, 'c-nt')) if n)
+               + '</div>')
+        rows.append(f'<tr class="feat"><td>{_esc(feature)}</td><td class="num">{len(tcs)}</td>'
+                    f'<td class="num">{len(triggered)}</td><td class="num{" n-pass" if npass else " zero"}">{npass}</td>'
+                    f'<td class="num{" n-fail" if nfail else " zero"}">{nfail}</td><td class="num{" n-nt" if nt else " zero"}">{nt}</td>'
+                    f'<td data-v="{npass / (len(tcs) or 1):.3f}">{bar}</td></tr>')
+        detail = []
+        for tc in sorted(tcs, key=lambda tc: (-tc['boots'].get('FAIL', 0), -tc['boots'].get('PASS', 0), str(tc['tc_id']))):
+            b = tc['boots']
+            failed = ' '.join(f'{_dev_link(dev)}<span class="n-fail"> ×{n}</span>'
+                              for dev, n in Counter(ref[0] for ref in tc['failed_in']).items())
+            detail.append(f'<tr><td>{_esc(tc["tc_id"])}</td><td class="wrap">{_esc(tc["functionality"])}</td>'
+                          f'<td class="num n-pass">{b.get("PASS", 0) or ""}</td>'
+                          f'<td class="num n-fail">{b.get("FAIL", 0) or ""}</td><td>{failed}</td></tr>')
+        rows.append('<tr class="tcs" hidden><td colspan="7"><table><thead><tr><th>TC</th><th>Functionality</th>'
+                    '<th class="num">Pass boots</th><th class="num">Fail boots</th><th>Failed on</th></tr></thead>'
+                    f'<tbody>{"".join(detail)}</tbody></table></td></tr>')
+    head = ['Feature Name', '#Total Testcases', '#Total Triggered', '#Pass', '#Fail', '#Not Triggered', '']
+    return f'<section id="features"><h2>Feature Level Summary</h2>{_table(head, rows, limit=15)}</section>'
 
-    return _page(f'OTA {ota} report', '\n'.join(out))
+
+def render_html(report):
+    ota, sm = report['ota_version'], report.get('summary') or {}
+    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV)
+    body = [f'<div class="top"><h1>{_esc(ota)}</h1><span>{_esc(report["generated_at"])}</span></div>']
+    if sm:
+        body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
+                 _api_calls_section(sm)]
+    body.append(_feature_level_section(report))
+    return (f'<!doctype html><html lang="en"><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>OTA {_esc(ota)}</title>'
+            f'<style>{REPORT_STYLE}</style><div class="layout"><nav class="side"><div class="brand"><small>OTA report</small>'
+            f'<b>{_esc(ota)}</b></div>{nav}</nav><main class="content">{"".join(body)}</main></div>'
+            f'<script>{REPORT_JS}</script></html>')
 
 
 DEVICE_JS = r"""
@@ -1712,7 +1935,7 @@ def render_device_html(doc):
 
     out.append('<h2>Boot summary</h2><div class="scroll"><table><tr><th>Boot</th><th class="num">Features ON</th>'
                '<th class="num">API calls</th><th>Config keys</th><th>Test cases</th></tr>')
-    labels = [_boot_label(dict(b, start=b['start_fmt'], end=b['end_fmt'])) for b in boots]
+    labels = [_boot_label(dict(b, start=b['start_fmt'], end=b['end'] and b['end_fmt'])) for b in boots]
     for b, label in zip(boots, labels):
         on = '' if b.get('features') is None else sum(1 for st in b['features'] if st == 0)
         n_calls = sum(len(v) for v in (b.get('api_calls') or {}).values())
@@ -1944,7 +2167,8 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             'config_keys_failing': len(report['config_failures']),
             'config_error': report['config_error'],
             'summary': {k: (len(v) if isinstance(v, list) else v) for k, v in report['summary'].items()
-                        if k not in ('drive_minutes_by_device', 'feature_coverage', 'feature_sets')},
+                        if k not in ('drive_minutes_by_device', 'boot_window_by_device', 'api_calls_by_device',
+                                      'feature_coverage', 'feature_sets')},
         }
         log.info('%s: report written to %s/ota_report.html', ota, out_dir)
     log.info('Run finished in %.2fs: %d report(s), %d device error(s)',
