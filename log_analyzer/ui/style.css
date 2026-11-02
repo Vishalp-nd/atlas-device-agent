@@ -69,7 +69,6 @@ h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacin
 }
 .logo::before { left: 7px; height: 8px; box-shadow: 4px -4px 0 0 var(--accent-fg); }
 .logo::after { left: 15px; height: 6px; }
-.tagline { color: var(--muted); font-size: 13px; }
 .top-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 .health { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .health .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
