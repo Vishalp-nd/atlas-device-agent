@@ -35,7 +35,8 @@ KIND_LEVEL = {'zero': 'critical', 'far_below': 'critical', 'no_status_after_ota_
               'below': 'warning', 'far_above': 'warning', 'gap_over_limit': 'warning'}
 
 # Calls of these APIs are expected at least once per this many drive minutes
-PER_DRIVE_MINUTES = {1: 10, 2: 10, 8: 5, 7: 10, 5: 10, 10: 10}
+# (Download OTA has no rate: it only runs when there is an OTA to download)
+PER_DRIVE_MINUTES = {1: 10, 2: 10, 8: 5, 7: 10, 10: 10}
 # Far below / above the expected minimum ("huge difference")
 FAR_BELOW = 0.5
 FAR_ABOVE = 3.0
@@ -49,10 +50,11 @@ EVENT_MIN_DRIVE = 30
 
 RULES = f"""\
 How the findings were worked out (drive_min = the device's drive minutes on this OTA):
-- Keep Alive, Version Check, Upload Logs, Download OTA, Upload Device Status: at least 1 call per 10 drive minutes
+- Keep Alive, Version Check, Upload Logs, Upload Device Status: at least 1 call per 10 drive minutes
   (expected_min = floor(drive_min / 10)); Upload Video list: 1 per 5 drive minutes; Upload Observation data:
   1 per observation_frequency drive minutes from the OTA config. Kinds: zero (0 calls), far_below
   (< {FAR_BELOW:.0%} of expected_min), below (under expected_min), far_above (> {FAR_ABOVE:g}x expected_min).
+- Download OTA: not checked on its own; it only runs when there is an OTA to download, so 0 calls is normal.
 - Download Status: no_status_after_ota_change (the device was also seen on another OTA, so Download OTA brought
   a new version, but Download Status was never called).
 - Upload Event: no_event (drive_min > {EVENT_MIN_DRIVE} and 0 calls).
@@ -243,7 +245,7 @@ def build(ota, summary, device_summaries, device_info, defaults):
     context, findings = data['context'], data['findings']
     if not findings:
         return {'callouts': [{'level': 'info', 'api': 'General', 'kind': 'ok', 'devices': [],
-                              'text': f'Every checked API met the rules on all {context["devices"]} devices.'}],
+                              'text': 'No anomaly noticed.'}],
                 'llm_calls': 0, 'cached': 0, 'error': None}
     use_llm = enabled()
     results = []
