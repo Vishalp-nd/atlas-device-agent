@@ -303,7 +303,7 @@ function stepsTable(steps) {
     drive_scan: 'Grep drive / power metrics', evidence_grep: 'Grep config value lines',
     override_llm: 'Read override values (LLM)', features: 'Features enabled (all devices)',
     detect_boots: 'Detect boots', load_hits: 'Assign hits to boots', evaluate: 'Evaluate boots', device_total: 'Device total',
-    write_ota_report: 'Write OTA report', fetch_ini: 'Fetch config ini', run_total: 'Run total' };
+    write_ota_report: 'Write OTA report', callouts: 'Callouts (rule checks + LLM)', fetch_ini: 'Fetch config ini', run_total: 'Run total' };
   return `<div class="tbl"><table>
     <tr><th>Step</th><th class="num">Count</th><th class="num">Total</th><th class="num">Avg</th><th class="num">Max</th><th>Slowest</th><th style="width:22%"></th></tr>
     ${steps.map((s) => `<tr>
