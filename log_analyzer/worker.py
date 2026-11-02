@@ -74,6 +74,13 @@ def resolve_devices(run: dict) -> list[str]:
     return devices
 
 
+def report_otas(run: dict) -> list[str] | None:
+    """The OTA versions to report on: the run's OTA, the OTAs given with a device list, or None (every OTA)."""
+    if run["mode"] == "ota":
+        return [run["ota_version"]]
+    return run["options"].get("otas") or None
+
+
 def download(run: dict, devices: list[str], timings: list[dict]) -> None:
     from downloader import Downloader
 
@@ -102,7 +109,7 @@ def analyse(run: dict, devices: list[str], timings: list[dict]) -> dict:
         product=run["product"] or None,
         workers=run["options"].get("workers") or WORKERS,
         report_dir=run_dir(run["id"]) / "reports",
-        otas=[run["ota_version"]] if run["mode"] == "ota" else None,
+        otas=report_otas(run),
         tests_snapshot=TESTS_SNAPSHOT,
         on_progress=on_progress,
     )
@@ -129,6 +136,8 @@ def main(run_id: int) -> int:
     os.environ["ATLAS_LOG_ROOT"] = str(env["log_root"])
     os.environ["ATLAS_CONFIG_JSON_ROOT"] = str(env["config_root"])
     target = run["ota_version"] if run["mode"] == "ota" else f"{len(run['requested_devices'])} device(s)"
+    if run["mode"] == "devices" and report_otas(run):
+        target += f" on OTA {', '.join(report_otas(run))}"
     log.info("run %s: %s, %s %s, %s → %s, options %s", run_id, env["label"], run["mode"], target,
              run["start_date"], run["end_date"], run["options"])
     log.info("environment %s: logs s3://%s -> %s, devices from %s", run["environment"], env["bucket"],
@@ -172,6 +181,7 @@ def main(run_id: int) -> int:
         if not result["reports"]:
             status = "failed"
             error = (f"No boots on OTA {run['ota_version']} in the logs" if run["mode"] == "ota"
+                     else f"No boots on OTA {', '.join(report_otas(run))} in the logs" if report_otas(run)
                      else "No device boots with an OTA version found in the logs")
         db.update_run(run_id, status=status, error=error, stage="done", device_errors=result["device_errors"])
         log.info("run %s %s: %d report(s), %d device error(s)", run_id, status,

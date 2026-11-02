@@ -77,6 +77,26 @@ PATTERNS = [
 ]
 WITH_PATTERN = sorted({api for api, *_ in PATTERNS})
 
+# Order the API tables list them in; APIs not named here follow by id
+DISPLAY_ORDER = [
+    1,   # Keep Alive
+    2,   # Version Check
+    16,  # Upload Observation data
+    8,   # Upload Video list
+    7,   # Upload Logs
+    5,   # Download OTA
+    6,   # Download Status
+    3,   # Upload Event
+    9,   # Upload Video
+    10,  # Upload Device Status
+    19,  # Upload LLA
+    21,  # Can Diagnostics
+    13,  # Driver Login
+]
+DISPLAY_ORDER += [api for api in sorted(APIS) if api not in DISPLAY_ORDER]
+# The APIs with a call pattern, in display order
+SHOWN = [api for api in DISPLAY_ORDER if api in WITH_PATTERN]
+
 # Calls of one API this close together are one call logged twice (a day's plain and _c
 # log, or power_mon's command and wget output lines)
 DUP_MS = 1000

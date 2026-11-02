@@ -51,6 +51,17 @@ def parse_devices(values: list[str]) -> list[str]:
     return list(dict.fromkeys(devices))
 
 
+def parse_otas(values: list[str]) -> list[str]:
+    """Accept OTA versions separated by commas/whitespace, possibly in several list items."""
+    otas = []
+    for value in values:
+        otas.extend(part for part in re.split(r"[\s,;]+", value) if part)
+    bad = [o for o in otas if not OTA_RE.match(o)]
+    if bad:
+        raise ValueError(f"Invalid OTA version(s): {', '.join(bad[:10])}")
+    return list(dict.fromkeys(otas))
+
+
 def validate_range(start: date, end: date) -> None:
     if start > end:
         raise ValueError("start must be on or before end")

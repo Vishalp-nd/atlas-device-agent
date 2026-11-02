@@ -61,7 +61,8 @@ const fmtTime = (iso) => iso ? new Date(iso).toLocaleString(undefined, { month: 
 const fmtDate = (d) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const range = (r) => r.start_date === r.end_date ? fmtDate(r.start_date) : `${fmtDate(r.start_date)} – ${fmtDate(r.end_date)}`;
 const target = (r) => r.mode === 'ota' ? r.ota_version
-  : `${r.requested_devices.length} device${r.requested_devices.length === 1 ? '' : 's'}`;
+  : `${r.requested_devices.length} device${r.requested_devices.length === 1 ? '' : 's'}`
+    + (r.options?.otas?.length ? ` on ${r.options.otas.join(', ')}` : '');
 const elapsed = (r) => r.duration_s ?? (r.started_at ? (Date.now() - new Date(r.started_at).getTime()) / 1000 : null);
 const pill = (status) => `<span class="pill ${esc(status)}">${esc(status)}</span>`;
 
@@ -186,6 +187,7 @@ form.addEventListener('submit', async (e) => {
   } else {
     body.devices = parseDevices($('#devices').value);
     if (!body.devices.length) { error.textContent = 'Enter at least one device ID.'; return; }
+    body.otas = parseDevices($('#device-otas').value);
   }
   if (!body.start || !body.end) { error.textContent = 'Pick a date range.'; return; }
   if (body.start > body.end) { error.textContent = '“From” must be on or before “To”.'; return; }

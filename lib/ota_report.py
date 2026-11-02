@@ -1142,12 +1142,16 @@ def report_summary(ota, device_summaries, given, device_info, features):
     with_set = [d for d in on_ota if device_summaries[d].get('feature_set') is not None]
     for d in with_set:
         sets[tuple(device_summaries[d]['feature_set'])] += 1
-    all_names = [f['name'] for f in features]
-    # A feature counts as enabled on a device when it was ON in any of the device's boots on this OTA
+    # A feature counts as enabled on a device when it was ON in any of the device's boots on this OTA.
+    # Only the OTA's features are listed: those some boot on it evaluated as other than NA
+    # (their keys are in this OTA's config, overridden or logged)
     no_counts = [{}] * len(features)
+    per_device = [device_summaries[d].get('features') or no_counts for d in on_ota]
     coverage = [{'name': f['name'],
-                 'devices_on': sum(1 for d in on_ota if (device_summaries[d].get('features') or no_counts)[i].get('ON'))}
-                for i, f in enumerate(features)]
+                 'devices_on': sum(1 for counts in per_device if counts[i].get('ON'))}
+                for i, f in enumerate(features)
+                if any(n for counts in per_device for st, n in counts[i].items() if st != 'NA')]
+    all_names = [c['name'] for c in coverage]
     return {
         'devices_given': len(given),
         'devices_without_logs': no_logs,
@@ -1322,7 +1326,7 @@ def _api_section(summary, devices=None):
     head = ['ID', 'API', 'Type', '#Calls'] + (['#Devices'] if devices else []) + [
         '#Boots with calls', '#Calls / boot', '#Min gap', '#Avg gap', '#Max gap']
     rows = []
-    for api in api_calls.WITH_PATTERN:
+    for api in api_calls.SHOWN:
         name, kind = api_calls.APIS[api]
         st = apis.get(str(api))
         if not st:
@@ -1336,7 +1340,7 @@ def _api_section(summary, devices=None):
                    f'<td class="num">{_fmt_gap(st["gap_min"])}</td><td class="num">{_fmt_gap(avg)}</td>'
                    f'<td class="num">{_fmt_gap(st["gap_max"])}</td></tr>')
     out = [f'<p class="muted">{_esc(API_NOTE)}</p>', _table(head, rows, limit=len(rows))]
-    missing = [f'{api} {api_calls.APIS[api][0]}' for api in api_calls.APIS if api not in api_calls.WITH_PATTERN]
+    missing = [f'{api} {api_calls.APIS[api][0]}' for api in api_calls.DISPLAY_ORDER if api not in api_calls.WITH_PATTERN]
     out.append(f'<p class="muted">No call line found in the device logs for: {_esc(", ".join(missing))}</p>')
     return '\n'.join(out)
 
@@ -1597,22 +1601,25 @@ def _dev_link(d):
 
 
 def _devices_section(sm):
-    given, inactive = sm['devices_given'], sm['devices_without_logs']
-    active = sm['logs_detailed'] + sm['logs_critical_only']
+    """Devices with boots on this OTA: active = some drive time on it, inactive = none."""
+    minutes = sm['drive_minutes_by_device']
+    devices = sorted(minutes)
+    active = [d for d in devices if minutes[d]]
+    inactive = [d for d in devices if not minutes[d]]
     return ('<section id="devices"><h2>Device Summary</h2><div class="tiles">'
-            + _tile(given, 'Devices', devices=active + inactive)
-            + _tile(sm['devices_active'], 'Active', _pct(sm['devices_active'], given), 'c-pass', devices=active)
-            + _tile(len(inactive), 'Inactive', _pct(len(inactive), given), 'c-none', devices=inactive)
+            + _tile(len(devices), 'Devices', devices=devices)
+            + _tile(len(active), 'Active', _pct(len(active), len(devices)), 'c-pass', devices=active)
+            + _tile(len(inactive), 'Inactive', _pct(len(inactive), len(devices)), 'c-none', devices=inactive)
             + '</div></section>')
 
 
 def _logs_section(sm):
-    given = sm['devices_given']
-    detailed, critical, none = sm['logs_detailed'], sm['logs_critical_only'], sm['devices_without_logs']
+    """Log uploads of the devices with boots on this OTA."""
+    total = sm['devices_on_ota']
+    detailed, critical = sm['devices_detailed_logs'], sm['devices_critical_only']
     return ('<section id="logs"><h2>Log Upload Summary</h2><div class="tiles">'
-            + _tile(len(detailed), 'Detailed logs enabled', _pct(len(detailed), given), 'c-acc', devices=detailed)
-            + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), given), 'c-nt', devices=critical)
-            + _tile(len(none), 'No logs uploaded', _pct(len(none), given), 'c-none', devices=none)
+            + _tile(len(detailed), 'Detailed logs enabled', _pct(len(detailed), total), 'c-acc', devices=detailed)
+            + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), total), 'c-nt', devices=critical)
             + '</div></section>')
 
 
@@ -1651,7 +1658,7 @@ def _feature_sets_section(sm):
 
 def _api_calls_section(sm):
     by_device, minutes = sm.get('api_calls_by_device') or {}, sm['drive_minutes_by_device']
-    apis = [a for a in api_calls.WITH_PATTERN if any(c.get(a) for c in by_device.values())]
+    apis = [a for a in api_calls.SHOWN if any(c.get(a) for c in by_device.values())]
     rows, totals = [], Counter()
     for d in sorted(by_device, key=lambda d: -minutes.get(d, 0)):
         calls = by_device[d]

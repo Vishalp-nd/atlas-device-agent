@@ -14,7 +14,9 @@ class RunCreateRequest(BaseModel):
     ota_version: str | None = None
     """mode=ota: analyse up to 200 devices currently on this OTA; only its boots are reported."""
     devices: list[str] = []
-    """mode=devices: device ids to analyse (every OTA found in their logs is reported)."""
+    """mode=devices: device ids to analyse (every OTA found in their logs is reported, unless otas is given)."""
+    otas: list[str] = []
+    """mode=devices: only report boots on these OTA versions (comma separated allowed); empty = every OTA."""
     start: str
     """Inclusive UTC start date, YYYY-MM-DD."""
     end: str

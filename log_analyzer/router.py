@@ -87,6 +87,7 @@ def create_run(req: RunCreateRequest) -> Run:
     try:
         service.validate_range(start, end)
         devices = service.parse_devices(req.devices) if req.mode == "devices" else []
+        otas = service.parse_otas(req.otas) if req.mode == "devices" else []
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     ota = (req.ota_version or "").strip() or None
@@ -98,12 +99,14 @@ def create_run(req: RunCreateRequest) -> Run:
     options = {k: v for k, v in {
         "max_devices": req.max_devices, "workers": req.workers,
         "extract_logs": req.extract_logs,
+        "otas": otas or None,
     }.items() if v is not None}
     run_id = db.create_run(req.mode, req.environment, ota if req.mode == "ota" else None, devices, start, end,
                            (req.product or "").strip() or None, options, req.requested_by)
     service.start_run(run_id)
     log.info("run %s created (%s, %s, %s → %s) in %.2fs", run_id, req.environment,
-             ota if req.mode == "ota" else f"{len(devices)} device(s)", start, end, time.perf_counter() - t0)
+             ota if req.mode == "ota" else f"{len(devices)} device(s)" + (f" on {', '.join(otas)}" if otas else ""),
+             start, end, time.perf_counter() - t0)
     return Run(**db.get_run(run_id))
 
 
