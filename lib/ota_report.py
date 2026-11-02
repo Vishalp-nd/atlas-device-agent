@@ -801,18 +801,21 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None)
                     'failed_keys': [i for i, k in enumerate(keys) if k['status'] == 'FAIL'],
                 }
         # Tests are referenced by index into _EVAL_TESTS (the device doc's "tests"), whose
-        # static info is stored once per device; a FAIL keeps [status, match_ts, line] per step.
+        # static info is stored once per device; a FAIL or PASS keeps [status, match_ts, line] per step.
         detail['device_type'] = device_type_for_ota(boot['ota'])
-        verdicts, failures = defaultdict(list), []
+        verdicts, failures, passes = defaultdict(list), [], []
         for i, test in enumerate(_EVAL_TESTS):
             result = evaluate_test(test, hits, boot['index'], boot['start'], detail['device_type'])
             verdicts[result['verdict']].append(i)
             if result['verdict'] == 'FAIL':
                 failures.append({'test': i, 'reason': result['reason'], 'steps': _compact_steps(result['steps'])})
+            elif result['verdict'] == 'PASS':
+                passes.append({'test': i, 'steps': _pass_steps(result['steps'])})
         # Counts for every verdict; test lists only for the ones the report shows
         detail['summary'] = {v: len(ids) for v, ids in verdicts.items()}
         detail['verdicts'] = {v: ids for v, ids in verdicts.items() if v in LISTED_VERDICTS}
         detail['failures'] = failures
+        detail['passes'] = passes
         detail_by_ota[boot['ota']].append(detail)
 
     timings.append({'step': 'evaluate', 'device': device, 'status': 'ok',
@@ -850,6 +853,12 @@ def _compact_steps(steps):
             for i, s in enumerate(steps)]
 
 
+def _pass_steps(steps):
+    """[status, match_ts, match_line] per step of a passing test; every matched line is kept
+    (it is the evidence for the PASS)."""
+    return [[s['status'], s['match_ts'], (s['match_line'] or '')[:MATCH_LINE_CHARS]] for s in steps]
+
+
 def _required(step, steps):
     has_required = any(s['expect'] == 'present' for s in steps)
     return step['expect'] == 'present' or (step['expect'] == 'info' and not has_required)
@@ -857,13 +866,13 @@ def _required(step, steps):
 
 def device_doc(device, ota, days, boot_details, ini_keys):
     """Per-device JSON. Boots refer to "tests" and "config_keys" by index; step
-    details are only included for tests that failed in some boot."""
-    failed_somewhere = {f['test'] for b in boot_details for f in b['failures']}
+    details are only included for tests that failed or passed in some boot."""
+    with_steps = {r['test'] for b in boot_details for r in b['failures'] + b.get('passes', [])}
     tests = []
     for i, t in enumerate(_EVAL_TESTS):
         info = {'key': t['key'], 'tc_id': t['tc_id'], 'feature': t['feature'], 'functionality': t['functionality'],
                 'device_types': t.get('device_types')}
-        if i in failed_somewhere:
+        if i in with_steps:
             info['steps'] = [{'method': s['method'], 'service': s['service'], 'patterns': s['patterns'],
                               'expect': s['expect'], 'required': _required(s, t['steps']),
                               'device_types': s.get('device_types')} for s in t['steps']]
@@ -1603,16 +1612,18 @@ function renderBoot(b) {
     }
   }
   out.push('<h3>Test cases</h3>');
-  const fails = new Map(b.failures.map(f => [f.test, f]));
+  const results = { FAIL: new Map(b.failures.map(f => [f.test, f])),
+                    PASS: new Map((b.passes || []).map(p => [p.test, p])) };
   for (const v of ['FAIL', 'PASS']) {
     const ids = (b.verdicts[v] || []).slice().sort(byTc);
     if (!ids.length) continue;
     out.push(`<details${v === 'FAIL' ? ' open' : ''}><summary>${chip(v)} ${ids.length}</summary><div class="body">`);
-    if (v === 'FAIL') {
+    // Reports made before PASS steps were recorded have no b.passes: plain table for those
+    if (v === 'FAIL' || b.passes) {
       for (const i of ids) {
-        const t = D.tests[i], f = fails.get(i);
+        const t = D.tests[i], r = results[v].get(i);
         out.push(`<details><summary>${esc(t.feature)} · ${esc(t.tc_id)} — ${esc(t.functionality)}</summary>`
-          + `<div class="body"><p>${esc(f.reason)}</p>${stepsTable(t, f)}</div></details>`);
+          + `<div class="body">${r.reason ? `<p>${esc(r.reason)}</p>` : ''}${stepsTable(t, r)}</div></details>`);
       }
     } else {
       out.push('<table><tr><th>Feature</th><th>TC</th><th>Functionality</th></tr>');
