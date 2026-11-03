@@ -169,7 +169,9 @@ class Extract:
             Extract._extract_from_7z(ota_package_path, wanted, dest_dir, extracted)
         else:
             with tarfile.open(ota_package_path, 'r:gz') as tar:
-                Extract._extract_from_tar(tar, wanted, dest_dir, extracted)
+                aliases = {}
+                Extract._extract_from_tar(tar, wanted, dest_dir, extracted, aliases)
+                wanted.update(aliases.values())  # links whose target was not found
 
         if wanted:
             print(f"[-] {', '.join(sorted(wanted))} not found in {ota_package_path}")
@@ -186,29 +188,60 @@ class Extract:
                     targets[base] = name
             if not targets:
                 return
+            # A wanted file can be a symlink in the package (nd_config.ini -> nd_config_US.ini),
+            # stored either as a link or as a small file holding only the target's name:
+            # keep the file it points to, under the wanted name
+            names = set(archive.getnames())
             with tempfile.TemporaryDirectory(dir=dest_dir) as tmp:
                 archive.extract(path=tmp, targets=list(targets.values()))
+                links = {}
+                for base, name in targets.items():
+                    path = os.path.join(tmp, name)
+                    if os.path.islink(path):
+                        link = os.readlink(path)
+                    elif os.path.getsize(path) <= 256:
+                        with open(path, encoding='latin-1') as f:
+                            link = f.read().strip()
+                    else:
+                        continue
+                    resolved = os.path.normpath(os.path.join(os.path.dirname(name), link))
+                    if link and '\n' not in link and resolved != name and resolved in names:
+                        links[base] = resolved
+                if links:
+                    archive.reset()
+                    archive.extract(path=tmp, targets=list(set(links.values())))
                 for base, name in targets.items():
                     dest_path = os.path.join(dest_dir, base)
-                    shutil.move(os.path.join(tmp, name), dest_path)
+                    src = os.path.join(tmp, links.get(base, name))
+                    if os.path.lexists(dest_path):
+                        os.remove(dest_path)
+                    shutil.move(src, dest_path) if not os.path.islink(src) else shutil.copyfile(src, dest_path)
                     os.chmod(dest_path, 0o644)  # archive keeps it read-only
                     extracted.append(dest_path)
                     wanted.discard(base)
 
     @staticmethod
-    def _extract_from_tar(tar, wanted, dest_dir, extracted):
+    def _extract_from_tar(tar, wanted, dest_dir, extracted, aliases=None):
+        """aliases: {file a wanted symlink points to: the wanted name}, filled as links are met
+        (nd_config.ini -> nd_config_US.ini keeps the target under the wanted name)."""
+        aliases = {} if aliases is None else aliases
         for member in tar:
-            if not wanted:
+            if not wanted and not aliases:
                 return
+            name = os.path.basename(member.name)
+            if member.issym() and name in wanted:
+                aliases[os.path.basename(member.linkname)] = name
+                wanted.discard(name)
+                continue
             if not member.isfile():
                 continue
-            name = os.path.basename(member.name)
-            if name in wanted:
-                dest_path = os.path.join(dest_dir, name)
-                with tar.extractfile(member) as src, open(dest_path, 'wb') as dst:
-                    shutil.copyfileobj(src, dst)
-                extracted.append(dest_path)
-                wanted.discard(name)
+            if name in wanted or name in aliases:
+                for target in [n for n in (name if name in wanted else None, aliases.pop(name, None)) if n]:
+                    dest_path = os.path.join(dest_dir, target)
+                    with tar.extractfile(member) as src, open(dest_path, 'wb') as dst:
+                        shutil.copyfileobj(src, dst)
+                    extracted.append(dest_path)
+                    wanted.discard(target)
             elif '/ota_packages/' in f'/{member.name}' and name.endswith('.tar.gz'):
                 with tar.extractfile(member) as src, tarfile.open(fileobj=src, mode='r|gz') as inner:
-                    Extract._extract_from_tar(inner, wanted, dest_dir, extracted)
+                    Extract._extract_from_tar(inner, wanted, dest_dir, extracted, aliases)

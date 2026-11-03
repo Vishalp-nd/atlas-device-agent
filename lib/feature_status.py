@@ -1,6 +1,6 @@
 """
 Features enabled per boot: INPUT/Feature_Mapping/feature_mapping.ini evaluated against
-the OTA's default config (INPUT/<ota>/bagheera_config.ini) and the CFG_PRSR overrides.
+the OTA's default config (INPUT/<ota>/bagheera_config.ini + nd_config.ini) and the CFG_PRSR overrides.
 
 feature_mapping.ini: one section per feature; each option is a config section
 whose JSON value lists the keys/values the feature needs, e.g.

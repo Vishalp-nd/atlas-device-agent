@@ -128,6 +128,11 @@ _PATTERNS = {}
 _FEATURES = []
 _INI_CACHE = {}
 _DEFAULTS_CACHE = {}
+# The OTA's default config: these files from the package, read as one (the first file wins
+# for a key in both). Feature keys such as can.* and geofence.* are only in nd_config.ini.
+OTA_CONFIG_FILES = ('bagheera_config.ini', 'nd_config.ini')
+# Written once the package was searched for every OTA_CONFIG_FILES (some packages lack one)
+CONFIG_FETCHED_MARKER = '.config_fetched'
 
 # Plain (non _c) logs a critical-only upload still has; any other plain log means the
 # device uploads its detailed (non critical) logs
@@ -361,6 +366,26 @@ def parse_ini_keys(path):
                 seen.add((section, key))
                 keys.append((section, key))
     return keys
+
+
+def ota_config_paths(ota):
+    """The OTA_CONFIG_FILES present in INPUT/<ota>/, in order."""
+    folder = Path(OTADownloader.INPUT_DIR) / ota
+    return [folder / name for name in OTA_CONFIG_FILES if (folder / name).exists()]
+
+
+def ota_config_values(ota):
+    """{section: {key: value}} of the OTA's config files read as one, or None if there are none."""
+    paths = ota_config_paths(ota)
+    if not paths:
+        return None
+    merged = {}
+    for path in paths:
+        for section, values in feature_status.parse_ini_values(path).items():
+            target = merged.setdefault(section, {})
+            for key, value in values.items():
+                target.setdefault(key, value)
+    return merged
 
 
 def boot_config_lines(procs, start, end):
@@ -682,10 +707,9 @@ def has_detailed_logs(logs_dir):
 
 
 def ota_defaults(ota):
-    """{section: {key: value}} of the OTA's bagheera_config.ini (after ensure_ini), or None."""
+    """{section: {key: value}} of the OTA's config (OTA_CONFIG_FILES, after ensure_ini), or None."""
     if ota not in _DEFAULTS_CACHE:
-        path = Path(OTADownloader.INPUT_DIR) / ota / 'bagheera_config.ini'
-        _DEFAULTS_CACHE[ota] = feature_status.parse_ini_values(path) if path.exists() else None
+        _DEFAULTS_CACHE[ota] = ota_config_values(ota)
     return _DEFAULTS_CACHE[ota]
 
 
@@ -994,23 +1018,29 @@ def summarize_boots(device, boot_details, ini_keys):
 # ── report ──────────────────────────────────────────────────────────────
 
 def ensure_ini(ota, product=None):
-    """(ini keys or None, error or None) for an OTA, downloading the ini if needed.
+    """(bagheera_config.ini keys or None, error or None) for an OTA, downloading the package
+    if one of OTA_CONFIG_FILES is missing and the package was not searched for it yet.
 
     Workers call this concurrently, so the download is serialized per OTA with a
     file lock, and the result is cached per process.
     """
     if ota not in _INI_CACHE:
-        ini_path = Path(OTADownloader.INPUT_DIR) / ota / 'bagheera_config.ini'
-        ini_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(ini_path.parent / '.fetch.lock', 'w') as lock:
+        folder = Path(OTADownloader.INPUT_DIR) / ota
+        folder.mkdir(parents=True, exist_ok=True)
+        with open(folder / '.fetch.lock', 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             error = None
-            if not ini_path.exists():
+            missing = [name for name in OTA_CONFIG_FILES if not (folder / name).exists()]
+            if missing and not (folder / CONFIG_FETCHED_MARKER).exists():
                 try:
                     with timed(log, 'fetch_ini', ota=ota):
-                        OTADownloader(ota, product).fetch_files(['bagheera_config.ini'])
+                        OTADownloader(ota, product).fetch_files(missing)
+                    (folder / CONFIG_FETCHED_MARKER).touch()
                 except (FileNotFoundError, ValueError) as e:
                     error = str(e)
+            # The key coverage check stays on bagheera_config.ini: CFG_PRSR does not log the
+            # nd_config.ini keys, which only feed the feature defaults (ota_config_values)
+            ini_path = folder / OTA_CONFIG_FILES[0]
             if ini_path.exists():
                 _INI_CACHE[ota] = (parse_ini_keys(ini_path), None)
             else:
@@ -1074,8 +1104,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features):
     Adds 'features' ([ON, OFF, OVERRIDDEN, NA] boot counts per feature) to each
     device summary and returns the OTA's feature rollup.
     """
-    ini_path = Path(OTADownloader.INPUT_DIR) / ota / 'bagheera_config.ini'
-    defaults = feature_status.parse_ini_values(ini_path) if ini_path.exists() else None
+    defaults = ota_config_values(ota)
     ref = feature_status.reference(update_key_reference(ota, device_summaries))
     feature_info = [{'name': f['name'],
                      'conditions': [[sec, key, exp, (defaults or {}).get(sec, {}).get(key)]
@@ -1375,7 +1404,7 @@ def _pct(n, total):
 
 
 FEATURES_NOTE = ('Enabled: the feature was on in at least one boot on this OTA, from the value each key it needs had '
-                 'in that boot (the value the service logged at startup, else the OTA default in bagheera_config.ini). '
+                 'in that boot (the value the service logged at startup, else the OTA default in bagheera_config.ini / nd_config.ini). '
                  'Features whose keys are not in this OTA\'s config are not listed.')
 
 
@@ -2261,8 +2290,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             report['config_features'] = config_features
             report['summary'] = report_summary(ota, device_summaries, devices, device_info, features)
         with timed(log, 'callouts', timings, ota=ota):
-            ini_path = Path(OTADownloader.INPUT_DIR) / ota / 'bagheera_config.ini'
-            defaults = feature_status.parse_ini_values(ini_path) if ini_path.exists() else None
+            defaults = ota_config_values(ota)
             report['callouts'] = report_callouts.build(ota, report['summary'], device_summaries, device_info, defaults)
         with timed(log, 'write_ota_report_files', timings, ota=ota):
             out_dir = report_dir / ota
@@ -2319,8 +2347,7 @@ def refresh_callouts(reports_dir):
         device_summaries = {d: {'api': doc.get('api_summary'), 'feature_set': _latest_feature_set(doc)}
                             for d, doc in docs[ota].items()}
         device_info = {d: {'otas': otas_of[d]} for d in device_summaries}
-        ini_path = Path(OTADownloader.INPUT_DIR) / ota / 'bagheera_config.ini'
-        defaults = feature_status.parse_ini_values(ini_path) if ini_path.exists() else None
+        defaults = ota_config_values(ota)
         report['callouts'] = report_callouts.build(ota, report.get('summary') or {}, device_summaries,
                                                    device_info, defaults)
         with open(ota_dir / 'ota_report.json', 'w') as f:
