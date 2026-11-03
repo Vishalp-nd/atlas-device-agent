@@ -5,17 +5,19 @@ The cloud keeps a device's override config as a base64 INI in
 GET <IDMS_API_URL>/tenants/devices/<device>  ->  {"response": true, "data": {"overrideconfig": ...}}
 (login: OAuth password grant on <IDMS_AUTH_URL>/oauth/token, then a session key from /session).
 
-What the device ran with, per key, comes from its logs (ota_report.complete_device_reports):
-  - the value a service printed at startup, read by the LLM (override_llm), or
-  - the OTA default (bagheera_config.ini + nd_config.ini) when CFG_PRSR logged the key as
-    "No value present ... in override dictionary" (the device has no override for it).
-    CFG_PRSR names keys without their section, so this is only used for a key name that is
-    in one section only (over the OTA defaults and the cloud config).
-Every other cloud key is not in the logs either way (unchecked): an overridden key's value
-is not logged, and most cloud keys are never printed at all.
+The device's final config is built from its logs (ota_report.complete_device_reports): the OTA
+defaults (bagheera_config.ini + nd_config.ini) with the values services printed at startup
+(read by the LLM, override_llm) on top. Every cloud key is compared with it:
+  - logged at startup: that value;
+  - otherwise the OTA default: no override shows in the logs, so the device runs on it
+    ('default_confirmed' when CFG_PRSR even logged the key as not in the override file);
+  - unknown (not counted either way) when CFG_PRSR shows the key overridden but its value is
+    not logged, or when the key is in neither the defaults nor the logs.
+CFG_PRSR names keys without their section, so its lines only count for a key name that is
+in one section (over the OTA defaults and the cloud config).
 
-A device PASSES when every checked key has the cloud value, FAILS when some checked key
-differs, and is UNVERIFIED when no cloud key could be checked from its logs.
+A device PASSES when no cloud key differs from its final config, FAILS when some key
+differs, and is UNVERIFIED when no key could be compared.
 
 Environment: ATLAS_ENV=stag (default) or prod, set by the Log Analyzer worker from the run's
 environment; it picks the IDMS hosts (idms-staging / idms, auth-staging / auth).
@@ -28,7 +30,6 @@ import base64
 import configparser
 import logging
 import os
-import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -51,12 +52,10 @@ TIMEOUT_S = 30
 FETCH_WORKERS = 8
 RETRIES = 3
 
-VERDICTS = ['PASS', 'FAIL', 'UNVERIFIED', 'ERROR']
-# Key statuses: same / different value, or not in the logs
-MATCH, DIFF, UNCHECKED = 'match', 'diff', 'unchecked'
-# Values of these keys are compared but never written to the report
-SECRET_KEY_RE = re.compile(r'pass(word|phrase|wd)?$|psk|secret|token|credential', re.IGNORECASE)
-MASK = '••••'
+# SKIPPED: no boot with detailed logs (critical-only uploads log no override information)
+VERDICTS = ['PASS', 'FAIL', 'UNVERIFIED', 'SKIPPED', 'ERROR']
+# Key statuses: same / different value, or the device value is unknown
+MATCH, DIFF, UNKNOWN = 'match', 'diff', 'unknown'
 
 # The device record fields shown with the result (which override config, when it was pushed)
 DEVICE_FIELDS = ('config_override_version', 'current_config_override_version', 'config_override_update_time',
@@ -195,10 +194,6 @@ def fetch_all(devices, workers=FETCH_WORKERS):
 
 # ── comparison ───────────────────────────────────────────────────────────
 
-def _shown(key, value):
-    return MASK if value is not None and SECRET_KEY_RE.search(key) else value
-
-
 def compare(cloud, defaults, logged_values, not_overridden, overridden):
     """Each cloud key against what one boot ran with.
 
@@ -207,8 +202,9 @@ def compare(cloud, defaults, logged_values, not_overridden, overridden):
     names CFG_PRSR listed as not in the override dictionary; overridden: key names taken as
     overridden (feature_status.boot_overrides).
     Returns {'keys': [[section, key, cloud, device, status, source, evidence]], 'counts'}.
-    source: 'log' (printed at startup), 'default' (no override on the device), or for an
-    unchecked key why: 'overridden' (value not logged) / 'not_logged'.
+    source: 'log' (printed at startup), 'default_confirmed' (CFG_PRSR: not overridden),
+    'default' (no override in the logs), or for an unknown device value 'overridden' (CFG_PRSR:
+    overridden, value not logged) / 'missing' (in neither the defaults nor the logs).
     """
     defaults = defaults or {}
     sections_of = {}
@@ -216,26 +212,28 @@ def compare(cloud, defaults, logged_values, not_overridden, overridden):
         for section, keys in config.items():
             for key in keys:
                 sections_of.setdefault(key, set()).add(section)
-    rows, counts = [], {MATCH: 0, DIFF: 0, UNCHECKED: 0}
+    rows, counts = [], {MATCH: 0, DIFF: 0, UNKNOWN: 0}
     for section in sorted(cloud):
         for key in sorted(cloud[section]):
             want = cloud[section][key]
             logged = logged_values.get(f'{section}.{key}')
             default = defaults.get(section, {}).get(key)
+            one_section = sections_of.get(key) == {section}
             device = evidence = None
             if logged is not None:
                 device, source, evidence = logged['value'], 'log', logged.get('evidence')
-            elif key in not_overridden and sections_of.get(key) == {section} and default is not None:
-                device, source = default, 'default'
+            elif key in overridden and one_section:
+                source = 'overridden'
+            elif default is not None:
+                device, source = default, 'default_confirmed' if key in not_overridden and one_section else 'default'
             else:
-                source = 'overridden' if key in overridden else 'not_logged'
-            if source in ('log', 'default'):
+                source = 'missing'
+            if device is None:
+                status = UNKNOWN
+            else:
                 status = MATCH if feature_status.same_value(device, want) else DIFF
-            else:
-                status = UNCHECKED
             counts[status] += 1
-            rows.append([section, key, _shown(key, want), _shown(key, device), status, source,
-                         None if SECRET_KEY_RE.search(key) else evidence])
+            rows.append([section, key, want, device, status, source, evidence])
     return {'keys': rows, 'counts': counts}
 
 
