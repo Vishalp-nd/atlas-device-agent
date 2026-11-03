@@ -85,6 +85,15 @@ def _service_files(logs_dir, service):
     return sorted(p for p in logs_dir.glob(f'{service}*.log*') if p.is_file())
 
 
+def _first_timed_line(data):
+    """(ts, uptime) of the first line with a timestamp in data (bytes), or (None, None)."""
+    for line in data.decode('latin-1').split('\n'):
+        ts, uptime = _line_ts(line)
+        if ts is not None:
+            return ts, uptime
+    return None, None
+
+
 def _last_timed_line(data):
     """(ts, uptime) of the last line with a timestamp in data (bytes), or (None, None)."""
     for line in reversed(data.decode('latin-1').split('\n')):
@@ -108,11 +117,12 @@ class DriveEvents:
         self.available = set()
         self.latest_udid = set()  # (ts, udid)
         self.run_ends = set()    # (ts, uptime) of the last power_mon line before a restart / end of file
+        self.pm_firsts = set()   # ts of the first line of each power_mon file
 
     def add(self, other):
         self.udids.update(other.udids)
         for name in ('lpw', 'pm_starts', 'pm_stops', 'cranks', 'shutdowns', 'created', 'available',
-                     'latest_udid', 'run_ends'):
+                     'latest_udid', 'run_ends', 'pm_firsts'):
             getattr(self, name).update(getattr(other, name))
 
     def finish(self):
@@ -120,7 +130,7 @@ class DriveEvents:
         self.udid_list = sorted(self.udids.values(), key=lambda r: r['drive_start'])
         self.udid_counts = Counter(r['udid'] for r in self.udid_list)
         for name in ('lpw', 'pm_starts', 'pm_stops', 'cranks', 'shutdowns', 'created', 'available',
-                     'latest_udid', 'run_ends'):
+                     'latest_udid', 'run_ends', 'pm_firsts'):
             setattr(self, name + '_sorted', sorted(getattr(self, name)))
         self.crank_low = [ts for ts, state in self.cranks_sorted if state == 0]
         return self
@@ -162,6 +172,9 @@ def _scan_power_mon(files, events):
             f.close()
     for path in files:
         with open(path, 'rb') as f:
+            first_ts, _ = _first_timed_line(f.read(TAIL_BYTES))
+            if first_ts is not None:
+                events.pm_firsts.add(first_ts)
             f.seek(0, 2)
             size = f.tell()
             f.seek(max(0, size - TAIL_BYTES))
@@ -302,10 +315,28 @@ def drive_window_metrics(events, rec):
     }
 
 
-def boot_metrics(events, start, end, rec=None):
+def _power_mon_span(events, start, hi, logs_start=None):
+    """Minutes from the boot start to the last power_mon line in the boot. A boot that started
+    before the logs starts at max(first power_mon line, logs_start: the run's start date)."""
+    lasts = _between(events.run_ends_sorted, start, hi, key=lambda x: x[0])
+    if not lasts:
+        return 0
+    # Lines inside the boot are never before its start, so the first line only counts
+    # for the boot that started before the logs
+    firsts = _between(events.pm_firsts_sorted, start, hi, key=None)
+    begin = start if start is not None else (firsts[0] if firsts else None)
+    if begin is None:
+        return 0
+    if start is None and logs_start is not None:
+        begin = max(begin, logs_start)
+    return max(0, lasts[-1][0] - begin) // 60000
+
+
+def boot_metrics(events, start, end, rec=None, logs_start=None):
     """UDID and drive/power-monitor numbers for the boot [start, end).
 
-    rec: the boot's udid_node record (assign_udids), if any.
+    rec: the boot's udid_node record (assign_udids), if any. logs_start: epoch ms of the
+    run's start date, for the drive time of a boot that started before the logs.
     """
     hi = (end - 1) if end is not None else None
     if rec:
@@ -336,6 +367,13 @@ def boot_metrics(events, start, end, rec=None):
     else:
         drive_minutes = sum(d for d in durations if d >= SHORT_RUN_MS) // 60000
         minutes_source = 'power_mon' if durations else None
+        if not drive_minutes:
+            # Logs mean the device was on: when no drive or long enough power monitor run was
+            # found (e.g. the power monitor started before the logs), the time from the boot
+            # start (before the logs: max(first power_mon line, run start)) to the last power_mon line
+            span = _power_mon_span(events, start, hi, logs_start)
+            if span:
+                drive_minutes, minutes_source = span, 'power_mon'
     max_lpw = max((c for _, c, _ in lpw), default=None)
     shutdowns = _between(events.shutdowns_sorted, start, hi, key=lambda x: x[0])
     cranks = _between(events.cranks_sorted, start, hi, key=lambda x: x[0])

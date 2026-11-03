@@ -769,10 +769,17 @@ def scan_device_day(device, day):
 def process_device(device, start, end, product=None, report_dir=None, otas=None):
     """Everything for one device, its days read one after another (run() reads them in parallel)."""
     return finish_device(device, [scan_device_day(device, day) for day in device_days(device, start, end)],
-                         product, report_dir, otas)
+                         product, report_dir, otas, start)
 
 
-def finish_device(device, day_results, product=None, report_dir=None, otas=None):
+def run_start_ms(start):
+    """Epoch ms of the run's start date (YYYY-MM-DD, UTC like the day folders), or None."""
+    if not start:
+        return None
+    return int(datetime.strptime(str(start), '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def finish_device(device, day_results, product=None, report_dir=None, otas=None, start=None):
     """Boots, OTA per boot, config + tests + drive metrics + override values per boot, from
     the scan_device_day() results of every day. Writes <report_dir>/<ota>/devices/<device>.json
     for every OTA the device has boots on (only those in otas, if given); the HTML page
@@ -839,7 +846,8 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None)
         if boot['ota'] is None or (boot['partial'] and not partial_used):
             continue
         detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']))
-        detail.update(drive_metrics.boot_metrics(events, boot['start'], boot['end'], udid_records.get(boot['index'])))
+        detail.update(drive_metrics.boot_metrics(events, boot['start'], boot['end'], udid_records.get(boot['index']),
+                                                  logs_start=run_start_ms(start)))
         detail['window'] = boot_window(boot, span, detail['drive'])
         detail['label'] = boot_name(detail)
         detail['api_calls'] = api_calls.boot_calls(calls_by_api, boot['start'], boot['end'])
@@ -2233,7 +2241,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
                                     device_done(device, device_errors[device])
                                 else:
                                     pending[pool.submit(finish_device, device, day_results, product,
-                                                        report_dir, otas)] = ('finish', device)
+                                                        report_dir, otas, start)] = ('finish', device)
                         elif result is not None:
                             spools.pop(device, None)  # finish_device deleted them
                             _, summaries, device_timings, device_info[device] = result
