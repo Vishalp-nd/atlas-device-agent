@@ -1349,7 +1349,7 @@ def _api_section(summary, devices=None):
                    f'<td class="num">{st["boots"]} / {boots}</td><td class="num">{st["calls"] / boots:.1f}</td>'
                    f'<td class="num">{_fmt_gap(st["gap_min"])}</td><td class="num">{_fmt_gap(avg)}</td>'
                    f'<td class="num">{_fmt_gap(st["gap_max"])}</td></tr>')
-    out = [f'<p class="muted">{_esc(API_NOTE)}</p>', _table(head, rows, limit=len(rows))]
+    out = [f'<p class="muted">{_esc(API_NOTE)}</p>', _table(head, rows)]
     missing = [f'{api} {api_calls.APIS[api][0]}' for api in api_calls.DISPLAY_ORDER if api not in api_calls.WITH_PATTERN]
     out.append(f'<p class="muted">No call line found in the device logs for: {_esc(", ".join(missing))}</p>')
     return '\n'.join(out)
@@ -1393,7 +1393,7 @@ def _device_features_table(features, counts):
         status = ('<span class="chip on">Enabled</span>' if counts[i].get('ON')
                   else '<span class="chip off">Disabled</span>')
         rows.append(f'<tr><td>{_esc(f["name"])}</td><td>{status}</td><td class="wrap">{needs}</td></tr>')
-    return _table(['Feature', 'Enabled/Disabled', 'Needs'], rows, limit=15)
+    return _table(['Feature', 'Enabled/Disabled', 'Needs'], rows)
 
 
 DEVICE_STYLE = """
@@ -1490,8 +1490,7 @@ animation:co-spin 4s linear infinite,co-glow 3s ease-in-out infinite}
 @keyframes co-twinkle{0%,100%{transform:scale(1) rotate(0);opacity:1}50%{transform:scale(1.18) rotate(12deg);opacity:.75}}
 @media (prefers-reduced-motion:reduce){#callouts,#callouts .sparkle{animation:none}}.note{font-size:12px;margin:12px 0 0}
 .c-pass{background:var(--pass)}.c-fail{background:var(--fail)}.c-nt{background:var(--nt)}.c-none{background:var(--none)}.c-acc{background:var(--accent)}
-.tbl{border:1px solid var(--line);border-radius:10px;overflow:auto;margin-top:16px}
-.tbl.clip{max-height:430px}
+.tbl{border:1px solid var(--line);border-radius:10px;overflow:auto;margin-top:16px;max-height:430px}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;white-space:nowrap}
 tr>:first-child{border-left:0}tr>:last-child{border-right:0}thead tr:first-child th{border-top:0}tbody tr:last-child td{border-bottom:0}
@@ -1502,10 +1501,9 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 td.wrap{white-space:normal;min-width:320px;color:var(--muted);font-size:12.5px}
 td.zero{color:var(--none)}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
-.more{display:block;width:100%;border:0;border-top:1px solid var(--line);background:var(--head);color:var(--accent);
-padding:8px;font:inherit;font-size:13px;cursor:pointer;position:sticky;bottom:0}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
+.fail-rate{display:flex;align-items:center;gap:10px}.fail-rate span{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}.fail-rate span.zero{color:var(--none)}
 tr.feat{cursor:pointer}tr.feat td:first-child::before{content:"▸";display:inline-block;width:14px;color:var(--muted);transition:transform .15s}
 tr.feat.open td:first-child::before{transform:rotate(90deg)}
 tr.tcs>td{padding:0;background:var(--bg)}tr.tcs table{font-size:12.5px}tr.tcs th{position:static}
@@ -1530,23 +1528,6 @@ document.querySelectorAll('table.sort').forEach(t => {
     groups.sort((a, b) => { const x = val(a[0]), y = val(b[0]); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
     groups.forEach(([r, d]) => { body.appendChild(r); if (d) body.appendChild(d); });
   }));
-});
-// Long tables: show the first rows, expand on demand
-document.querySelectorAll('.tbl[data-limit]').forEach(box => {
-  const limit = +box.dataset.limit, rows = [...box.querySelectorAll(':scope > table > tbody > tr:not(.tcs)')];
-  if (rows.length <= limit) return;
-  const btn = document.createElement('button'); btn.className = 'more';
-  const set = open => {
-    box.classList.toggle('clip', open);
-    rows.forEach((r, i) => {
-      r.hidden = !open && i >= limit;
-      const d = r.nextElementSibling;  // a feature's test cases stay closed with it
-      if (d && d.classList.contains('tcs') && r.hidden) { d.hidden = true; r.classList.remove('open'); }
-    });
-    btn.textContent = open ? 'Show less' : `Show all ${rows.length}`;
-  };
-  btn.addEventListener('click', () => set(btn.textContent !== 'Show less'));
-  box.appendChild(btn); set(false);
 });
 // Feature rows expand into their test cases
 document.querySelectorAll('tr.feat').forEach(r => r.addEventListener('click', e => {
@@ -1612,11 +1593,11 @@ def _tile(value, label, pct=None, dot=None, devices=None):
     return f'<div{attrs}>{pct_html}<b>{_n(value)}</b><span>{dot_html}{_esc(label)}</span></div>'
 
 
-def _table(head, rows, limit=12, foot='', box_id=''):
-    """Bordered, sortable table; more than `limit` rows collapse behind "Show all"."""
+def _table(head, rows, foot='', box_id=''):
+    """Bordered, sortable table; long ones scroll inside their box, header kept in view."""
     ths = ''.join(f'<th class="num">{_esc(h[1:])}</th>' if h.startswith('#') else f'<th>{_esc(h)}</th>' for h in head)
     ident = f' id="{box_id}"' if box_id else ''
-    return (f'<div class="tbl"{ident} data-limit="{limit}"><table class="sort"><thead><tr>{ths}</tr></thead>'
+    return (f'<div class="tbl"{ident}><table class="sort"><thead><tr>{ths}</tr></thead>'
             f'<tbody>{"".join(rows)}</tbody>{foot}</table></div>')
 
 
@@ -1698,7 +1679,7 @@ def _feature_sets_section(sm):
             + _tile(len(coverage), 'Total features')
             + _tile(enabled, 'Enabled', _pct(enabled, len(coverage)), 'c-pass')
             + _tile(len(coverage) - enabled, 'Disabled', _pct(len(coverage) - enabled, len(coverage)), 'c-none')
-            + '</div>' + (_table(['Feature Name', 'Enabled/Disabled'], rows, limit=15) if rows else '')
+            + '</div>' + (_table(['Feature Name', 'Enabled/Disabled'], rows) if rows else '')
             + '</section>')
 
 
@@ -1719,20 +1700,29 @@ def _api_calls_section(sm):
     return f'<section id="api"><h2>API Call Summary</h2>{_table(head, rows, foot=foot)}</section>'
 
 
+def _failing_tcs(feat):
+    return sum(1 for tc in feat['test_cases'] if tc['boots'].get('FAIL'))
+
+
 def _feature_level_section(report):
     rows = []
-    for feature, feat in report['features'].items():
+    # Most failing test cases first, then the highest failure rate
+    order = sorted(report['features'].items(),
+                   key=lambda kv: (-_failing_tcs(kv[1]), -_failing_tcs(kv[1]) / (len(kv[1]['test_cases']) or 1), kv[0].lower()))
+    for feature, feat in order:
         tcs = feat['test_cases']
         triggered = [tc for tc in tcs if tc['boots'].get('PASS') or tc['boots'].get('FAIL')]
         fail = [tc for tc in triggered if tc['boots'].get('FAIL')]
         npass, nfail, nt = len(triggered) - len(fail), len(fail), len(tcs) - len(triggered)
-        bar = (f'<div class="mini">' + ''.join(f'<i class="{c}" style="width:{100 * n / (len(tcs) or 1):.1f}%"></i>'
-                                              for n, c in ((npass, 'c-pass'), (nfail, 'c-fail'), (nt, 'c-nt')) if n)
-               + '</div>')
+        rate = nfail / (len(tcs) or 1)
+        bar = (f'<div class="fail-rate"><div class="mini">'
+               + ''.join(f'<i class="{c}" style="width:{100 * n / (len(tcs) or 1):.1f}%"></i>'
+                         for n, c in ((npass, 'c-pass'), (nfail, 'c-fail'), (nt, 'c-nt')) if n)
+               + f'</div><span class="{"n-fail" if nfail else "zero"}">{100 * rate:.0f}%</span></div>')
         rows.append(f'<tr class="feat"><td>{_esc(feature)}</td><td class="num">{len(tcs)}</td>'
                     f'<td class="num">{len(triggered)}</td><td class="num{" n-pass" if npass else " zero"}">{npass}</td>'
                     f'<td class="num{" n-fail" if nfail else " zero"}">{nfail}</td><td class="num{" n-nt" if nt else " zero"}">{nt}</td>'
-                    f'<td data-v="{npass / (len(tcs) or 1):.3f}">{bar}</td></tr>')
+                    f'<td data-v="{rate:.3f}">{bar}</td></tr>')
         detail = []
         for tc in sorted(tcs, key=lambda tc: (-tc['boots'].get('FAIL', 0), -tc['boots'].get('PASS', 0), str(tc['tc_id']))):
             b = tc['boots']
@@ -1750,8 +1740,8 @@ def _feature_level_section(report):
         rows.append('<tr class="tcs" hidden><td colspan="7"><table><thead><tr><th>TC</th><th>Functionality</th>'
                     '<th class="num">Pass boots</th><th class="num">Fail boots</th><th>Failed on</th></tr></thead>'
                     f'<tbody>{"".join(detail)}</tbody></table></td></tr>')
-    head = ['Feature Name', '#Total Testcases', '#Total Triggered', '#Pass', '#Fail', '#Not Triggered', '']
-    return f'<section id="features"><h2>Feature Level Summary</h2>{_table(head, rows, limit=15)}</section>'
+    head = ['Feature Name', '#Total Testcases', '#Total Triggered', '#Pass', '#Fail', '#Not Triggered', 'Failure %']
+    return f'<section id="features"><h2>Feature Level Summary</h2>{_table(head, rows)}</section>'
 
 
 def render_html(report):
