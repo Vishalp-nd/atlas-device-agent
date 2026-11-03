@@ -135,6 +135,8 @@ def main(run_id: int) -> int:
     # Read by lib/ota_report.py and lib/cfg_parser_logs.py at import (also in their worker processes)
     os.environ["ATLAS_LOG_ROOT"] = str(env["log_root"])
     os.environ["ATLAS_CONFIG_JSON_ROOT"] = str(env["config_root"])
+    # IDMS hosts for the cloud override config check (lib/cloud_config.py)
+    os.environ["ATLAS_ENV"] = run["environment"]
     target = run["ota_version"] if run["mode"] == "ota" else f"{len(run['requested_devices'])} device(s)"
     if run["mode"] == "devices" and report_otas(run):
         target += f" on OTA {', '.join(report_otas(run))}"

@@ -68,6 +68,7 @@ from pathlib import Path
 
 import api_calls
 import cfg_parser_logs
+import cloud_config
 import day_scan
 import drive_metrics
 import feature_status
@@ -852,11 +853,35 @@ def exclude_overridden_keys(boot, config_keys, overridden):
         cfg['summary']['OVERRIDDEN'] = n
 
 
-def complete_device_reports(ota, device_summaries, report_dir, features):
+def cloud_config_check(fetched, defaults, latest):
+    """The device's cloud override config against its latest boot with startup config
+    (cloud_config.compare). fetched: cloud_config.fetch_one result; latest: (boot,
+    not-overridden key names, overridden key names) or None. None when the check is off."""
+    if fetched is None:
+        return None
+    result = {'verdict': 'ERROR', 'error': fetched['error'], 'fetched_at': fetched['fetched_at'],
+              'cloud_device': fetched.get('device'), 'boot': None, 'counts': None, 'keys': []}
+    if fetched['config'] is None:
+        return result
+    boot, not_overridden, overridden = latest or (None, set(), set())
+    cmp = cloud_config.compare(fetched['config'], defaults, (boot or {}).get('override_values') or {},
+                               not_overridden, overridden)
+    result.update(verdict=cloud_config.verdict(cmp['counts']), counts=cmp['counts'], keys=cmp['keys'])
+    if boot is not None:
+        result['boot'] = {'index': boot['index'], 'label': _boot_label(dict(boot, start=boot['start_fmt'],
+                                                                             end=boot['end'] and boot['end_fmt'])),
+                          'start': boot['start']}
+    else:
+        result['error'] = 'No boot with startup config lines (CFG_PRSR) or logged values on this OTA'
+    return result
+
+
+def complete_device_reports(ota, device_summaries, report_dir, features, cloud=None):
     """Features per boot for every device on the OTA, then the device pages.
 
     Adds 'features' ([ON, OFF, OVERRIDDEN, NA] boot counts per feature) to each
-    device summary and returns the OTA's feature rollup.
+    device summary and returns the OTA's feature rollup. cloud: {device: cloud_config.fetch_one
+    result} (None: check off); each device gets 'cloud_config' (cloud_config_check).
     """
     defaults = ota_config_values(ota)
     ref = feature_status.reference(update_key_reference(ota, device_summaries))
@@ -870,13 +895,17 @@ def complete_device_reports(ota, device_summaries, report_dir, features):
         with open(path) as f:
             doc = json.load(f)
         per_feature = [Counter() for _ in features]
-        latest_set = None
+        latest_set = latest_config = None
         key_fails = Counter()
         for b in doc['boots']:
             profile = summary['profiles'].get(b['index'])
             values = b.get('override_values')
             exclude_overridden_keys(b, doc['config_keys'], feature_status.boot_overrides(profile, ref) if profile else set())
             key_fails.update(tuple(doc['config_keys'][i]) for i in b['config'].get('failed_keys', ()))
+            if profile or values:
+                # What the cloud config is compared with: the latest boot whose config is known
+                latest_config = (b, set().union(*profile.values()) if profile else set(),
+                                 feature_status.boot_overrides(profile, ref) if profile else set())
             if defaults is None or not (profile or values):
                 b['features'] = b['overridden_keys'] = None
                 continue
@@ -889,6 +918,10 @@ def complete_device_reports(ota, device_summaries, report_dir, features):
                 per_feature[i][st] += 1
         doc['features'] = feature_info
         doc['features_error'] = None if defaults is not None else 'bagheera_config.ini / nd_config.ini not available for this OTA'
+        check = cloud_config_check(cloud.get(device) if cloud is not None else None, defaults, latest_config)
+        doc['cloud_config'] = check
+        # The OTA report lists the differing keys only
+        summary['cloud_config'] = check and dict(check, keys=[k for k in check['keys'] if k[4] == cloud_config.DIFF])
         with open(path, 'w') as f:
             json.dump(doc, f, separators=(',', ':'))
         with open(path.with_suffix('.html'), 'w') as f:
@@ -969,6 +1002,26 @@ def report_summary(ota, device_summaries, given, device_info, features):
         'feature_sets': [{'features': list(names), 'devices': n,
                           'missing': [x for x in all_names if x not in names]}
                          for names, n in sets.most_common()],
+    }
+
+
+def cloud_config_summary(device_summaries, sm, enabled):
+    """The OTA report's cloud override config check: verdict per device, counted over the
+    active devices (some drive time on this OTA), and the keys that differ most often."""
+    if not enabled:
+        return {'enabled': False}
+    minutes = sm.get('drive_minutes_by_device') or {}
+    devices = {d: s.get('cloud_config') for d, s in sorted(device_summaries.items()) if s.get('cloud_config')}
+    active = [d for d in devices if minutes.get(d)]
+    by_verdict = {v: [d for d in active if devices[d]['verdict'] == v] for v in cloud_config.VERDICTS}
+    diff_keys = Counter((k[0], k[1]) for d in by_verdict['FAIL'] for k in devices[d]['keys'])
+    return {
+        'enabled': True,
+        'active': active,
+        'inactive': [d for d in devices if d not in active],
+        'verdicts': by_verdict,
+        'devices': devices,
+        'diff_keys': [{'section': s, 'key': k, 'devices': n} for (s, k), n in diff_keys.most_common()],
     }
 
 
@@ -1282,6 +1335,9 @@ tbody tr:hover td{background:var(--hover)}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 td.wrap{white-space:normal;min-width:320px;color:var(--muted);font-size:12.5px}
 td.zero{color:var(--none)}
+#cloud-config p.muted{color:var(--muted);font-size:12.5px;margin:0 0 4px}#cloud-config .muted{color:var(--muted)}
+#cloud-config h3{font-size:13.5px;margin:18px 0 0}#cloud-config code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.keybox{max-height:180px;overflow-y:auto;padding:4px 0;line-height:1.7}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
@@ -1359,7 +1415,7 @@ document.querySelectorAll('section[id]').forEach(s => spy.observe(s));
 """
 
 NAV = [('devices', 'Device Summary'), ('logs', 'Log Upload Summary'), ('drive', 'Drive Summary'),
-       ('feature-sets', 'Feature Set Summary'), ('api', 'API Call Summary'), ('callouts', 'Callouts'), ('features', 'Feature Level Summary')]
+       ('feature-sets', 'Feature Set Summary'), ('cloud-config', 'Cloud Config Check'), ('api', 'API Call Summary'), ('callouts', 'Callouts'), ('features', 'Feature Level Summary')]
 
 
 def _n(v):
@@ -1465,6 +1521,64 @@ def _feature_sets_section(sm):
             + '</section>')
 
 
+CLOUD_SOURCES = {'log': 'logged at startup', 'default': 'OTA default (not in device override)',
+                 'overridden': 'overridden on device, value not logged', 'not_logged': 'not in the logs'}
+CLOUD_VERDICT_CLASS = {'PASS': 'n-pass', 'FAIL': 'n-fail', 'UNVERIFIED': 'n-nt', 'ERROR': 'zero'}
+
+
+def _ms_fmt(ms):
+    return _fmt_ts(ms)[:19] if isinstance(ms, (int, float)) and ms > 0 else ''
+
+
+def _cloud_key_list(keys):
+    return '<br>'.join(f'<code>{_esc(sec)}.{_esc(key)}</code> cloud <b>{_esc(cloud)}</b> · device '
+                       f'<b>{_esc(dev)}</b> <span class="muted">({_esc(CLOUD_SOURCES.get(src, src))})</span>'
+                       for sec, key, cloud, dev, _, src, _ in keys)
+
+
+def _cloud_config_section(report):
+    cc = report.get('cloud_config')
+    if cc is None:  # a report made before the check existed (re-rendered by refresh_callouts)
+        return ''
+    head = '<section id="cloud-config"><h2>Cloud Config Check</h2>'
+    if not cc.get('enabled'):
+        return head + '<p class="muted">Off: no IDMS credentials (IDMS_USERNAME / IDMS_PASSWORD) or CLOUD_CONFIG=0</p></section>'
+    active, verdicts, devices = cc['active'], cc['verdicts'], cc['devices']
+    tiles = (_tile(len(active), 'Active devices', devices=active)
+             + _tile(len(verdicts['PASS']), 'Pass (same as cloud)', _pct(len(verdicts['PASS']), len(active)), 'c-pass', devices=verdicts['PASS'])
+             + _tile(len(verdicts['FAIL']), 'Fail (different)', _pct(len(verdicts['FAIL']), len(active)), 'c-fail', devices=verdicts['FAIL'])
+             + _tile(len(verdicts['UNVERIFIED']), 'Unverified', _pct(len(verdicts['UNVERIFIED']), len(active)), 'c-nt', devices=verdicts['UNVERIFIED']))
+    if verdicts['ERROR']:
+        tiles += _tile(len(verdicts['ERROR']), 'Not fetched', _pct(len(verdicts['ERROR']), len(active)), 'c-none', devices=verdicts['ERROR'])
+    order = {v: i for i, v in enumerate(['FAIL', 'UNVERIFIED', 'ERROR', 'PASS'])}
+    rows = []
+    for d in sorted(active, key=lambda d: (order[devices[d]['verdict']], d)):
+        c = devices[d]
+        counts = c.get('counts') or {}
+        diff = c['keys']
+        keys = (f'<details><summary>{len(diff)} key(s)</summary><div class="keybox">{_cloud_key_list(diff)}</div></details>'
+                if diff else _esc(c.get('error') or ''))
+        info = c.get('cloud_device') or {}
+        version = info.get('current_config_override_version') or info.get('config_override_version') or ''
+        pushed = _ms_fmt(info.get('config_override_update_time'))
+        rows.append(f'<tr><td><a href="devices/{_esc(d)}.html#cloud-config">{_esc(d)}</a></td>'
+                    f'<td class="{CLOUD_VERDICT_CLASS[c["verdict"]]}">{_esc(c["verdict"].title())}</td>'
+                    f'<td class="num{"" if counts.get("match") else " zero"}">{counts.get("match", "")}</td>'
+                    f'<td class="num{" n-fail" if counts.get("diff") else " zero"}">{counts.get("diff", "")}</td>'
+                    f'<td class="wrap">{_esc(version)}{f"<br><span class=muted>pushed {_esc(pushed)}</span>" if pushed else ""}</td>'
+                    f'<td class="wrap">{keys}</td></tr>')
+    out = [head, f'<div class="tiles">{tiles}</div>',
+           _table(['Device ID', 'Result', '#Same', '#Different', 'Cloud override config', 'Different keys'], rows)]
+    if cc['diff_keys']:
+        krows = [f'<tr><td><code>{_esc(k["section"])}.{_esc(k["key"])}</code></td><td class="num n-fail">{k["devices"]}</td></tr>'
+                 for k in cc['diff_keys']]
+        out.append('<h3>Keys that differ</h3>' + _table(['Key', '#Devices'], krows))
+    if cc['inactive']:
+        out.append(f'<p class="muted">Not counted (no drive time on this OTA): {" ".join(_dev_link(d) for d in cc["inactive"])}</p>')
+    out.append('</section>')
+    return ''.join(out)
+
+
 def _api_calls_section(sm):
     minutes = sm['drive_minutes_by_device']
     # API ids are strings once the report went through JSON (refresh_callouts)
@@ -1532,7 +1646,7 @@ def render_html(report):
     body = [f'<div class="top"><h1>{_esc(ota)}</h1><span>{_esc(report["generated_at"])}</span></div>']
     if sm:
         body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
-                 _api_calls_section(sm), _callouts_section(report)]
+                 _cloud_config_section(report), _api_calls_section(sm), _callouts_section(report)]
     body.append(_feature_level_section(report))
     return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body), f'<script>{REPORT_JS}</script>')
 
@@ -1743,8 +1857,66 @@ def _drive_rows(boots):
     return _table(head, rows)
 
 
-DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('api', 'API calls'),
+DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('cloud-config', 'Cloud config'), ('api', 'API calls'),
               ('boot-summary', 'Boot summary'), ('boots', 'Boots')]
+
+
+def _device_cloud_config(cc):
+    """Device page: the cloud override config check (cloud_config_check)."""
+    out = ['<section id="cloud-config"><h2>Cloud config</h2>']
+    chip = {'PASS': 'pass', 'FAIL': 'fail', 'UNVERIFIED': 'not_triggered', 'ERROR': 'na'}[cc['verdict']]
+    info = cc.get('cloud_device') or {}
+    facts = [f'<span class="chip {chip}">{_esc(cc["verdict"])}</span>']
+    if cc.get('counts'):
+        c = cc['counts']
+        facts.append(f'{c["match"]} same · {c["diff"]} different · {c["unchecked"]} not in the logs')
+    out.append(f'<p>{" &nbsp; ".join(facts)}</p>')
+    rows = []
+    version = info.get('current_config_override_version') or info.get('config_override_version')
+    if version:
+        rows.append(('Cloud override config', version))
+    pushed = info.get('config_override_update_time')
+    if _ms_fmt(pushed):
+        rows.append(('Override pushed', _ms_fmt(pushed)))
+    if info.get('cloud_expected_merge_config_version') and info.get('current_merge_config_version') != info.get('cloud_expected_merge_config_version'):
+        rows.append(('Merge config', 'the device has not applied the latest merge config the cloud expects'))
+    if cc.get('fetched_at'):
+        rows.append(('Fetched', cc['fetched_at']))
+    boot = cc.get('boot')
+    if boot:
+        rows.append(('Compared with boot', f'<a href="#boot-{boot["index"]}">{_esc(boot["label"])}</a>'))
+        if isinstance(pushed, (int, float)) and pushed > boot['start']:
+            rows.append(('Note', 'the cloud override was pushed after this boot started; differences may come from that push'))
+    if cc.get('error'):
+        rows.append(('Note', cc['error']))
+    out.append('<table>' + ''.join(f'<tr><th style="width:240px">{_esc(k)}</th><td>{v if k == "Compared with boot" else _esc(v)}</td></tr>'
+                                   for k, v in rows) + '</table>')
+    by_status = defaultdict(list)
+    for row in cc.get('keys') or []:
+        by_status[row[4]].append(row)
+
+    def key_table(keys):
+        return ('<table><tr><th>Key</th><th>Cloud</th><th>Device</th><th>From</th><th>Log line</th></tr>'
+                + ''.join(f'<tr><td><code>{_esc(sec)}.{_esc(key)}</code></td><td>{_esc(cloud)}</td><td>{_esc(dev)}</td>'
+                          f'<td>{_esc(CLOUD_SOURCES.get(src, src))}</td><td>{f"<span class=line>{_esc(ev)}</span>" if ev else ""}</td></tr>'
+                          for sec, key, cloud, dev, _, src, ev in keys) + '</table>')
+
+    for status, title, opened in ((cloud_config.DIFF, 'different from the cloud', True),
+                                  (cloud_config.MATCH, 'same as the cloud', False)):
+        if by_status[status]:
+            out.append(f'<details{" open" if opened else ""}><summary>{len(by_status[status])} key(s) {title}</summary>'
+                       f'<div class="body">{key_table(by_status[status])}</div></details>')
+    unchecked = by_status[cloud_config.UNCHECKED]
+    if unchecked:
+        overridden = sum(1 for k in unchecked if k[5] == 'overridden')
+        out.append(f'<details><summary>{len(unchecked)} key(s) not in the logs'
+                   f'{f" ({overridden} overridden on the device, value not logged)" if overridden else ""}</summary><div class="body">'
+                   + '<br>'.join(f'<code>{_esc(sec)}.{_esc(key)} = {_esc(cloud)}</code>'
+                                 + (' <span class="muted">overridden on device</span>' if src == 'overridden' else '')
+                                 for sec, key, cloud, _, _, src, _ in unchecked)
+                   + '</div></details>')
+    out.append('</section>')
+    return ''.join(out)
 
 
 def render_device_html(doc):
@@ -1772,6 +1944,10 @@ def render_device_html(doc):
     out.append('</section>')
 
     nav = DEVICE_NAV
+    if doc.get('cloud_config'):
+        out.append(_device_cloud_config(doc['cloud_config']))
+    else:
+        nav = [n for n in nav if n[0] != 'cloud-config']
     if doc.get('api_summary'):
         out.append(f'<section id="api"><h2>API calls</h2>{_api_section(doc["api_summary"])}</section>')
     else:
@@ -2027,14 +2203,22 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     if not by_ota:
         log.warning('No device boots with an OTA version found in the range')
 
+    cloud = None
+    if cloud_config.enabled():
+        on_ota = sorted({d for summaries in by_ota.values() for d in summaries})
+        with timed(log, 'cloud_config', timings, devices=len(on_ota)):
+            cloud = cloud_config.fetch_all(on_ota)
+    else:
+        log.info('Cloud override config check: off (CLOUD_CONFIG / IDMS credentials)')
     reports = {}
     for ota, device_summaries in sorted(by_ota.items()):
         with timed(log, 'features', timings, ota=ota, devices=len(device_summaries)):
-            config_features = complete_device_reports(ota, device_summaries, report_dir, features)
+            config_features = complete_device_reports(ota, device_summaries, report_dir, features, cloud)
         with timed(log, 'write_ota_report', timings, ota=ota):
             report = build_ota_summary(ota, device_summaries, _TESTS)
             report['config_features'] = config_features
             report['summary'] = report_summary(ota, device_summaries, devices, device_info, features)
+            report['cloud_config'] = cloud_config_summary(device_summaries, report['summary'], cloud is not None)
         with timed(log, 'callouts', timings, ota=ota):
             defaults = ota_config_values(ota)
             report['callouts'] = report_callouts.build(ota, report['summary'], device_summaries, device_info, defaults)
@@ -2056,6 +2240,8 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             'config_keys': report['config_keys'],
             'config_keys_failing': len(report['config_failures']),
             'config_error': report['config_error'],
+            'cloud_config': ({v: len(ds) for v, ds in report['cloud_config']['verdicts'].items()}
+                             if report['cloud_config']['enabled'] else None),
             'summary': {k: (len(v) if isinstance(v, list) else v) for k, v in report['summary'].items()
                         if k not in ('drive_minutes_by_device', 'boots_by_device', 'api_calls_by_device',
                                       'feature_coverage', 'feature_sets')},
