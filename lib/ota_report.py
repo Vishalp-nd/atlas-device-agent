@@ -1623,8 +1623,8 @@ def _logs_section(sm):
     total = sm['devices_on_ota']
     detailed, critical = sm['devices_detailed_logs'], sm['devices_critical_only']
     return ('<section id="logs"><h2>Log Upload Summary</h2><div class="tiles">'
-            + _tile(len(detailed), 'Detailed logs enabled', _pct(len(detailed), total), 'c-acc', devices=detailed)
-            + _tile(len(critical), 'Critical logs uploaded', _pct(len(critical), total), 'c-nt', devices=critical)
+            + _tile(len(detailed), 'Devices with detailed logs enabled', _pct(len(detailed), total), 'c-acc', devices=detailed)
+            + _tile(len(critical), 'Devices with critical logs enabled', _pct(len(critical), total), 'c-nt', devices=critical)
             + '</div></section>')
 
 
@@ -1638,10 +1638,10 @@ def _drive_section(sm):
     return ('<section id="drive"><h2>Drive Summary</h2><div class="tiles">'
             + _tile(sm['devices_on_ota'], 'Active devices', devices=by_time)
             + _tile(f'{total / 60:,.1f} h', 'Total drive time')
-            + _tile(len(sm['devices_under_6h']), 'Running < 6 h', devices=sm['devices_under_6h'])
-            + _tile(len(sm['devices_over_6h']), 'Running > 6 h', devices=sm['devices_over_6h'])
-            + _tile(len(sm['devices_over_24h']), 'Running > 24 h', devices=sm['devices_over_24h'])
-            + _tile(len(low_power), 'Low power mode', devices=low_power)
+            + _tile(len(sm['devices_under_6h']), 'Devices running < 6 h', devices=sm['devices_under_6h'])
+            + _tile(len(sm['devices_over_6h']), 'Devices running > 6 h', devices=sm['devices_over_6h'])
+            + _tile(len(sm['devices_over_24h']), 'Devices running > 24 h', devices=sm['devices_over_24h'])
+            + _tile(len(low_power), 'Low power mode count', devices=low_power)
             + '</div>'
             + _table(['Device', '#Drive min', '#Hours', '#Boots on this OTA'], rows)
             + '</section>')
