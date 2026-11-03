@@ -1035,11 +1035,11 @@ def _summary_chips(summary, order=SHOWN_VERDICTS):
 
 
 def boot_name(b):
-    """UDID 323, or UDID Unknown when no time_sync udid_node line gave it (the service_mon
-    inference is not exact, so it is not shown)."""
+    """The boot's UDID (323), or Log not available when no time_sync udid_node line gave it (the
+    service_mon inference is not exact, so it is not shown)."""
     if b.get('udid') is None or b.get('udid_source') == 'service_mon':
-        return 'UDID Unknown'
-    return f'UDID {b["udid"]}'
+        return 'Log not available'
+    return str(b['udid'])
 
 
 def _boot_label(b):
@@ -1074,8 +1074,7 @@ def _drive_overview(d):
         ('Drives < 6 min', d['drives_short']), ('Drives 6–15 min', d['drives_medium']),
         ('Drives with low power wakeup', d['drives_with_low_power_wakeup']),
         ('Max low power wakeup', na(d['max_low_power_wakeup'])),
-        ('Sessions created / available', f'{d["sessions_created"]} / {d["sessions_available"]}'),
-        ('Drives with fewer sessions than minutes', d['session_issues']),
+        ('Sessions created / Sessions copied to SD card', f'{d["sessions_created"]} / {d["sessions_available"]}'),
         ('Repeated UDIDs', d['repeated_udids']),
         ('Power monitor starts', d['service_starts']), ('Crank-ons', d['crank_ons']),
         ('Runs < 350 s', d['runs_short']), ('Runs 7–16 min (improper shutdown)', d['runs_improper']),
@@ -1568,12 +1567,12 @@ function renderDrive(b) {
   const d = b.drive, p = b.power || {};
   const rows = [];
   if (b.device_type) rows.push(['Device type', `${b.device_type} (from OTA ${b.ota}); test cases for other device types are skipped`]);
-  rows.push(['UDID', b.udid != null && b.udid_source !== 'service_mon' ? `${b.udid}` : 'Unknown']);
+  rows.push(['UDID', b.udid != null && b.udid_source !== 'service_mon' ? `${b.udid}` : 'Log not available']);
   if (d) {
     rows.push(['Drive', `${fmt(d.drive_start)} → ${fmt(d.drive_end)} · ${d.duration_min} min`]);
     if (d.rtc_jump_from !== d.drive_end) rows.push(['RTC jump', `${fmt(d.rtc_jump_from)} → ${fmt(d.rtc_jump_to)}`]);
     rows.push(['Low power wakeup', d.low_power_wakeup]);
-    rows.push(['Sessions created / available', `${d.sessions_created} / ${d.sessions_available}`]);
+    rows.push(['Sessions created / Sessions copied to SD card', `${d.sessions_created} / ${d.sessions_available}`]);
     rows.push(['Power monitor start / stop', `${fmt(d.power_mon_start) || '—'} / ${fmt(d.power_mon_stop) || '—'}`]);
     rows.push(['Crank low', fmt(d.crank_low_at) || '—']);
   } else {
@@ -1729,15 +1728,6 @@ def _drive_rows(boots):
     rows = []
     for b in boots:
         d, power = b.get('drive') or {}, b.get('power') or {}
-        notes = []
-        if b.get('udid_source') == 'service_mon':
-            notes.append('UDID unknown: no time_sync udid_node line')
-        elif b.get('udid') is None:
-            notes.append('No UDID in the logs')
-        if d.get('session_issue'):
-            notes.append('fewer sessions than drive minutes')
-        if d.get('repeated_udid'):
-            notes.append('UDID repeated')
         reasons = ', '.join(power.get('previous_shutdown_reasons', {}))
         sessions = f'{d["sessions_created"]} / {d["sessions_available"]}' if d else ''
         rows.append(
@@ -1747,9 +1737,9 @@ def _drive_rows(boots):
             f'<td class="num">{sessions}</td>'
             f'<td>{_esc(_fmt_ts(d.get("power_mon_start"))[11:19])}</td><td>{_esc(_fmt_ts(d.get("crank_low_at"))[11:19])}</td>'
             f'<td class="num">{_esc(_fmt_minutes(d.get("shutdown_after_ms")))}</td>'
-            f'<td>{f"<code>{_esc(reasons)}</code>" if reasons else ""}</td><td class="muted">{_esc("; ".join(notes))}</td></tr>')
-    head = ['Boot', 'Drive start', 'Drive end', '#Minutes', '#Low power wakeup', '#Sessions created / available',
-            'Power monitor start', 'Crank low', '#Shutdown after crank low', 'Previous shutdown reason', 'Notes']
+            f'<td>{f"<code>{_esc(reasons)}</code>" if reasons else ""}</td></tr>')
+    head = ['UDID', 'Drive start', 'Drive end', '#Minutes', '#Low power wakeup', '#Sessions created / Sessions copied to SD card',
+            'Power monitor start', 'Crank low', '#Shutdown after crank low', 'Previous shutdown reason']
     return _table(head, rows)
 
 
@@ -1760,8 +1750,9 @@ DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('a
 def render_device_html(doc):
     device, ota = doc['device'], doc['ota_version']
     boots = doc['boots']
-    out = [f'<div class="top"><h1>{_esc(device)}</h1><span>OTA {_esc(ota)} · {len(boots)} boot(s) · '
-           f'days {_esc(", ".join(doc["days"]))}</span></div>',
+    days = sorted(doc['days'])
+    span = f'{days[0]} → {days[-1]}' if len(days) > 1 else ''.join(days)
+    out = [f'<div class="top"><h1>{_esc(device)}</h1><span>OTA {_esc(ota)}{f" · {_esc(span)}" if span else ""}</span></div>',
            '<section id="drives"><h2>Drive Summary</h2>', _drive_overview(doc.get('drive_summary')),
            _drive_rows(boots), '</section>']
 
@@ -1794,8 +1785,8 @@ def render_device_html(doc):
         rows.append(f'<tr><td><a href="#boot-{b["index"]}">{_esc(label)}</a></td><td class="num">{on}</td>'
                     f'<td class="num">{n_calls}</td><td>{_config_cell(b["config"])}</td><td>{_summary_chips(b["summary"])}</td></tr>')
     out.append('<section id="boot-summary"><h2>Boot summary</h2>'
-               + _table(['Boot', '#Features enabled', '#API calls', 'Config keys', 'Test cases'], rows) + '</section>')
-    out.append('<section id="boots"><h2>Boots</h2><p class="muted">Boots are named by UDID · open a boot for its drive, '
+               + _table(['UDID', '#Features enabled', '#API calls', 'Config keys', 'Test cases'], rows) + '</section>')
+    out.append('<section id="boots"><h2>Boots</h2><p class="muted">Each boot is named by its UDID · open a boot for its drive, '
                'features, config coverage and test cases</p>')
     for pos, (b, label) in enumerate(zip(boots, labels)):
         out.append(f'<details id="boot-{b["index"]}" data-boot="{pos}"><summary>{_esc(label)} · '
