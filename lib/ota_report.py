@@ -1134,7 +1134,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features):
             for i, st in enumerate(statuses):
                 per_feature[i][st] += 1
         doc['features'] = feature_info
-        doc['features_error'] = None if defaults is not None else f'{ini_path.name} not available for this OTA'
+        doc['features_error'] = None if defaults is not None else 'bagheera_config.ini / nd_config.ini not available for this OTA'
         with open(path, 'w') as f:
             json.dump(doc, f, separators=(',', ':'))
         with open(path.with_suffix('.html'), 'w') as f:
@@ -1152,7 +1152,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features):
             devices_on[i] += bool(c.get('ON'))
         summary.pop('profiles')
     return {
-        'error': None if defaults is not None else f'{ini_path.name} not available for this OTA',
+        'error': None if defaults is not None else 'bagheera_config.ini / nd_config.ini not available for this OTA',
         'features': [dict(info, boots=dict(totals[i]), devices_on=devices_on[i])
                      for i, info in enumerate(feature_info)],
         'reference_services': len(ref),
