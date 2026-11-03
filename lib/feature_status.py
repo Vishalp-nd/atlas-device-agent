@@ -95,9 +95,11 @@ def _norm(value):
         return 'false'
     try:
         number = float(text)
-        return str(int(number)) if number.is_integer() else str(number)
     except ValueError:
         return text
+    text = str(int(number)) if number.is_integer() else str(number)
+    # 1.0 / 0.0 are booleans too (1 / 0 already matched TRUE / FALSE above)
+    return 'true' if text in TRUE else 'false' if text in FALSE else text
 
 
 def same_value(default, expected):
