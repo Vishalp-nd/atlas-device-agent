@@ -68,6 +68,7 @@ from pathlib import Path
 
 import api_calls
 import cfg_parser_logs
+import day_scan
 import drive_metrics
 import feature_status
 import log_archive
@@ -76,6 +77,7 @@ import report_callouts
 import run_logging
 import testcase_log_steps
 from downloader import OTADownloader
+from log_search import MATCH_LINE_CHARS, line_timestamp
 from run_logging import timed
 
 log = logging.getLogger('ota_report')
@@ -86,13 +88,6 @@ LOG_BASE_DIR = Path(os.environ.get('ATLAS_LOG_ROOT', REPO_ROOT / 'OUTPUT' / 'log
 CONFIG_JSON_DIR = Path(os.environ.get('ATLAS_CONFIG_JSON_ROOT', REPO_ROOT / 'OUTPUT' / 'config'))
 REPORT_BASE_DIR = REPO_ROOT / 'OUTPUT' / 'ota_reports'
 
-OTA_VERSION_RE = re.compile(r'CurrentVersion\s+([^\s,]+)')
-EPOCH_MS_RE = re.compile(r'(\d{13})\b')
-DATETIME_RE = re.compile(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:[,.](\d{3}))?')
-# Leading timestamp/uptime fields: their digits are zeroed when caching which patterns
-# a line matches, so repeated messages share a cache entry
-LINE_PREFIX_RE = re.compile(r'^(?:\d+:\s*\d+:|\d{4}-\d{2}-\d{2} [\d:,.]+)')
-ZERO_DIGITS = str.maketrans('123456789', '000000000')
 KEY_TOKEN_RE = re.compile(r'[\w.]+')
 
 # A process whose first CFG_PRSR line is this close to its start started fresh
@@ -106,10 +101,6 @@ CHATTY_START_FACTOR = 3
 
 # Matched lines kept per pattern per boot for the report (all timestamps are kept)
 KEEP_LINES = 100
-# How far back to read for the timestamp of an untimed (continuation) line
-BACKSCAN_BYTES = 64 * 1024
-MATCH_LINE_CHARS = 240
-CLASSIFY_CACHE_MAX = 200_000
 
 # Shown in the reports; NOT_TRIGGERED (nothing expected was logged) and NOT_APPLICABLE
 # (the test is for other device types) are only counted
@@ -134,9 +125,6 @@ OTA_CONFIG_FILES = ('bagheera_config.ini', 'nd_config.ini')
 # Written once the package was searched for every OTA_CONFIG_FILES (some packages lack one)
 CONFIG_FETCHED_MARKER = '.config_fetched'
 
-# Plain (non _c) logs a critical-only upload still has; any other plain log means the
-# device uploads its detailed (non critical) logs
-CRITICAL_UPLOAD_PLAIN_LOGS = {'bhcopy', 'timer', 'timer2'}
 # Worker processes per CPU (OTA_REPORT_WORKERS_PER_CPU): the work is grep and
 # decompression with I/O waits, so more processes than cores keeps the CPUs busy
 WORKERS_PER_CPU = float(os.environ.get('OTA_REPORT_WORKERS_PER_CPU', '3'))
@@ -162,18 +150,6 @@ def _fmt_ts(ts):
     if ts is None:
         return ''
     return datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-
-def line_timestamp(line):
-    """Epoch-ms of a log line (epoch-ms or UTC datetime prefix), or None."""
-    m = EPOCH_MS_RE.match(line)
-    if m:
-        return int(m.group(1))
-    m = DATETIME_RE.match(line)
-    if m:
-        dt = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-        return int(dt.timestamp() * 1000) + int(m.group(2) or 0)
-    return None
 
 
 def device_days(device, start, end):
@@ -250,58 +226,6 @@ def detect_boot_starts(procs):
         else:
             i += 1
     return boots
-
-
-def ota_versions(logs_dirs):
-    """Sorted [(ts, version)] of the CurrentVersion lines in otacheck.log."""
-    files = [p for d in logs_dirs for p in sorted(d.glob('otacheck*.log*'))]
-    versions = set()
-    for _, line in cfg_parser_logs.grep_lines(['-F', '-e', 'CurrentVersion'], files):
-        m = OTA_VERSION_RE.search(line)
-        ts = line_timestamp(line)
-        if m and ts is not None:
-            versions.add((ts, m.group(1)))
-    return sorted(versions)
-
-
-LOG_SPAN_CHUNK = 64 * 1024
-DAY_MS = 86_400_000
-LOG_TS_MIN = int(datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
-
-
-def log_span(logs_dir, day):
-    """Earliest and latest timestamped log line of a day, over every log file:
-    {'first': [ts, file, line], 'last': [ts, file, line]} (file relative to logs/).
-
-    Only each file's head and tail are read (log files are written in time order). A day's
-    upload can hold much older lines (a device that was offline), so those count; only
-    impossible timestamps (before 2020, unsynced RTC, or after the folder's day) are ignored.
-    """
-    lo = LOG_TS_MIN
-    hi = int(datetime.strptime(day, '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp() * 1000) + 2 * DAY_MS
-    first = last = None
-    for path in sorted(p for p in Path(logs_dir).rglob('*') if p.is_file()):
-        try:
-            with open(path, 'rb') as f:
-                head = f.read(LOG_SPAN_CHUNK)
-                size = f.seek(0, os.SEEK_END)
-                f.seek(max(0, size - LOG_SPAN_CHUNK))
-                tail = f.read()
-        except OSError:
-            continue
-        rel = path.relative_to(logs_dir).as_posix()
-        for chunk, newest in ((head, False), (tail, True)):
-            lines = chunk.decode('latin-1').splitlines()
-            for line in (reversed(lines) if newest else lines):
-                ts = line_timestamp(line)
-                if ts is not None and lo <= ts < hi:
-                    hit = [ts, rel, line[:MATCH_LINE_CHARS]]
-                    if newest and (last is None or ts > last[0]):
-                        last = hit
-                    if not newest and (first is None or ts < first[0]):
-                        first = hit
-                    break
-    return {k: v for k, v in (('first', first), ('last', last)) if v}
 
 
 def boot_window(boot, span, drive=None):
@@ -422,45 +346,6 @@ def check_config_keys(ini_keys, lines_by_service):
 
 # ── device log search ───────────────────────────────────────────────────
 
-def required_literal(regex):
-    """Longest run of plain characters every match of regex must contain, or None.
-
-    Used to prefilter lines with a fast substring search before running the regex.
-    """
-    if re.search(r'(?<!\\)\|', regex):  # alternation: no single required literal
-        return None
-    runs, current, i = [], '', 0
-    while i < len(regex):
-        c = regex[i]
-        if c == '\\' and i + 1 < len(regex):
-            nxt = regex[i + 1]
-            if nxt.isalnum():  # \d, \s, \w ... are classes, not literals
-                runs.append(current)
-                current = ''
-            else:
-                current += nxt
-            i += 2
-        elif c in '*?{':  # previous char is optional
-            runs.append(current[:-1])
-            current = ''
-            i += 1
-        elif c == '[':
-            runs.append(current)
-            current = ''
-            i = regex.find(']', i + 2) + 1 or len(regex)
-        elif c in '.+()^$':
-            # x+ still needs one x, so keep the run before '+'
-            runs.append(current)
-            current = ''
-            i += 1
-        else:
-            current += c
-            i += 1
-    runs.append(current)
-    best = max(runs, key=len)
-    return best if len(best) >= 3 else None
-
-
 def _grep_ok(bres):
     with tempfile.NamedTemporaryFile('w', encoding='latin-1', suffix='.pat') as pf:
         pf.write('\n'.join(bres) + '\n')
@@ -489,96 +374,6 @@ def patterns_by_service(tests):
                     log.warning('grep rejects pattern %r, searching it literally', bre)
                     pats[regex] = testcase_log_steps._bre_escape(bre)
     return {service: [(bre, regex) for regex, bre in pats.items()] for service, pats in result.items()}
-
-
-def service_files(logs_dirs, service):
-    # Same lookup as the offline search_log: <service>*.log*, else <service>*
-    files = []
-    for logs_dir in logs_dirs:
-        found = sorted(logs_dir.glob(f'{service}*.log*'))
-        if not found:
-            found = [f for f in sorted(logs_dir.glob(f'{service}*')) if f.is_file()]
-        files.extend(found)
-    return files
-
-
-def _ts_before(f, start, end, line_start):
-    """Timestamp of the last timestamped line in bytes [start, end) of f, or None.
-
-    line_start: whether start is the beginning of a line (else the first piece is skipped).
-    """
-    f.seek(start)
-    lines = f.read(end - start).decode('latin-1').split('\n')
-    for line in reversed(lines if line_start else lines[1:]):
-        ts = line_timestamp(line)
-        if ts is not None:
-            return ts
-    return None
-
-
-def iter_service_hits(files, patterns):
-    """Yield (ts, [pattern index, ...], line) for each log line matching some pattern.
-
-    One grep pass returns every line matching any pattern; Python then tells
-    which patterns each hit matches. A hit without a timestamp (continuation
-    line) takes the time of the closest timestamped line before it, read back
-    from the hit's byte offset.
-    """
-    compiled = []
-    for i, (_, regex) in enumerate(patterns):
-        literal = required_literal(regex)
-        compiled.append((i, re.compile(regex, re.IGNORECASE), literal.lower() if literal else None))
-    cache, last = {}, {}  # last: path -> (end offset, ts) of the previous hit
-    handles = {}
-    try:
-        with tempfile.NamedTemporaryFile('w', encoding='latin-1', suffix='.pat') as pf:
-            pf.write('\n'.join(bre for bre, _ in patterns) + '\n')
-            pf.flush()
-            for path, line in cfg_parser_logs.grep_lines(['-b', '-i', '-G', '-f', pf.name], files):
-                offset, _, line = line.partition(':')
-                offset = int(offset)
-                ts = line_timestamp(line)
-                if ts is None:
-                    prev_end, prev_ts = last.get(path, (0, None))
-                    f = handles.get(path) or handles.setdefault(path, open(path, 'rb'))
-                    # Only the bytes since the previous hit can hold a newer timestamp
-                    start = max(prev_end, offset - BACKSCAN_BYTES)
-                    ts = _ts_before(f, start, offset, start == prev_end) or prev_ts
-                # latin-1 is one byte per char, so len(line) is the line's byte length
-                last[path] = (offset + len(line) + 1, ts)
-                if ts is None:
-                    continue
-                m = LINE_PREFIX_RE.match(line)
-                message = line[:m.end()].translate(ZERO_DIGITS) + line[m.end():] if m else line
-                matched = cache.get(message)
-                if matched is None:
-                    lower = message.lower()
-                    matched = [i for i, rx, lit in compiled if (lit is None or lit in lower) and rx.search(message)]
-                    if len(cache) >= CLASSIFY_CACHE_MAX:
-                        cache.clear()
-                    cache[message] = matched
-                if matched:
-                    yield ts, matched, line
-    finally:
-        for f in handles.values():
-            f.close()
-
-
-def spool_day_hits(logs_dir, spool):
-    """Write the day's test-pattern hits to spool as 'service\tts\tidx,idx\tline' records.
-
-    Boots are only known once every day has been read, so hits are spooled and
-    assigned to boots afterwards (load_hits). Returns the services that had log files.
-    """
-    services = set()
-    for service, patterns in _PATTERNS.items():
-        files = service_files([logs_dir], service)
-        if not files:
-            continue
-        services.add(service)
-        for ts, matched, line in iter_service_hits(files, patterns):
-            spool.write(f'{service}\t{ts}\t{",".join(map(str, matched))}\t{line[:400]}\n')
-    return services
 
 
 def load_hits(spool_paths, services, boot_starts):
@@ -697,15 +492,6 @@ def evaluate_test(test, hits, boot, boot_start, device_type=None):
     return {'verdict': verdict, 'reason': reason, 'steps': results}
 
 
-def has_detailed_logs(logs_dir):
-    """Whether a day's logs include non-critical logs (plain <service>.log files)."""
-    for p in logs_dir.iterdir():
-        if p.is_file() and '.log' in p.name and '_c.log' not in p.name:
-            if p.name.split('.log')[0] not in CRITICAL_UPLOAD_PLAIN_LOGS:
-                return True
-    return False
-
-
 def ota_defaults(ota):
     """{section: {key: value}} of the OTA's config (OTA_CONFIG_FILES, after ensure_ini), or None."""
     if ota not in _DEFAULTS_CACHE:
@@ -750,44 +536,12 @@ def read_override_values(device, jobs, timings):
 
 
 def scan_device_day(device, day):
-    """Read one day of a device's logs once (rebuilt in RAM from its archives when present,
-    lib/log_archive.py): CFG_PRSR json, otacheck versions, test-pattern hits (spooled to a
-    gzip file the caller deletes), drive events, config value lines, detailed-logs flag.
+    """One device-day read once, every scanner run on it (lib/day_scan.py, lib/scanners/).
 
     Days are independent, so run() reads them in parallel; finish_device() puts a device
-    together once all its days are read.
+    together once all its days are read. The caller deletes the day's hit spool.
     """
-    timings = []
-    events = drive_metrics.DriveEvents()
-    evidence = override_llm.EvidenceCollector({k for f in _FEATURES for _, k, _ in f['conditions']})
-    spool_file = tempfile.NamedTemporaryFile(prefix=f'hits_{device}_{day}_', suffix='.gz',
-                                             dir=log_archive.TMP_ROOT, delete=False)
-    spool_file.close()
-    try:
-        with timed(log, 'read_day', timings, device=device, day=day):
-            with gzip.open(spool_file.name, 'wt', encoding='latin-1', newline='\n', compresslevel=1) as spool:
-                with log_archive.day_logs(LOG_BASE_DIR / device / day, timings=timings) as logs_dir:
-                    with timed(log, 'cfg_parse', timings, level=logging.DEBUG, device=device, day=day):
-                        cfg_parser_logs.write_day(device, day, cfg_parser_logs.extract_day(logs_dir, 'CFG_PRSR'))
-                    with timed(log, 'ota_lookup', timings, level=logging.DEBUG, device=device, day=day):
-                        versions = ota_versions([logs_dir])
-                    with timed(log, 'grep_tests', timings, level=logging.DEBUG, device=device, day=day):
-                        services = spool_day_hits(logs_dir, spool)
-                    with timed(log, 'drive_scan', timings, level=logging.DEBUG, device=device, day=day):
-                        events.add(drive_metrics.scan_day(logs_dir))
-                    with timed(log, 'api_grep', timings, level=logging.DEBUG, device=device, day=day):
-                        calls = api_calls.scan_day(logs_dir, iter_service_hits)
-                    with timed(log, 'evidence_grep', timings, level=logging.DEBUG, device=device, day=day):
-                        evidence.scan_day(logs_dir, line_timestamp)
-                    detailed = has_detailed_logs(logs_dir)
-                    with timed(log, 'log_span', timings, level=logging.DEBUG, device=device, day=day):
-                        span = log_span(logs_dir, day)
-    except BaseException:
-        os.unlink(spool_file.name)
-        raise
-    return {'day': day, 'versions': versions, 'services': services, 'events': events,
-            'evidence': evidence.lines, 'detailed': detailed, 'spool': spool_file.name, 'timings': timings,
-            'api_calls': calls, 'log_span': span}
+    return day_scan.scan_device_day(device, day, LOG_BASE_DIR)
 
 
 def process_device(device, start, end, product=None, report_dir=None, otas=None):
@@ -2153,6 +1907,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     by_ota = defaultdict(dict)
     device_info = {}
     features = _FEATURES = feature_status.load_features()
+    day_scan.configure(patterns=_PATTERNS, feature_keys={k for f in _FEATURES for _, k, _ in f['conditions']})
     log.info('Override values by LLM: %s', 'on' if override_llm.enabled() else 'off (OVERRIDE_LLM / credentials)')
     # One job per device-day (read the logs), then one per device (put it together) as soon as
     # its last day is read. Day jobs are fed a few at a time so finishing jobs (with their LLM

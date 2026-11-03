@@ -110,7 +110,7 @@ def scan_day(logs_dir, iter_hits):
     """{(api id, ts)} of the calls in one day's logs directory.
 
     iter_hits(files, [(bre, regex)]) yields (ts, [pattern index, ...], line), untimed
-    lines taking the time of the line before them (ota_report.iter_service_hits).
+    lines taking the time of the line before them (log_search.iter_service_hits).
     """
     calls = set()
     by_service = defaultdict(list)
