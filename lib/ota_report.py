@@ -1569,10 +1569,6 @@ def _cloud_config_section(report):
                     f'<td class="wrap">{keys}</td></tr>')
     out = [head, f'<div class="tiles">{tiles}</div>',
            _table(['Device ID', 'Result', '#Same', '#Different', 'Cloud override config', 'Different keys'], rows)]
-    if cc['diff_keys']:
-        krows = [f'<tr><td><code>{_esc(k["section"])}.{_esc(k["key"])}</code></td><td class="num n-fail">{k["devices"]}</td></tr>'
-                 for k in cc['diff_keys']]
-        out.append('<h3>Keys that differ</h3>' + _table(['Key', '#Devices'], krows))
     if cc['inactive']:
         out.append(f'<p class="muted">Not counted (no drive time on this OTA): {" ".join(_dev_link(d) for d in cc["inactive"])}</p>')
     out.append('</section>')
