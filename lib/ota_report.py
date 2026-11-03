@@ -1887,7 +1887,7 @@ def _drive_rows(boots):
 
 
 DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('cloud-config', 'Cloud config'), ('api', 'API calls'),
-              ('boot-summary', 'Boot summary'), ('boots', 'Boots')]
+              ('boot-summary', 'Drive Session Summary'), ('boots', 'Boots')]
 
 
 def _device_cloud_config(cc, defaults=None):
@@ -2012,7 +2012,7 @@ def render_device_html(doc):
         n_calls = sum(len(v) for v in (b.get('api_calls') or {}).values())
         rows.append(f'<tr><td><a href="#boot-{b["index"]}">{_esc(label)}</a></td><td class="num">{on}</td>'
                     f'<td class="num">{n_calls}</td><td>{_config_cell(b["config"])}</td><td>{_summary_chips(b["summary"])}</td></tr>')
-    out.append('<section id="boot-summary"><h2>Boot summary</h2>'
+    out.append('<section id="boot-summary"><h2>Drive Session Summary</h2>'
                + _table(['UDID', '#Features enabled', '#API calls', 'Config keys', 'Test cases'], rows) + '</section>')
     out.append('<section id="boots"><h2>Boots</h2><p class="muted">Each boot is named by its UDID · open a boot for its drive, '
                'features, config coverage and test cases</p>')
