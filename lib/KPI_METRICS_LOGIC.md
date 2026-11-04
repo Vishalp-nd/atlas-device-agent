@@ -147,8 +147,9 @@ The log lines are the same for every camera, only the number changes (`Pushed fi
 Cameras 4-8 (`OPTIONAL_CAMS`) are computed only for devices that have the camera (a
 `record_start`, `pushed_file`, `frame_count`, `cam_crash`, `vod_req` or `video_ok` line
 names it), and their rows are shown only when some device on the OTA has a value; cameras
-0-3 are always shown. storage_info lists cameras 4-7 together as `"N"` on the builds seen,
-so their eMMC file counts appear only on builds that list them one by one.
+0-3 are always shown. storage_info has no key per camera 4-8: `no_of_hq` / `no_of_lq` send
+`"0"`-`"3"` and `"N"`, the external cameras summed (diagnostic.cpp, cirbuf_sqlrequests.cpp),
+so the eMMC table has one "External camera (MDVR / DMS)" row from `"N"`.
 
 ### Constants (`lib/kpi_metrics.py`)
 
@@ -219,19 +220,24 @@ reason contains `LOWPOWER`; cyclic / crank = reason contains `CYCLIC`, or wakeup
 contains `IGNITION` / `CRANK`.
 
 **Storage (storage_info).** deviceHealthClient `storage_info` buckets are `"count/MiB"` per
-camera (`no_of_hq`, `no_of_lq`) and `no_of_obs`. File count = count (outward / inward:
+camera (`no_of_hq`: `"0"`-`"3"`, `"N"`; `no_of_lq`: `"0"`, `"1"`, `"N"`; `"N"` = the external
+cameras together) and `no_of_obs`. File count = count (outward / inward:
 hq + lq); average size = MiB x 1.048576 / count (MB); storage hours = outward lq count / 60
 (one file a minute, as test TC_circbuff_777).
 
-**/root size.** svc `Free space` bytes + diagnostic `used memory of /dev/mmcblk0` from the
-nearest used line within 15 min: MiB on most builds (`free + used x 2^20`), a percentage on
-some (`free / (1 - used / 100)`).
+**/root size.** svc free bytes of / (`Free space : N` on bagheera, `Free space at / : N` on
+krait; other paths such as `at /data/` are left out) + diagnostic `used memory of /dev/mmcblk0`
+(the MiB "Used" column of `df -m`) from the nearest used line within 15 min:
+`free + used x 2^20` bytes.
 
-**WAF.** diagnostic `Waf is X` lines less than 5 s apart are one cycle: 1st = internal eMMC,
-2nd = external eMMC (bagheera only).
+**WAF.** diagnostic `Waf is X` lines (the octo NVMe path logs `waf is X`, so any case and any
+tag) less than 5 s apart are one cycle: 1st = internal eMMC, 2nd = external eMMC (bagheera).
 
 **Bands Enabled.** Sierra band preference masks, hex: bit n of `LTE band pref from device is`
 = band n+1, bit n of `bits_65_128` = band n+65. Quectel modems log no mask.
+
+**Frame count / FPS.** `Frame count recieved: N` (ndcentral, cam_streamer) and `Frame count
+received: N` (cam_rec: inward / side / DMS cameras on bagheera3 and octo) are both matched.
 
 **Video file sizes.** circ_buff `Pushed file` lines: the last size per file name (a file is
 re-pushed as it grows / on resync), files under 10 KB left out (privacy-mode and MDVR
@@ -340,15 +346,15 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 | MDVR 6 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 6_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
 | MDVR 7 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 7_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
 | DMS Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 8_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
-| Outward Video - FPS - HD | fps | mean of all samples | "CAM0: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| Inward Video - FPS - HD | fps | mean of all samples | "CAM1: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| Left Video - FPS - HD | fps | mean of all samples | "CAM2: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| Right Video - FPS - HD | fps | mean of all samples | "CAM3: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| MDVR 4 Video - FPS - HD | fps | mean of all samples | "CAM4: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| MDVR 5 Video - FPS - HD | fps | mean of all samples | "CAM5: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| MDVR 6 Video - FPS - HD | fps | mean of all samples | "CAM6: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| MDVR 7 Video - FPS - HD | fps | mean of all samples | "CAM7: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| DMS Video - FPS - HD | fps | mean of all samples | "CAM8: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| Outward Video - FPS - HD | fps | mean of all samples | "CAM0: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| Inward Video - FPS - HD | fps | mean of all samples | "CAM1: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| Left Video - FPS - HD | fps | mean of all samples | "CAM2: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| Right Video - FPS - HD | fps | mean of all samples | "CAM3: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| MDVR 4 Video - FPS - HD | fps | mean of all samples | "CAM4: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| MDVR 5 Video - FPS - HD | fps | mean of all samples | "CAM5: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| MDVR 6 Video - FPS - HD | fps | mean of all samples | "CAM6: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| MDVR 7 Video - FPS - HD | fps | mean of all samples | "CAM7: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| DMS Video - FPS - HD | fps | mean of all samples | "CAM8: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
 
 ### Video File Size Details - LD
 
@@ -363,8 +369,8 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 | MDVR 6 Video - File Size - LD | MB | mean of all samples | "Pushed file 6_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
 | MDVR 7 Video - File Size - LD | MB | mean of all samples | "Pushed file 7_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
 | DMS Video - File Size - LD | MB | mean of all samples | "Pushed file 8_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
-| Outward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
-| Inward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| Outward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
+| Inward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec/cam_streamer) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"` |
 
 ### Preview LQ Videos - Video File Size Details
 
@@ -394,11 +400,7 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 | Total Inward files in eMMC | count | latest value | storage_info no_of_hq["1"] + no_of_lq["1"] | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 | Total Left files in eMMC | count | latest value | storage_info no_of_hq["2"] | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 | Total Right files in eMMC | count | latest value | storage_info no_of_hq["3"] | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
-| Total MDVR 4 files in eMMC | count | latest value | storage_info no_of_hq["4"] + no_of_lq["4"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
-| Total MDVR 5 files in eMMC | count | latest value | storage_info no_of_hq["5"] + no_of_lq["5"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
-| Total MDVR 6 files in eMMC | count | latest value | storage_info no_of_hq["6"] + no_of_lq["6"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
-| Total MDVR 7 files in eMMC | count | latest value | storage_info no_of_hq["7"] + no_of_lq["7"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
-| Total DMS files in eMMC | count | latest value | storage_info no_of_hq["8"] + no_of_lq["8"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total External camera (MDVR / DMS) files in eMMC | count | latest value | storage_info no_of_hq["N"] + no_of_lq["N"]: the external cameras together (no key per camera 4-8 is sent) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 | Obs files in eMMC | count | latest value | storage_info no_of_obs | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 | eMMC - Storage Hours | h | latest value | outward LD files / 60 (one file a minute), as test TC_circbuff_777 | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 
@@ -406,14 +408,14 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 
 | KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
 |---|---|---|---|---|---|
-| Storage Size | GB | latest value | PARTIAL: svc "DISK: Free space" + diagnostic "used memory of /dev/mmcblk0" (MiB, or % on some builds) | `disk_free` (svc)<br>`disk_used` (diagnostic) | `1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log]`<br>`1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB; some builds log a percentage: 46.503920)` |
+| Storage Size | GB | latest value | PARTIAL: svc "DISK: Free space" of / + diagnostic "used memory of /dev/mmcblk0" (MiB) | `disk_free` (svc)<br>`disk_used` (diagnostic) | `1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log] (bagheera; krait: "Free space at / : N", other paths such as "at /data/" are not the root partition and are left out)`<br>`1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB, the "Used" column of df -m)` |
 
 ### WAF - eMMC Metrics
 
 | KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
 |---|---|---|---|---|---|
-| External eMMC | WAF | latest value | 2nd "Waf is X" of a diagnostic WAF cycle (bagheera only) | `waf` (diagnostic) | `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external)` |
-| Internal eMMC | WAF | latest value | 1st "Waf is X" of a diagnostic WAF cycle | `waf` (diagnostic) | `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external)` |
+| External eMMC | WAF | latest value | 2nd "Waf is X" of a diagnostic WAF cycle (bagheera only) | `waf` (diagnostic) | `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external; the octo NVMe path logs lower case "waf is")` |
+| Internal eMMC | WAF | latest value | 1st "Waf is X" of a diagnostic WAF cycle | `waf` (diagnostic) | `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external; the octo NVMe path logs lower case "waf is")` |
 
 ### Tegra Watchdog Timeout
 
@@ -545,7 +547,8 @@ taken to mean, and how values in a line are read. Check these first.
 | `sm_prev_shutdown` classification (abrupt with / without supercap) | one supercap event (103352600191), a few POWER_DOWN | 264080392 (EU) logs POWER_DOWN on most boots: may count non-abrupt boots |
 | `ialerts_found` (inertial alert) | 6603007848 only; no inertial alert on the other samples | detection can come hours after recording, in a later boot |
 | camera 8 (DMS) lines | 103402300078, 103212503854 | |
-| cameras 4-7 (MDVR) lines | krait2 placeholders (4, 5); 6603062324 / 6603045897 file lines; numbering 4-7 / Octo 4, 5, 6 as given, not tested on Octo logs | MDVR FPS and eMMC lines not seen |
+| cameras 4-7 (MDVR) lines | krait2 placeholders (4, 5); 6603062324 / 6603045897 file lines; numbering 4-7 / Octo 4, 5, 6 as given, not tested on Octo logs | MDVR FPS lines not seen |
+| `frame_count` in cam_streamer, `waf` on octo NVMe (`waf is`) | from the source code, not seen in the logs | the line tag (`CAMn:`) of cam_streamer is assumed |
 | `installer_scan_start` / `installer_scan_stop` | 9.6.16, EU krait, some bagheera3 boots | not on every build |
 | `eventdata_fail`, `obs_fail`, `vod_exhausted`, `health_post_failed` | a few lines each | |
 
@@ -582,8 +585,8 @@ taken to mean, and how values in a line are read. Check these first.
 ### How values in a line are read
 
 - storage_info buckets are `"file count/MiB"`; MiB x 1.048576 = MB.
-- diagnostic `used memory of /dev/mmcblk0`: a whole number is MiB, a decimal is a percentage (both seen; told apart by the decimal point).
-- WAF: in a diagnostic cycle the 1st `Waf is` line is the internal eMMC, the 2nd the external.
+- diagnostic `used memory of /dev/mmcblk0` is MiB (df -m). 9.6.16 and EU krait log values like 66.39 / 46.50 there and no free space line, so they get no /root size.
+- WAF: in a diagnostic cycle the 1st `Waf is` line is the internal eMMC, the 2nd the external; which one the octo NVMe line is has not been checked.
 - Bands: bit n of `LTE band pref from device is` = band n+1, bit n of `bits_65_128` = band n+65 (Sierra; checked against one US device: B2,B4,B12,B25,B26,B66,B71).
 - `Frame count received: N` covers 5 s, so FPS = frames / (lines x 5 s) (results 30 / 15 fps match the configured rates).
 - Python service timestamps (`YYYY-MM-DD HH:MM:SS,mmm`) are UTC (checked: health / analytics client times match the epoch lines).
@@ -949,10 +952,10 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 
 #### `frame_count`
 
-- Service log: `ndcentral/cam_rec`
+- Service log: `ndcentral/cam_rec/cam_streamer`
 - grep text: `Frame count rec`
 - Regex: `CAM(?P<cam>\d+): I: \d+: \d+: Frame count rec(?:ei|ie)ved: (?P<frames>\d+)`
-- Sample: `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)`
+- Sample: `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"`
 - Reduced in the scan: `frames` summed per 10 min and camera
 - Used by: Outward Video - FPS - HD, Inward Video - FPS - HD, Left Video - FPS - HD, Right Video - FPS - HD, MDVR 4 Video - FPS - HD, MDVR 5 Video - FPS - HD, MDVR 6 Video - FPS - HD, MDVR 7 Video - FPS - HD, DMS Video - FPS - HD, Outward Video - FPS - LD, Inward Video - FPS - LD
 
@@ -962,7 +965,7 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - grep text: `"storage_info"`
 - Regex: `Received message: \{"storage_info": (?=(?:.*"no_of_hq": \{(?P<hq>[^}]*)\})?)(?=(?:.*"no_of_lq": \{(?P<lq>[^}]*)\})?)(?=(?:.*"no_of_obs": "(?P<obs>[^"]*)")?)`
 - Sample: `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")`
-- Used by: Outward - LD File Size (Average), Inward - LD File Size (Average), Outward - HD File Size (Average), Inward - HD File Size (Average), Max HD Obs files can be stored - File Count, Total Outward files in eMMC, Total Inward files in eMMC, Total Left files in eMMC, Total Right files in eMMC, Total MDVR 4 files in eMMC, Total MDVR 5 files in eMMC, Total MDVR 6 files in eMMC, Total MDVR 7 files in eMMC, Total DMS files in eMMC, Obs files in eMMC, eMMC - Storage Hours
+- Used by: Outward - LD File Size (Average), Inward - LD File Size (Average), Outward - HD File Size (Average), Inward - HD File Size (Average), Max HD Obs files can be stored - File Count, Total Outward files in eMMC, Total Inward files in eMMC, Total Left files in eMMC, Total Right files in eMMC, Total External camera (MDVR / DMS) files in eMMC, Obs files in eMMC, eMMC - Storage Hours
 
 #### `obs_ld_size`
 
@@ -977,7 +980,7 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - Service log: `svc`
 - grep text: `Free space`
 - Regex: `DISK: I: \d+: \d+: Free space (?:at / )?: (?P<bytes>\d+)$`
-- Sample: `1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log]`
+- Sample: `1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log] (bagheera; krait: "Free space at / : N", other paths such as "at /data/" are not the root partition and are left out)`
 - Used by: Storage Size
 
 #### `disk_used`
@@ -985,15 +988,15 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - Service log: `diagnostic`
 - grep text: `used memory of /dev/mmcblk0 is`
 - Regex: `used memory of /dev/mmcblk0 is (?P<used>[\d.]+)$`
-- Sample: `1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB; some builds log a percentage: 46.503920)`
+- Sample: `1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB, the "Used" column of df -m)`
 - Used by: Storage Size
 
 #### `waf`
 
 - Service log: `diagnostic`
 - grep text: `Waf is `
-- Regex: `WAF_U: I: \d+: \d+: Waf is (?P<waf>[\d.]+)`
-- Sample: `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external)`
+- Regex: `\b[Ww]af is (?P<waf>[\d.]+)`
+- Sample: `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external; the octo NVMe path logs lower case "waf is")`
 - Used by: External eMMC, Internal eMMC
 
 #### `bt_ignition_on`

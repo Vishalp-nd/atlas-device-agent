@@ -194,8 +194,8 @@ KPI_LOG_LINES = {
         r'Pushed file (?P<cam>\d+)_(?P<name>trip\S+?_y)(?P<ext>\.mp4\.ld\.mp4|\.mp4|\.zip) with size (?P<size>\d+) to file_size_check_queue',
         '1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]'),
     'frame_count': Line(
-        ('ndcentral', 'cam_rec'), 'Frame count rec', r'CAM(?P<cam>\d+): I: \d+: \d+: Frame count rec(?:ei|ie)ved: (?P<frames>\d+)',
-        '1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)'),
+        ('ndcentral', 'cam_rec', 'cam_streamer'), 'Frame count rec', r'CAM(?P<cam>\d+): I: \d+: \d+: Frame count rec(?:ei|ie)ved: (?P<frames>\d+)',
+        '1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan). ndcentral / cam_streamer spell it "recieved", cam_rec (inward / side / DMS cameras on bagheera3, octo) "received"'),
     'storage_info': Line(
         'deviceHealthClient', '"storage_info"',
         r'Received message: \{"storage_info": (?=(?:.*"no_of_hq": \{(?P<hq>[^}]*)\})?)(?=(?:.*"no_of_lq": \{(?P<lq>[^}]*)\})?)(?=(?:.*"no_of_obs": "(?P<obs>[^"]*)")?)',
@@ -205,13 +205,13 @@ KPI_LOG_LINES = {
         "2026-10-27 18:30:41,982 - root - INFO - obsZipDestFile size: b'/home/ubuntu/.nddevice/observations/0_trip5689_part05d3c2_33.3346_-117.2435_0.0_1793125756531_y_05468d43cec9da91e04814043039277c.zip' -- 17296  [6603001461_2026-10-28/inference.log]"),
     'disk_free': Line(
         'svc', 'Free space', r'DISK: I: \d+: \d+: Free space (?:at / )?: (?P<bytes>\d+)$',
-        '1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log]'),
+        '1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log] (bagheera; krait: "Free space at / : N", other paths such as "at /data/" are not the root partition and are left out)'),
     'disk_used': Line(
         'diagnostic', 'used memory of /dev/mmcblk0 is', r'used memory of /dev/mmcblk0 is (?P<used>[\d.]+)$',
-        '1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB; some builds log a percentage: 46.503920)'),
+        '1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB, the "Used" column of df -m)'),
     'waf': Line(
-        'diagnostic', 'Waf is ', r'WAF_U: I: \d+: \d+: Waf is (?P<waf>[\d.]+)',
-        '1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external)'),
+        'diagnostic', 'Waf is ', r'\b[Ww]af is (?P<waf>[\d.]+)',
+        '1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external; the octo NVMe path logs lower case "waf is")'),
 
     # ── Installer app / Driveri app (btfv = nd_bt_man) ───────────────────────────────────
     'bt_ignition_on': Line(
@@ -509,16 +509,15 @@ def _tables():
             M('emmc_cam1', 'Total Inward files in eMMC', 'count', 'last', _storage_count('hq', 1, 'lq'), ['storage_info'], 'storage_info no_of_hq["1"] + no_of_lq["1"]'),
             M('emmc_cam2', 'Total Left files in eMMC', 'count', 'last', _storage_count('hq', 2), ['storage_info'], 'storage_info no_of_hq["2"]'),
             M('emmc_cam3', 'Total Right files in eMMC', 'count', 'last', _storage_count('hq', 3), ['storage_info'], 'storage_info no_of_hq["3"]'),
-            *[M(f'emmc_cam{c}', f'Total {n} files in eMMC', 'count', 'last', _storage_count('hq', c, 'lq'), ['storage_info'],
-                f'storage_info no_of_hq["{c}"] + no_of_lq["{c}"] (builds that list the camera on its own)', cam=c)
-              for c, n in cam_names if c in OPTIONAL_CAMS],
+            M('emmc_ext', 'Total External camera (MDVR / DMS) files in eMMC', 'count', 'last', _storage_count('hq', 'N', 'lq'), ['storage_info'],
+              'storage_info no_of_hq["N"] + no_of_lq["N"]: the external cameras together (no key per camera 4-8 is sent)'),
             M('emmc_obs', 'Obs files in eMMC', 'count', 'last', _storage_count('obs'), ['storage_info'], 'storage_info no_of_obs'),
             M('emmc_hours', 'eMMC - Storage Hours', 'h', 'last', _storage_hours, ['storage_info'], 'outward LD files / 60 (one file a minute), as test TC_circbuff_777'),
         ], 'Latest storage_info of each device (meaningful once the card is full).'),
 
         Table('kpi-root', 'Internal Storage - /root', [
             M('root_size', 'Storage Size', 'GB', 'last', _root_size, ['disk_free', 'disk_used'],
-              'PARTIAL: svc "DISK: Free space" + diagnostic "used memory of /dev/mmcblk0" (MiB, or % on some builds)'),
+              'PARTIAL: svc "DISK: Free space" of / + diagnostic "used memory of /dev/mmcblk0" (MiB)'),
         ], ''),
 
         Table('kpi-waf', 'WAF - eMMC Metrics', [
@@ -1155,7 +1154,7 @@ def _storage_hours(d):
 
 
 def _root_size(d):
-    """GB of the root partition: free bytes + used (MiB, or a % on some builds), nearest lines."""
+    """GB of the root partition: free bytes of / + used MiB (df -m Used), nearest lines."""
     used = d.hits('disk_used')
     stamps = [h.ts for h in used]
     out = []
@@ -1163,14 +1162,7 @@ def _root_size(d):
         i = bisect.bisect_right(stamps, h.ts) - 1
         if i < 0 or h.ts - stamps[i] > 15 * 60_000:
             continue
-        free, raw = int(h.g['bytes']), used[i].g['used']
-        if '.' in raw:  # percent used
-            pct = float(raw)
-            if not 0 < pct < 100:
-                continue
-            total = free / (1 - pct / 100)
-        else:
-            total = free + int(raw) * 1024 ** 2
+        total = int(h.g['bytes']) + float(used[i].g['used']) * 1024 ** 2
         out.append((h.ts, total / 1e9))
     return out
 
