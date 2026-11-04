@@ -18,7 +18,10 @@ Conventions
     `System Uptime: N seconds`, else power_mon `check_uptime ... uptime_secs N`. The
     report's own boot start (earliest service start) is 8-30 s later than this. No boot LED
     state is logged; the LED hints of the KPI list map to the nearest logged event.
-  * Camera index: 0 outward, 1 inward, 2 left, 3 right, 8 DMS (`Bagheera3 Left cam 2`).
+  * Camera index: 0 outward, 1 inward, 2 left, 3 right (`Bagheera3 Left cam 2`), 4-7 MDVR
+    (Octo: 4, 5, 6), 8 DMS. The lines are the same for every camera, only the number
+    changes, so the per-camera KPIs are made for each camera of CAMS; the columns of
+    cameras 4-8 (OPTIONAL_CAMS) are shown only when some device logged them.
   * "Since power on" metrics are computed per power-on: the anchors of all uptime lines, the
     ones within POWER_ON_CLUSTER_MS of each other being one power-on (this does not depend on
     the report's boot detection, which can merge a short hung boot with the next one). Each
@@ -337,31 +340,39 @@ ALIVE_GAP_MS = 20_000
 BUCKET = {'frame_count': (600_000, 'frames')}
 ONCE = {'event_code': 'uuid'}
 
-CAMS = {0: 'Outward', 1: 'Inward', 2: 'Left', 3: 'Right', 8: 'DMS'}
+CAMS = {0: 'Outward', 1: 'Inward', 2: 'Left', 3: 'Right',
+        4: 'MDVR 4', 5: 'MDVR 5', 6: 'MDVR 6', 7: 'MDVR 7', 8: 'DMS'}
+# Cameras only some product lines have (MDVR, DMS): their columns are left out of a report
+# when no device on it logged them
+OPTIONAL_CAMS = {4, 5, 6, 7, 8}
 
 # ════════════════════════════════════════════════════════════════════════════════════════
 # 2. KPI_TABLES. Metric(id, name, unit, agg, fn, lines, how)
 #    agg (device value from its samples): sum | mean | max | last | pct (100 x mean of 0/1)
 #    fn: compute function (section 3) returning [(ts, value)]; None = no log line found
+#    cam: the camera of a per-camera column of OPTIONAL_CAMS (else None): computed only for
+#         devices that have the camera, the column shown only when some device has a value
 # ════════════════════════════════════════════════════════════════════════════════════════
 
-Metric = namedtuple('Metric', 'id name unit agg fn lines how')
+Metric = namedtuple('Metric', 'id name unit agg fn lines how cam')
+Metric.__new__.__defaults__ = (None,)
 Table = namedtuple('Table', 'id title metrics note')
 
 
 def _tables():
     # Built in a function so the compute helpers (section 3) can be defined below it
-    M = Metric
-    cam_names = [(0, 'Outward'), (1, 'Inward'), (2, 'Left'), (3, 'Right')]
+    def M(*args, cam=None):
+        return Metric(*args, cam=cam if cam in OPTIONAL_CAMS else None)
+    cam_names = sorted(CAMS.items())
     return [
         Table('kpi-alerts', 'Alerts Summary', [
             M('alerts_detected', 'Total Alerts Detected', 'count', 'sum', _sum_group('alerts_contains', 'n'),
               ['alerts_contains'], 'sum of N over "alerts.json contains N alert(s)" (final alert list of each session)'),
             M('alerts_cards', 'Total Alerts Event Cards published', 'count', 'sum', _count('eventdata_ok', unique=('key',)),
               ['eventdata_ok'], 'distinct sessions with "Upload successful for <session>.mp4" (event data upload)'),
-            *[M(f'alerts_video_cam{c}', f'Total Alerts Video uploaded - Cam {c}', 'count', 'sum',
+            *[M(f'alerts_video_cam{c}', f'Total Alerts Video uploaded - Cam {c}' + (f' ({n})' if c > 3 else ''), 'count', 'sum',
                 _count('video_ok', unique=('cam', 'key'), where=lambda g, c=c: g['cam'] == str(c)),
-                ['video_ok'], f'distinct videos of cam {c} ({n}) with "Upload successful for video: .../{c}_<session>.mp4"')
+                ['video_ok'], f'distinct videos of cam {c} ({n}) with "Upload successful for video: .../{c}_<session>.mp4"', cam=c)
               for c, n in cam_names],
             M('alerts_unique', 'Total Unique', 'count', 'sum', _count('upload_state', unique=('key',)),
               ['upload_state'], 'distinct alert sessions moved to UPLOAD_STATE ("alerts found")'),
@@ -449,20 +460,18 @@ def _tables():
             *[m for c, n in cam_names for m in (
                 M(f'crash_cam{c}', f'{n} Camera Crash Count - Total', 'count', 'sum',
                   _count('cam_crash', unique=('cam', '_sec'), where=lambda g, c=c: g['cam'] == str(c)),
-                  ['cam_crash'], f'"cam_num {c} is crashed" (one per second)'),
+                  ['cam_crash'], f'"cam_num {c} is crashed" (one per second)', cam=c),
                 M(f'crash_cam{c}_pct', f'{n} Camera Crash Count %', '%', 'pct', _crash_boots(c),
-                  ['cam_crash'], f'% of boots with drive time that had a cam {c} crash'))],
+                  ['cam_crash'], f'% of boots with drive time that had a cam {c} crash', cam=c))],
         ], 'Number of devices: the rows; total drive time: the drive min column.'),
 
         Table('kpi-video-hd', 'Video File Size Details - HD', [
             *[M(f'hd_size_cam{c}', f'{n} Video - File Size - HD', 'MB', 'mean', _file_size(c, '.mp4', 1e6),
-                ['pushed_file'], f'circ_buff "Pushed file {c}_<session>.mp4 with size N" (last per file, files < 10 KB dropped)')
+                ['pushed_file'], f'circ_buff "Pushed file {c}_<session>.mp4 with size N" (last per file, files < 10 KB dropped)', cam=c)
               for c, n in cam_names],
             *[M(f'hd_fps_cam{c}', f'{n} Video - FPS - HD', 'fps', 'mean', _fps(c),
-                ['frame_count'], f'"CAM{c}: Frame count received: N" every 5 s: frames / time')
+                ['frame_count'], f'"CAM{c}: Frame count received: N" every 5 s: frames / time', cam=c)
               for c, n in cam_names],
-            M('hd_size_dms', 'DMS Video - File Size - HD', 'MB', 'mean', _file_size(8, '.mp4', 1e6), ['pushed_file'], 'same, cam 8'),
-            M('hd_fps_dms', 'DMS Video - FPS - HD', 'fps', 'mean', _fps(8), ['frame_count'], 'same, CAM8'),
         ], 'Average over the files / 5 s windows of each device.'),
 
         Table('kpi-video-ld', 'Video File Size Details - LD', [
@@ -470,6 +479,9 @@ def _tables():
             M('ld_size_cam1', 'Inward Video - File Size - LD', 'MB', 'mean', _file_size(1, '.mp4.ld.mp4', 1e6), ['pushed_file'], '"Pushed file 1_<session>.mp4.ld.mp4 with size N"'),
             M('ld_size_cam2', 'Left Video - File Size - LD', 'MB', 'mean', None, [], 'NOT_FOUND: left camera writes one (already LD) file a minute, see the HD size'),
             M('ld_size_cam3', 'Right Video - File Size - LD', 'MB', 'mean', None, [], 'NOT_FOUND: right camera writes one (already LD) file a minute, see the HD size'),
+            *[M(f'ld_size_cam{c}', f'{n} Video - File Size - LD', 'MB', 'mean', _file_size(c, '.mp4.ld.mp4', 1e6),
+                ['pushed_file'], f'"Pushed file {c}_<session>.mp4.ld.mp4 with size N"', cam=c)
+              for c, n in cam_names if c in OPTIONAL_CAMS],
             M('ld_fps_cam0', 'Outward Video - FPS - LD', 'fps', 'mean', _fps(0), ['frame_count'], 'PARTIAL: LD is encoded from the same frames, so the HD frame count'),
             M('ld_fps_cam1', 'Inward Video - FPS - LD', 'fps', 'mean', _fps(1), ['frame_count'], 'PARTIAL: LD is encoded from the same frames, so the HD frame count'),
         ], 'Average over the files of each device.'),
@@ -497,6 +509,9 @@ def _tables():
             M('emmc_cam1', 'Total Inward files in eMMC', 'count', 'last', _storage_count('hq', 1, 'lq'), ['storage_info'], 'storage_info no_of_hq["1"] + no_of_lq["1"]'),
             M('emmc_cam2', 'Total Left files in eMMC', 'count', 'last', _storage_count('hq', 2), ['storage_info'], 'storage_info no_of_hq["2"]'),
             M('emmc_cam3', 'Total Right files in eMMC', 'count', 'last', _storage_count('hq', 3), ['storage_info'], 'storage_info no_of_hq["3"]'),
+            *[M(f'emmc_cam{c}', f'Total {n} files in eMMC', 'count', 'last', _storage_count('hq', c, 'lq'), ['storage_info'],
+                f'storage_info no_of_hq["{c}"] + no_of_lq["{c}"] (builds that list the camera on its own)', cam=c)
+              for c, n in cam_names if c in OPTIONAL_CAMS],
             M('emmc_obs', 'Obs files in eMMC', 'count', 'last', _storage_count('obs'), ['storage_info'], 'storage_info no_of_obs'),
             M('emmc_hours', 'eMMC - Storage Hours', 'h', 'last', _storage_hours, ['storage_info'], 'outward LD files / 60 (one file a minute), as test TC_circbuff_777'),
         ], 'Latest storage_info of each device (meaningful once the card is full).'),
@@ -545,9 +560,9 @@ def _tables():
             M('au_api_ok', 'Alert Notification to the Cloud - API Call Successful', 's', 'mean', _alert_step('api_ok'), ['eventdata_ok'],
               'detection to "Upload successful for <session>.mp4"'),
             *[M(f'au_vod_req_cam{c}', f'Upload Video Request Received from Cloud - {n}', 's', 'mean', _alert_step('vod_req', c), ['vod_req'],
-                f'detection to the first "VOD req received ... video: .../{c}_<session>.mp4"') for c, n in cam_names],
+                f'detection to the first "VOD req received ... video: .../{c}_<session>.mp4"', cam=c) for c, n in cam_names],
             *[M(f'au_video_ok_cam{c}', f'Upload Video Successful - {n}', 's', 'mean', _alert_step('video_ok', c), ['video_ok'],
-                f'detection to "Upload successful for video: .../{c}_<session>.mp4"') for c, n in cam_names],
+                f'detection to "Upload successful for video: .../{c}_<session>.mp4"', cam=c) for c, n in cam_names],
             M('au_total', 'Total Time Taken for upload (from alert detection)', 's', 'mean', _alert_step('total'), ['video_ok'],
               'detection to the last camera\'s video upload success of the session'),
         ], 'Seconds per alert session, averaged. Detection = earliest of real-time msg_send, inertial ialerts.json and '
@@ -626,6 +641,8 @@ MAX_SINCE_POWER_ON_S = 900
 MAX_AFTER_IGNITION_S = 300
 # Lines only in detailed logs: a boot with one of these could show any KPI line
 DETAILED_MARKERS = ('alive', 'ndc_service_uptime', 'syslog_uptime', 'pwr_uptime', 'record_start')
+# Lines with a camera number: a device has the cameras they name
+CAM_LINES = ('record_start', 'pushed_file', 'frame_count', 'cam_crash', 'vod_req', 'video_ok')
 MIN_FILE_BYTES = 10_000  # placeholder files (privacy mode, krait2 external cams) are < 100 bytes
 WAF_CYCLE_MS = 5_000
 
@@ -835,6 +852,13 @@ class Device:
             for h in self.units(key).get(unit, [])[:1]:
                 parts.extend(h.g.values())
         return ' '.join(parts)
+
+    def cams(self):
+        """Camera numbers the device logged: recording, files (placeholders too), frames,
+        crashes, video requests / uploads."""
+        if 'cams' not in self._cache:
+            self._cache['cams'] = {int(h.g['cam']) for k in CAM_LINES for h in self.hits(k)}
+        return self._cache['cams']
 
     def detailed_boots(self):
         return {self.boot_of(h.ts) for h in self.hits(*DETAILED_MARKERS)}
@@ -1380,7 +1404,7 @@ def compute(device, boot_indexes):
     result = {b: defaultdict(list) for b in wanted}
     detailed = device.detailed_boots() & wanted
     for metric in METRICS.values():
-        if not metric.fn:
+        if not metric.fn or (metric.cam is not None and metric.cam not in device.cams()):
             continue
         if metric.agg == 'sum':
             # 0 where the logs could show the line (not empty)

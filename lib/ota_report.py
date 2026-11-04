@@ -1755,7 +1755,8 @@ def _kpi_sections(report, sm):
     values, columns = kpi['devices'], kpi['columns']
     out = []
     for table in kpi_metrics.KPI_TABLES:
-        metrics = table.metrics
+        # Camera columns of other product lines (MDVR, DMS) only when some device has them
+        metrics = [m for m in table.metrics if m.cam is None or any(m.id in v for v in values.values())]
         devices = sorted((d for d, v in values.items() if any(m.id in v for m in metrics)),
                          key=lambda d: (-minutes.get(d, 0), d))
         if not devices:
