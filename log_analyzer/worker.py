@@ -179,9 +179,10 @@ def main(run_id: int) -> int:
         timings.extend(result["timings"])
         db.save_reports(run_id, result["reports"])
 
+        # No boots on the OTA is a finished run with nothing to report, not a failure;
+        # the message is kept as a note on the run (shown as a warning in the UI)
         status, error = "succeeded", None
         if not result["reports"]:
-            status = "failed"
             error = (f"No boots on OTA {run['ota_version']} in the logs" if run["mode"] == "ota"
                      else f"No boots on OTA {', '.join(report_otas(run))} in the logs" if report_otas(run)
                      else "No device boots with an OTA version found in the logs")

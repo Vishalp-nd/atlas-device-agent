@@ -373,13 +373,15 @@ async function renderRun(id) {
       </div>
       <div class="facts">
         <div class="fact"><div class="k">Devices</div><div class="v">${run.devices.length || (run.mode === 'devices' ? run.requested_devices.length : '—')}</div></div>
+        <div class="fact"><div class="k">Start date</div><div class="v">${fmtDate(run.start_date)}</div></div>
+        <div class="fact"><div class="k">End date</div><div class="v">${fmtDate(run.end_date)}</div></div>
         <div class="fact"><div class="k">Duration</div><div class="v">${fmtDuration(elapsed(run))}</div></div>
         <div class="fact"><div class="k">Created</div><div class="v">${fmtTime(run.created_at)}</div></div>
         <div class="fact"><div class="k">Finished</div><div class="v">${fmtTime(run.finished_at)}</div></div>
       </div>
       ${active ? `<div class="stage"><div class="label"><span>${esc(stageLabel)}${p.device ? ` · ${esc(p.device)}` : ''}</span>
         <span>${p.total ? `${p.done} / ${p.total}` : ''}</span></div>${progressBar(run)}</div>` : ''}
-      ${run.error ? `<div class="alert">${esc(run.error)}</div>` : ''}
+      ${run.error ? `<div class="alert${run.status === 'succeeded' ? ' warn' : ''}">${esc(run.error)}</div>` : ''}
       ${Object.keys(run.device_errors || {}).length ? `<div class="alert warn">${Object.keys(run.device_errors).length} device(s) failed${debug ? ' — see Devices below' : ''}.</div>` : ''}
       ${reports.length ? `<h3>Reports</h3><div class="reports">${reports.map(verdictCard).join('')}</div>` : ''}
       ${debug ? `<h3>Timings</h3>${stepsTable(steps)}
