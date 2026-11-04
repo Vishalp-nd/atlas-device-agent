@@ -27,6 +27,8 @@ For every device over the date range (all days are read together):
   6. UDID and drive / power-monitor metrics per boot (lib/drive_metrics.py,
      lib/DRIVE_METRICS_LOGIC.md). Boots are labelled by UDID.
   7. Cloud API calls per boot (lib/api_calls.py): calls of each API and the time between them.
+  7b. KPI Summary per boot (lib/kpi_metrics.py): boot / alert / upload / storage KPIs, one
+     table each in the OTA report with a P90 row.
   8. Features enabled per boot (lib/feature_status.py): feature_mapping.ini against
      the OTA's default config plus the keys CFG_PRSR shows as overridden. What a
      service normally reads is learned over every device on the OTA, so this runs
@@ -72,6 +74,7 @@ import cloud_config
 import day_scan
 import drive_metrics
 import feature_status
+import kpi_metrics
 import log_archive
 import override_llm
 import report_callouts
@@ -609,7 +612,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
     info = {'days': len(range_days), 'detailed_days': sum(r['detailed'] for r in in_range), 'otas': []}
     if not days:
         return device, {}, timings, info
-    versions, services, calls = set(), set(), set()
+    versions, services, calls, kpi_hits = set(), set(), set(), set()
     firsts = [r['log_span']['first'] for r in day_results if r.get('log_span', {}).get('first')]
     lasts = [r['log_span']['last'] for r in day_results if r.get('log_span', {}).get('last')]
     span = {k: v for k, v in (('first', min(firsts, default=None)), ('last', max(lasts, default=None))) if v}
@@ -621,12 +624,14 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
             services.update(r['services'])
             events.add(r['events'])
             calls.update(r['api_calls'])
+            kpi_hits.update(r.get('kpi_hits') or ())
             for norm, hits_ in r['evidence'].items():
                 evidence.lines.setdefault(norm, []).extend(hits_)
         with timed(log, 'detect_boots', timings, level=logging.DEBUG, device=device):
             procs = load_process_boots(device, days)
             starts = detect_boot_starts(procs)
             boots = make_boots(starts, sorted(versions))
+            all_boots = list(boots)  # KPI times are placed in boots, also those left out below
             events.finish()
             evidence.finish()
             udid_records = drive_metrics.assign_udids(events, boots)
@@ -721,6 +726,12 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
 
     timings.append({'step': 'evaluate', 'device': device, 'status': 'ok',
                     'duration_s': round(time.perf_counter() - eval_start, 3)})
+    with timed(log, 'kpi', timings, level=logging.DEBUG, device=device):
+        reported = {d['index']: d for details in detail_by_ota.values() for d in details}
+        kpi_samples = kpi_metrics.compute(kpi_metrics.Device(kpi_hits, all_boots, reported), reported)
+        for index, detail in reported.items():
+            detail['kpi'] = kpi_metrics.boot_values(kpi_samples.get(index, {}))
+        del kpi_hits
     read_override_values(device, llm_jobs, timings)
     summaries = {}
     for ota, boot_details in detail_by_ota.items():
@@ -736,6 +747,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         summaries[ota]['config_error'] = inis[ota][1]
         summaries[ota]['drive'] = doc['drive_summary']
         summaries[ota]['api'] = doc['api_summary']
+        summaries[ota]['kpi'] = kpi_metrics.summarize([kpi_samples.get(b['index'], {}) for b in boot_details])
         summaries[ota]['profiles'] = profiles.get(ota, {})
         # Days whose upload has detailed logs: only those carry the override information
         summaries[ota]['detailed_days'] = sorted(r['day'] for r in in_range if r['detailed'])
@@ -1106,6 +1118,7 @@ def build_ota_summary(ota, device_summaries, tests):
     }
     report['drive'] = drive_metrics.merge_summaries([s['drive'] for s in device_summaries.values()])
     report['api_calls'] = api_calls.merge_summaries([s['api'] for s in device_summaries.values()])
+    report['kpi'] = kpi_metrics.merge_summaries({d: s.get('kpi') for d, s in device_summaries.items()})
     key_fails = Counter()
     tc_counts = defaultdict(Counter)
     tc_fail_boots = defaultdict(list)
@@ -1410,6 +1423,7 @@ td.zero{color:var(--none)}
 #cloud-config h3{font-size:13.5px;margin:18px 0 0}#cloud-config code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .keybox{max-height:180px;overflow-y:auto;padding:4px 0;line-height:1.7}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
+.kpi tfoot tr:first-child:not(:last-child) td{bottom:36px}.kpi td.text{max-width:260px;white-space:normal}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
 .fail-rate{display:flex;align-items:center;gap:10px}.fail-rate span{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}.fail-rate span.zero{color:var(--none)}
@@ -1486,7 +1500,8 @@ document.querySelectorAll('section[id]').forEach(s => spy.observe(s));
 """
 
 NAV = [('devices', 'Device Summary'), ('logs', 'Log Upload Summary'), ('drive', 'Drive Summary'),
-       ('feature-sets', 'Feature Set Summary'), ('cloud-config', 'Cloud Config Check'), ('api', 'API Call Summary'), ('callouts', 'Callouts'), ('features', 'Feature Level Summary')]
+       ('feature-sets', 'Feature Set Summary'), ('cloud-config', 'Cloud Config Check'), ('api', 'API Call Summary'), ('callouts', 'Callouts'), ('features', 'Feature Level Summary'),
+       ('kpi-alerts', 'KPI Summary')]
 
 
 def _n(v):
@@ -1709,15 +1724,83 @@ def _feature_level_section(report):
     return f'<section id="features"><h2>Feature Level Summary</h2>{_table(head, rows)}</section>'
 
 
+def _kpi_fmt(value, unit):
+    """KPI cell text: counts as integers, text as is, other numbers with 0-2 decimals."""
+    if value is None:
+        return ''
+    if unit == 'text' or not isinstance(value, (int, float)):
+        return _esc(value)
+    if unit == 'count':
+        return f'{round(value):,}'
+    if abs(value) >= 1000:
+        return f'{value:,.0f}'
+    return f'{value:.1f}' if abs(value) >= 10 or unit in ('%', 'fps', 'h', 's') else f'{value:.2f}'
+
+
+def _kpi_cell(value, unit):
+    if value is None:
+        return '<td class="num zero">—</td>' if unit != 'text' else '<td class="zero">—</td>'
+    if unit == 'text':
+        return f'<td class="text">{_kpi_fmt(value, unit)}</td>'
+    return f'<td class="num" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
+
+
+def _kpi_sections(report, sm):
+    """One section per KPI table (lib/kpi_metrics.KPI_TABLES): a row per device with a value,
+    a Total row (counts; % over all boots) and a P90 row over the devices, per column."""
+    kpi = report.get('kpi')
+    if not kpi:
+        return ''
+    minutes = sm.get('drive_minutes_by_device') or {}
+    values, columns = kpi['devices'], kpi['columns']
+    out = []
+    for table in kpi_metrics.KPI_TABLES:
+        metrics = table.metrics
+        devices = sorted((d for d, v in values.items() if any(m.id in v for m in metrics)),
+                         key=lambda d: (-minutes.get(d, 0), d))
+        if not devices:
+            out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
+                       '<p class="muted">No device logged the lines of these KPIs.</p></section>')
+            continue
+        head = ['Device ID', '#Total drive min'] + [
+            (m.name if m.unit == 'text' else f'#{m.name}' + (f' ({m.unit})' if m.unit != 'count' else ''))
+            for m in metrics]
+        rows = [f'<tr><td>{_dev_link(d)}</td><td class="num">{minutes.get(d, 0):,}</td>'
+                + ''.join(_kpi_cell(values[d].get(m.id), m.unit) for m in metrics) + '</tr>' for d in devices]
+        foot = []
+        if any(m.agg in ('sum', 'pct') for m in metrics):
+            foot.append(f'<tr><td>Total ({len(devices)} devices)</td>'
+                        f'<td class="num">{sum(minutes.get(d, 0) for d in devices):,}</td>'
+                        + ''.join(_kpi_cell(columns[m.id].get('total'), m.unit) if m.agg in ('sum', 'pct')
+                                  else '<td></td>' for m in metrics) + '</tr>')
+        foot.append('<tr><td>P90</td>' + _kpi_cell(kpi_metrics.p90([minutes.get(d, 0) for d in devices]), 'min')
+                    + ''.join(_kpi_cell(columns[m.id].get('common' if m.unit == 'text' else 'p90'), m.unit)
+                              for m in metrics) + '</tr>')
+        out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
+                   + _table(head, rows, foot=f'<tfoot>{"".join(foot)}</tfoot>') + '</section>')
+    codes = kpi.get('event_codes') or []
+    rows = [f'<tr><td>{_esc(c["code"])}</td><td class="num" data-v="{c["count"]}">{c["count"]:,}</td>'
+            f'<td class="num">{c["devices"]}</td>{_kpi_cell(c["p90"], "count")}</tr>' for c in codes]
+    body = (_table(['Event code', '#Unique events', '#Devices', '#P90 per device'], rows,
+                   foot=f'<tfoot><tr><td>Total ({len(codes)} codes)</td><td class="num">{sum(c["count"] for c in codes):,}</td>'
+                        '<td></td><td></td></tr></tfoot>')
+            if codes else '<p class="muted">No event codes logged.</p>')
+    out.append('<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>')
+    return ''.join(out)
+
+
 def render_html(report):
     ota, sm = report['ota_version'], report.get('summary') or {}
     cloud_on = bool((report.get('cloud_config') or {}).get('enabled'))
-    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV if i != 'cloud-config' or cloud_on)
+    shown = {'cloud-config': cloud_on, 'kpi-alerts': bool(sm and report.get('kpi'))}
+    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV if shown.get(i, True))
     body = [f'<div class="top"><h1>{_esc(ota)}</h1><span>{_esc(report["generated_at"])}</span></div>']
     if sm:
         body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
                  _cloud_config_section(report), _api_calls_section(sm), _callouts_section(report)]
     body.append(_feature_level_section(report))
+    if sm:
+        body.append(_kpi_sections(report, sm))
     return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body), f'<script>{REPORT_JS}</script>')
 
 

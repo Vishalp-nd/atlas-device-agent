@@ -8,8 +8,8 @@ Adding a requirement: write lib/scanners/<name>.py and add it to SCANNERS; the d
 put together from the day results in ota_report.finish_device.
 """
 
-from scanners import (config_parser, drive, api, log_files, ota_version, override_evidence,
+from scanners import (config_parser, drive, api, kpi, log_files, ota_version, override_evidence,
                       test_steps)
 
 # Run in this order on every device-day
-SCANNERS = [config_parser, ota_version, test_steps, drive, api, override_evidence, log_files]
+SCANNERS = [config_parser, ota_version, test_steps, drive, api, kpi, override_evidence, log_files]
