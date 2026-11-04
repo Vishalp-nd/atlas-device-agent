@@ -1423,7 +1423,7 @@ td.zero{color:var(--none)}
 #cloud-config h3{font-size:13.5px;margin:18px 0 0}#cloud-config code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .keybox{max-height:180px;overflow-y:auto;padding:4px 0;line-height:1.7}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
-.kpi tfoot tr:first-child:not(:last-child) td{bottom:36px}.kpi td.text{max-width:260px;white-space:normal}
+.kpi .tbl{width:fit-content;max-width:100%}.kpi table{width:auto}.kpi td.text{max-width:420px;white-space:normal}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
 .fail-rate{display:flex;align-items:center;gap:10px}.fail-rate span{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}.fail-rate span.zero{color:var(--none)}
@@ -1745,40 +1745,29 @@ def _kpi_cell(value, unit):
     return f'<td class="num" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
 
 
+KPI_NO_UNIT = {'count', 'WAF', 'text'}
+
+
 def _kpi_sections(report, sm):
-    """One section per KPI table (lib/kpi_metrics.KPI_TABLES): a row per device with a value,
-    a Total row (counts; % over all boots) and a P90 row over the devices, per column."""
+    """One section per KPI table (lib/kpi_metrics.KPI_TABLES): a row per KPI with its overall
+    P90 over the devices (text KPIs: the most common value). Analytics KPIs: a row per code."""
     kpi = report.get('kpi')
     if not kpi:
         return ''
-    minutes = sm.get('drive_minutes_by_device') or {}
     values, columns = kpi['devices'], kpi['columns']
     out = []
     for table in kpi_metrics.KPI_TABLES:
-        # Camera columns of other product lines (MDVR, DMS) only when some device has them
+        # Camera rows of other product lines (MDVR, DMS) only when some device has them
         metrics = [m for m in table.metrics if m.cam is None or any(m.id in v for v in values.values())]
-        devices = sorted((d for d, v in values.items() if any(m.id in v for m in metrics)),
-                         key=lambda d: (-minutes.get(d, 0), d))
-        if not devices:
-            out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
-                       '<p class="muted">No device logged the lines of these KPIs.</p></section>')
-            continue
-        head = ['Device ID', '#Total drive min'] + [
-            (m.name if m.unit == 'text' else f'#{m.name}' + (f' ({m.unit})' if m.unit != 'count' else ''))
-            for m in metrics]
-        rows = [f'<tr><td>{_dev_link(d)}</td><td class="num">{minutes.get(d, 0):,}</td>'
-                + ''.join(_kpi_cell(values[d].get(m.id), m.unit) for m in metrics) + '</tr>' for d in devices]
-        foot = []
-        if any(m.agg in ('sum', 'pct') for m in metrics):
-            foot.append(f'<tr><td>Total ({len(devices)} devices)</td>'
-                        f'<td class="num">{sum(minutes.get(d, 0) for d in devices):,}</td>'
-                        + ''.join(_kpi_cell(columns[m.id].get('total'), m.unit) if m.agg in ('sum', 'pct')
-                                  else '<td></td>' for m in metrics) + '</tr>')
-        foot.append('<tr><td>P90</td>' + _kpi_cell(kpi_metrics.p90([minutes.get(d, 0) for d in devices]), 'min')
-                    + ''.join(_kpi_cell(columns[m.id].get('common' if m.unit == 'text' else 'p90'), m.unit)
-                              for m in metrics) + '</tr>')
+        rows = []
+        for m in metrics:
+            col = columns.get(m.id) or {}
+            value = col.get('common') if m.unit == 'text' else col.get('p90')
+            # Real units only, after the name (not for counts, WAF, text, or a name ending in %)
+            unit = f' ({m.unit})' if m.unit not in KPI_NO_UNIT and not m.name.endswith(m.unit) else ''
+            rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit)}</tr>')
         out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
-                   + _table(head, rows, foot=f'<tfoot>{"".join(foot)}</tfoot>') + '</section>')
+                   + _table(['KPI', '#P90'], rows) + '</section>')
     codes = kpi.get('event_codes') or []
     rows = [f'<tr><td>{_esc(c["code"])}</td><td class="num" data-v="{c["count"]}">{c["count"]:,}</td>'
             f'<td class="num">{c["devices"]}</td>{_kpi_cell(c["p90"], "count")}</tr>' for c in codes]

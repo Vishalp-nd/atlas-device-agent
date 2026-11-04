@@ -75,7 +75,7 @@ KPI_LOG_LINES = {
         '1793148919561: 7538: GPSD: I: 5975: 6266: GPS Port Enumerate Time: 31 sec  [103102600722_2026-10-28/gps.log]'),
     'sm_gps_enum': Line(
         'service_mon', 'GPS Port Enumerate Time', r'ND_GPS : \d+ : \d+ : -?\d+ : GPS Port Enumerate Time: \d+ seconds : (?P<ms>\d+)',
-        'Service error: ND_GPS : <epoch> : <code> : <n> : GPS Port Enumerate Time: <s> seconds : <ms>  [service_mon_c.log; critical-only fallback of gps_enum]', True),
+        '1793148919562: 7849: SM: E: 6001: 6001: Service error: ND_GPS : 1793148919561 : 37501 : 0 : GPS Port Enumerate Time: 31 seconds : 31562  [103102600722_2026-10-28/service_mon.log]', True),
     'svc_start': Line(
         'svc', 'Starting SVC', r'######Starting SVC######',
         '1793148910115: 331: SVC: I: 5924: 5924: ######Starting SVC######  [103102600722_2026-10-28/svc.log]'),
@@ -121,7 +121,7 @@ KPI_LOG_LINES = {
         '1793144189003: 8081850: PWR: C: 5922: 5922: shutdown reason ::@ time 1793144189001\tShuttingdown because of SHUTDOWN_FOR_IGNITION_OFF \t::  [103102600722_2026-10-28/power_mon.log]', True),
     'shutdown_initiated': Line(
         'power_mon', 'Device Shutdown Initiated', r'Device Shutdown Initiated \(defer_req_cnt=',
-        'PWR: I: <pid>: <tid>: Device Shutdown Initiated (defer_req_cnt=...)  [power_mon.log; 5-8 s before system_execute shutdown]'),
+        '1793144910620: 8803467: PWR: I: 5922: 6756: Device Shutdown Initiated (defer_req_cnt=0, defer_time_applied=0s, defer_consumed=NO)  [103102600722_2026-10-28/power_mon.log]'),
     'shutdown_exec': Line(
         'power_mon', 'system_execute cmd: ', r'SYS_U: I: \d+: \d+: system_execute cmd: (?P<cmd>shutdown now|poweroff|reboot)\b',
         '1793144916027: 8808874: SYS_U: I: 5922: 6636: system_execute cmd: shutdown now  [103102600722_2026-10-28/power_mon.log]'),
@@ -180,7 +180,7 @@ KPI_LOG_LINES = {
         '1793058577350: 7676: SM: E: 5855: 5855: Service error: PWR : 1793058577350 : 40105 : 53384 : Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: 0.000000) : 30331  [log_prod/103352600191/2026-10-27/service_mon]', True),
     'conn_session_lost': Line(
         'conn_mgr', 'SessionStateCallback:DISCONNECTED', r'SessionStateCallback:DISCONNECTED',
-        'CONN_MGR_CBK: I: <pid>: <tid>: SessionStateCallback:DISCONNECTED  [conn_mgr.log]'),
+        '1793126957818: 7562195: CONN_MGR_CBK: I: 10800: 10877: SessionStateCallback:DISCONNECTED  [6603001461_2026-10-28/conn_mgr.log]'),
     'conn_exit': Line(
         'conn_mgr', 'Device disconnected : Exiting App', r'Device disconnected : Exiting App',
         '1793103098100: 2155303: CONN_MGR_MAIN: E: 29430: 29509: Device disconnected : Exiting App  [log_prod/6603014391/2026-10-27/conn_mgr]'),
@@ -219,7 +219,7 @@ KPI_LOG_LINES = {
         '1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]'),
     'installer_scan_start': Line(
         'btfv', 'RegisterInstallerAppFilter', r'Inside: RegisterInstallerAppFilter',
-        'BTMAN: I: <pid>: <tid>: Inside: RegisterInstallerAppFilter  [264080392_2026-11-03/btfv.log] (0-17 ms after IGNITION ON)'),
+        '1793264889280: 3771: BTMAN: I: 4169: 4169: Inside: RegisterInstallerAppFilter  [105322600008_2026-10-29/btfv.log]'),
     'installer_scan_stop': Line(
         'btfv', ('InstallerApp timeout cb triggered', 'ClearInstallerAppFilter'),
         r'InstallerApp timeout cb triggered|Inside: ClearInstallerAppFilter',
@@ -244,7 +244,7 @@ KPI_LOG_LINES = {
     'lla_msg_send': Line(
         ('outwardAnalyticsClient', 'inwardAnalyticsClient', 'dmsAnalyticsClient', 'inertialAnalyticsClient'), 'msg_send: ',
         r'lla_handler\s+- msg_send: (?=.*"videoName": "\d_(?P<key>trip[^"]+?_y)(?:\.mp4)?")(?=.*"uuid": "(?P<uuid>[0-9a-f]{32})")(?=(?:.*"end_timestamp": (?P<end>\d{13}))?)(?=(?:.*"event_code": "(?P<code>[\d.]+)")?)',
-        '2026-10-28 14:36:09,025 - INFO    - src.lla_handler           - msg_send: {"inference_data": {"alerts_data": {"alerts": [{"speed_info": 68.03, "end_timestamp": 1793198167449, "event_code": "1.0.0.0", "uuid": "4294e556792744d8bf466d02c4d1f98f", ... "videoName": "0_trip568d_part05d441_32.9981_-117.0829_0.0_1793198116548_y.mp4"  [6603001461_2026-10-28/outwardAnalyticsClient.log]'),
+        '2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]'),
     'ialerts_found': Line(
         'inference_inertial', 'ialerts.json found at', r'ialerts\.json found at \S*/\d_(?P<key>trip\S+?_y)/ialerts\.json, size=(?P<size>\d+) bytes',
         '2026-11-02 19:17:21,231 - root - INFO - ialerts.json found at /home/iriscli/ND_OUTPUT/0_trip2b1f_part088982_30.4286_-89.0788_0.0_1793635811955_y/ialerts.json, size=415 bytes  [log_prod/6603007848/2026-11-03/inference_inertial] (size 31 = empty list)'),
@@ -274,22 +274,22 @@ KPI_LOG_LINES = {
     # ── Obs zip upload / retries ─────────────────────────────────────────────────────────
     'obs_req': Line(
         'unifieduploader', 'Upload Observations Request Received', r'UPL: I: \d+: (?P<tid>\d+): Upload Observations Request Received (?P<rt>\d{16})',
-        '1793144349601: 8237664: UPL: I: 5887: 6370: Upload Observations Request Received 1793144349588391  [103102600722_2026-10-28/unifieduploader.log] (rt = request time, epoch us)'),
+        '1793144884738: 8779929: UPL: I: 5828: 6403: Upload Observations Request Received 1793144883745430  [103102600722_2026-10-28/unifieduploader.log]'),
     'obs_zip_start': Line(
         'unifieduploader', 'Creating observations zip file at once', r'UPL: I: \d+: (?P<tid>\d+): Creating observations zip file at once!',
-        'UPL: I: <pid>: <tid>: Creating observations zip file at once!  [unifieduploader.log] (same ms as the last "adding obs json zip cmd")'),
+        '1793144885066: 8780257: UPL: I: 5828: 6403: Creating observations zip file at once!  [103102600722_2026-10-28/unifieduploader.log]'),
     'obs_zip_done': Line(
         'unifieduploader', 'Obs zip file created', r'UPL: I: \d+: (?P<tid>\d+): Obs zip file created!',
-        'UPL: I: <pid>: <tid>: Obs zip file created!  [unifieduploader.log]'),
+        '1793144892816: 8788007: UPL: I: 5828: 6403: Obs zip file created!  [103102600722_2026-10-28/unifieduploader.log]'),
     'obs_call': Line(
         'unifieduploader', 'upload/observations', r'UPL: I: \d+: (?P<tid>\d+): Calling service: \S+/upload/observations\b',
-        'UPL: I: <pid>: <tid>: Calling service: https://idms.netradyne.com/restserver/api/v1/upload/observations  [unifieduploader.log]'),
+        '1793144892999: 8788190: UPL: I: 5828: 6403: Calling service: https://idms.netradyne.com/restserver/api/v1/upload/observations  [103102600722_2026-10-28/unifieduploader.log]'),
     'obs_uploaded': Line(
         'unifieduploader', 'File uploaded. Deleting', r'UPL: I: \d+: (?P<tid>\d+): File uploaded\. Deleting \d+',
-        'UPL: I: <pid>: <tid>: File uploaded. Deleting 1  [unifieduploader.log]'),
+        '1793144893723: 8788914: UPL: I: 5828: 6403: File uploaded. Deleting 1  [103102600722_2026-10-28/unifieduploader.log]'),
     'obs_fail': Line(
         'unifieduploader', 'Failed to fetch url', r'UPL: I: \d+: (?P<tid>\d+): ERROR: Failed to fetch url \(\S+/upload/observations\)',
-        "1793213578240: 56922: UPL: I: 5984: 6412: ERROR: Failed to fetch url (https://idms.netradyne.com/restserver/api/v1/upload/observations) - curl said: Couldn't resolve host name  [unifieduploader.log]"),
+        "1793213578240: 56922: UPL: I: 5984: 6412: ERROR: Failed to fetch url (https://idms.netradyne.com/restserver/api/v1/upload/observations) - curl said: Couldn't resolve host name  [103102600722_2026-10-28/unifieduploader.log]"),
     'retry_details': Line(
         'unifieduploader', 'Details: type - msg type', r'\w+ Details: type - msg type: (?P<type>\d+) msg level',
         '1793268120515: 238693: UPL: I: 1305: 2748: PS Details: type - msg type: 100 msg level: 0  [105322600008_2026-10-29/unifieduploader.log] (logged right after "Retrying... retry_count: n"; 100 eventdata, 101 video, 110 observations)'),
@@ -307,13 +307,13 @@ KPI_LOG_LINES = {
         '1793264997847: 107142: CB: I: 4620: 5443: collect_notify_videolist is FAILED  [105322600008_2026-10-29/circ_buff.log]'),
     'videolist_ok': Line(
         'circ_buff', 'collect_notify_videolist is succeded', r'collect_notify_videolist is succeded',
-        'CB: I: <pid>: <tid>: collect_notify_videolist is succeded  [circ_buff.log]'),
+        '1793144354479: 8242542: CB: I: 6240: 7648: collect_notify_videolist is succeded  [103102600722_2026-10-28/circ_buff.log]'),
     'health_post_failed': Line(
         'health', 'curl exited', r'curl_with_health: curl exited (?P<code>\d+)',
         '2026-10-28 07:42:02,449 - health - ERROR - curl_with_health: curl exited 6: % Total    % Received ...  [6603001461_2026-10-28/health.log]'),
     'health_ok': Line(
         'health', 'Upload of Health Stats successful', r'Upload of Health Stats successful',
-        '2026-10-27 18:30:14,6xx - health - INFO - Upload of Health Stats successful  [6603001461_2026-10-28/health.log]'),
+        '2026-10-27 23:33:09,424 - health - INFO - Upload of Health Stats successful  [103102600722_2026-10-28/health.log]'),
 
     # ── LLA (low latency alert; uuid = the alert uuid of lla_msg_send) ──────────────────
     'ndc_lla_message': Line(

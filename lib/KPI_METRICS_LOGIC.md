@@ -51,8 +51,10 @@ previous shutdown reason, ...).
 4. **Per device and OTA** (`kpi_metrics.summarize`): the samples of the device's boots on
    that OTA, combined by the metric's aggregation (see "Device value").
 5. **OTA report** (`kpi_metrics.merge_summaries`, `ota_report._kpi_sections`): one table
-   per KPI table, a row per device that has a value for any of its KPIs, then a Total row
-   and a P90 row.
+   per KPI table, a row per KPI (its name with the unit in brackets: s, %, MB, KB, GB, fps, h;
+   none for counts, WAF and text) and its overall P90 over the devices; text KPIs (versions,
+   bands) show the most common value. The device values stay in the report
+   JSON (`kpi.devices`) but are not shown. Analytics KPIs: a row per event code.
 
 ## Common rules
 
@@ -105,19 +107,21 @@ vod_id, thread id, camera). When several start lines come before one end line:
 The last line of the boot that ended is the latest alive point before the new power-on.
 Used by the abrupt power cycle, Tegra watchdog and LTE outage during OTA KPIs.
 
-### Device value, Total row, P90 row
+### Device value and P90
 
-| Aggregation | Device value | Total row |
-|---|---|---|
-| sum over boots | sum of the samples | sum over the devices |
-| mean of all samples | mean of every sample of the device (not a mean of boot means) | — |
-| latest value | the last sample in time | — (text columns: P90 row shows the most common value) |
-| % of boots | 100 x mean of the 0/1 samples | 100 x all boots with it / all boots (boot weighted) |
+First each device gets one value per KPI from its samples:
 
-`P90` = 90th percentile of the device values in the column (the values shown in the table),
-linear interpolation like numpy's default: sort the n values, `k = (n - 1) x 0.9`,
-`P90 = v[floor(k)] + (v[floor(k) + 1] - v[floor(k)]) x (k - floor(k))`. The drive minutes
-column gets one too.
+| Aggregation | Device value |
+|---|---|
+| sum over boots | sum of the samples |
+| mean of all samples | mean of every sample of the device (not a mean of boot means) |
+| latest value | the last sample in time |
+| % of boots | 100 x mean of the 0/1 samples |
+
+The report's P90 of a KPI = 90th percentile of those device values over the devices that
+have one, linear interpolation like numpy's default: sort the n values,
+`k = (n - 1) x 0.9`, `P90 = v[floor(k)] + (v[floor(k) + 1] - v[floor(k)]) x (k - floor(k))`.
+Text KPIs (firmware versions, bands) show the value most devices have instead.
 
 ### 0 versus empty
 
@@ -142,7 +146,7 @@ The log lines are the same for every camera, only the number changes (`Pushed fi
 `video: .../5_trip...`), so every per-camera KPI is made for each camera of `CAMS`.
 Cameras 4-8 (`OPTIONAL_CAMS`) are computed only for devices that have the camera (a
 `record_start`, `pushed_file`, `frame_count`, `cam_crash`, `vod_req` or `video_ok` line
-names it), and their columns are shown only when some device on the OTA has a value; cameras
+names it), and their rows are shown only when some device on the OTA has a value; cameras
 0-3 are always shown. storage_info lists cameras 4-7 together as `"N"` on the builds seen,
 so their eMMC file counts appear only on builds that list them one by one.
 
@@ -238,275 +242,275 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 
 ### Alerts Summary
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Total Alerts Detected | count | sum over boots | sum of N over "alerts.json contains N alert(s)" (final alert list of each session) | `alerts_contains` (inference) |
-| Total Alerts Event Cards published | count | sum over boots | distinct sessions with "Upload successful for &lt;session&gt;.mp4" (event data upload) | `eventdata_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 0 | count | sum over boots | distinct videos of cam 0 (Outward) with "Upload successful for video: .../0_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 1 | count | sum over boots | distinct videos of cam 1 (Inward) with "Upload successful for video: .../1_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 2 | count | sum over boots | distinct videos of cam 2 (Left) with "Upload successful for video: .../2_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 3 | count | sum over boots | distinct videos of cam 3 (Right) with "Upload successful for video: .../3_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 4 (MDVR 4) | count | sum over boots | distinct videos of cam 4 (MDVR 4) with "Upload successful for video: .../4_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 5 (MDVR 5) | count | sum over boots | distinct videos of cam 5 (MDVR 5) with "Upload successful for video: .../5_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 6 (MDVR 6) | count | sum over boots | distinct videos of cam 6 (MDVR 6) with "Upload successful for video: .../6_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 7 (MDVR 7) | count | sum over boots | distinct videos of cam 7 (MDVR 7) with "Upload successful for video: .../7_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Alerts Video uploaded - Cam 8 (DMS) | count | sum over boots | distinct videos of cam 8 (DMS) with "Upload successful for video: .../8_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Unique | count | sum over boots | distinct alert sessions moved to UPLOAD_STATE ("alerts found") | `upload_state` (inference) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Total Alerts Detected | count | sum over boots | sum of N over "alerts.json contains N alert(s)" (final alert list of each session) | `alerts_contains` (inference) | `2026-10-28 20:37:23,630 - root - INFO - alerts.json contains 1 alert(s)  [103102600722_2026-10-28/inference.log]` |
+| Total Alerts Event Cards published | count | sum over boots | distinct sessions with "Upload successful for &lt;session&gt;.mp4" (event data upload) | `eventdata_ok` (unifieduploader) | `1793219851656: 1559795: UPL: I: 5887: 6361: Upload successful for 0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 0 | count | sum over boots | distinct videos of cam 0 (Outward) with "Upload successful for video: .../0_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 1 | count | sum over boots | distinct videos of cam 1 (Inward) with "Upload successful for video: .../1_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 2 | count | sum over boots | distinct videos of cam 2 (Left) with "Upload successful for video: .../2_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 3 | count | sum over boots | distinct videos of cam 3 (Right) with "Upload successful for video: .../3_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 4 (MDVR 4) | count | sum over boots | distinct videos of cam 4 (MDVR 4) with "Upload successful for video: .../4_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 5 (MDVR 5) | count | sum over boots | distinct videos of cam 5 (MDVR 5) with "Upload successful for video: .../5_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 6 (MDVR 6) | count | sum over boots | distinct videos of cam 6 (MDVR 6) with "Upload successful for video: .../6_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 7 (MDVR 7) | count | sum over boots | distinct videos of cam 7 (MDVR 7) with "Upload successful for video: .../7_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Alerts Video uploaded - Cam 8 (DMS) | count | sum over boots | distinct videos of cam 8 (DMS) with "Upload successful for video: .../8_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Unique | count | sum over boots | distinct alert sessions moved to UPLOAD_STATE ("alerts found") | `upload_state` (inference) | `2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]` |
 
 ### Bootup, Video Recording & Connectivity
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Device Bootup Time (Power ON) | s | mean of all samples | PARTIAL: power-on itself (left LED) is not logged; kernel start (anchor) to the first service start of the boot | `syslog_uptime` (syslogs)<br>`ndc_system_uptime` (ndcentral)<br>`pwr_uptime` (power_mon) |
-| Device Bootup Time (Reboot Log) | s | mean of all samples | power-on anchor to the first "@Reboot Entering" of the boot | `reboot_entering` (reboot) |
-| System Uptime (NDCentral) | s | mean of all samples | value of ndcentral "System Uptime: N seconds" (system uptime when ndcentral starts) | `ndc_system_uptime` (ndcentral) |
-| Service Uptime (NDCentral) | s | mean of all samples | first ndcentral "serviceUpTime: N" of the boot (printed at the first video session) | `ndc_service_uptime` (ndcentral) |
-| Modem Enumeration | s | mean of all samples | system uptime at "GPS Port Enumerate Time" (modem tty enumerated) | `gps_enum` (gps)<br>`sm_gps_enum` (service_mon) |
-| SVC Service Start time | s | mean of all samples | power-on anchor to "######Starting SVC######" | `svc_start` (svc) |
-| Analytics Service Start time | s | mean of all samples | power-on anchor to "######## Starting Analytics Service" | `analytics_start` (analytics) |
-| ZMQ Socket Creation | s | mean of all samples | power-on anchor to cam_rec "SUCCESS IN CREATE zmq_socket" (bagheera; krait has no cam_rec) | `zmq_socket` (cam_rec) |
-| First Frame Capture from Device Power ON | s | mean of all samples | power-on anchor to "first frame for cam num 0 registered@" | `first_frame` (ndcentral) |
-| HW Button Detection - LED Glow for User Generated Alert | s | mean of all samples | PARTIAL: power-on anchor to svc "Button event thread created successfully" (button ready, incl. service uptime) | `button_ready` (svc) |
-| Connection Manager - Data Connectivity time | s | mean of all samples | power-on anchor to "LTE Data Session started successfully" | `lte_session` (conn_mgr) |
-| Keep Alive @ Reboot | s | mean of all samples | power-on anchor to the first power_mon keep alive "reached_cloud 1" | `ka_reached` (power_mon) |
-| GPS TTFF - First Boot after Low Power Wakeup | s | mean of all samples | "GPS First Fix time: N sec" (system uptime at fix) in boots whose previous_shutdown_reason is a LOWPOWER one | `gps_ttff` (gps)<br>`prev_shutdown` (power_mon) |
-| GPS TTFF - Cyclic Reboot / Crank Change | s | mean of all samples | same, in boots after a CYCLIC reboot or woken by IGNITION / crank | `gps_ttff` (gps)<br>`prev_shutdown` (power_mon)<br>`wakeup_reason` (power_mon/apm) |
-| Cyclic Reboot Time (max_uptime) | h | mean of all samples | uptime_secs of the last "check_uptime" before "CYCLIC_REBOOT: Soak done Ns, rebooting", when the reboot followed (SHUTDOWN_FOR_CYCLIC_REBOOT) | `uptime_long` (power_mon)<br>`soak_done` (power_mon)<br>`shutdown_reason` (power_mon) |
-| Cyclic Reboot for Crank High Detection | s | mean of all samples | last "CYCLIC_REBOOT: Uptime Check Pass HIGH" to "Soak done ..., rebooting" (the soak) | `pass_high` (power_mon)<br>`soak_done` (power_mon) |
-| Device Shutdown Time | s | mean of all samples | "Device Shutdown Initiated" to "system_execute cmd: shutdown now\|poweroff\|reboot" (the configured delay before it, e.g. 720 s after ignition off, is not included) | `shutdown_initiated` (power_mon)<br>`shutdown_exec` (power_mon) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Device Bootup Time (Power ON) | s | mean of all samples | PARTIAL: power-on itself (left LED) is not logged; kernel start (anchor) to the first service start of the boot | `syslog_uptime` (syslogs)<br>`ndc_system_uptime` (ndcentral)<br>`pwr_uptime` (power_mon) | `1793148914428: 2061: SYSLOG_MON: I: 6030: 6030: uptime 26.4 s < 60 s: starting background scan from start of file (270335 bytes)  [103102600722_2026-10-28/syslogs/log_1793148913598.log]`<br>`1793148911737: 206: NDC: I: 6110: 6110: System Uptime: 23 seconds  [103102600722_2026-10-28/ndcentral.log]`<br>`1793143047604: 6940451: PWR: I: 5922: 6755: check_uptime max_uptime 172800 uptime_secs 6964  [103102600722_2026-10-28/power_mon.log] (only the first minute, < 60 s, is kept: anchor)` |
+| Device Bootup Time (Reboot Log) | s | mean of all samples | power-on anchor to the first "@Reboot Entering" of the boot | `reboot_entering` (reboot) | `2026-10-28 00:55:02,578 - reboot - INFO - ::====================::@Reboot Entering::====================::  [103102600722_2026-10-28/reboot.log]` |
+| System Uptime (NDCentral) | s | mean of all samples | value of ndcentral "System Uptime: N seconds" (system uptime when ndcentral starts) | `ndc_system_uptime` (ndcentral) | `1793148911737: 206: NDC: I: 6110: 6110: System Uptime: 23 seconds  [103102600722_2026-10-28/ndcentral.log]` |
+| Service Uptime (NDCentral) | s | mean of all samples | first ndcentral "serviceUpTime: N" of the boot (printed at the first video session) | `ndc_service_uptime` (ndcentral) | `1793148927548: 16017: NDC: I: 6110: 6110: serviceUpTime: 16  [103102600722_2026-10-28/ndcentral.log]` |
+| Modem Enumeration | s | mean of all samples | system uptime at "GPS Port Enumerate Time" (modem tty enumerated) | `gps_enum` (gps)<br>`sm_gps_enum` (service_mon) | `1793148919561: 7538: GPSD: I: 5975: 6266: GPS Port Enumerate Time: 31 sec  [103102600722_2026-10-28/gps.log]`<br>`1793148919562: 7849: SM: E: 6001: 6001: Service error: ND_GPS : 1793148919561 : 37501 : 0 : GPS Port Enumerate Time: 31 seconds : 31562  [103102600722_2026-10-28/service_mon.log]` |
+| SVC Service Start time | s | mean of all samples | power-on anchor to "######Starting SVC######" | `svc_start` (svc) | `1793148910115: 331: SVC: I: 5924: 5924: ######Starting SVC######  [103102600722_2026-10-28/svc.log]` |
+| Analytics Service Start time | s | mean of all samples | power-on anchor to "######## Starting Analytics Service" | `analytics_start` (analytics) | `1793148910904: 200: AS: I: 5911: 5911: ######## Starting Analytics Service ######  [103102600722_2026-10-28/analytics.log]` |
+| ZMQ Socket Creation | s | mean of all samples | power-on anchor to cam_rec "SUCCESS IN CREATE zmq_socket" (bagheera; krait has no cam_rec) | `zmq_socket` (cam_rec) | `1793148925369: 7991: CAM_REC: I: 6440: 6440: SUCCESS IN CREATE zmq_socket  [103102600722_2026-10-28/cam_rec.log]` |
+| First Frame Capture from Device Power ON | s | mean of all samples | power-on anchor to "first frame for cam num 0 registered@" | `first_frame` (ndcentral) | `1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| HW Button Detection - LED Glow for User Generated Alert | s | mean of all samples | PARTIAL: power-on anchor to svc "Button event thread created successfully" (button ready, incl. service uptime) | `button_ready` (svc) | `1793684837920: 1156: SVC: I: 3673: 3673: Button event thread created successfully  [264080392_2026-11-03/svc.log]` |
+| Connection Manager - Data Connectivity time | s | mean of all samples | power-on anchor to "LTE Data Session started successfully" | `lte_session` (conn_mgr) | `1793148969342: 6563: CONN_MGR_SESSION: I: 8001: 8001: LTE Data Session started successfully  [103102600722_2026-10-28/conn_mgr.log]` |
+| Keep Alive @ Reboot | s | mean of all samples | power-on anchor to the first power_mon keep alive "reached_cloud 1" | `ka_reached` (power_mon) | `1793148973182: 61191: PWR: I: 6010: 6802: response_string :{"response":true,"msg":"upload-logs"}: reached_cloud 1  [103102600722_2026-10-28/power_mon.log]` |
+| GPS TTFF - First Boot after Low Power Wakeup | s | mean of all samples | "GPS First Fix time: N sec" (system uptime at fix) in boots whose previous_shutdown_reason is a LOWPOWER one | `gps_ttff` (gps)<br>`prev_shutdown` (power_mon) | `1793155724563: 15871: GPSD: I: 5879: 6019: GPS First Fix time: 37 sec  [103102600722_2026-10-28/gps.log]`<br>`1793155718957: 9032: PWR: I: 5880: 5880: POWER_MONITOR_ctx->previous_shutdown_reason DBSTATE_SHUTDOWN_MISC_LOWPOWER:SHUTDOWN  [103102600722_2026-10-28/power_mon.log]` |
+| GPS TTFF - Cyclic Reboot / Crank Change | s | mean of all samples | same, in boots after a CYCLIC reboot or woken by IGNITION / crank | `gps_ttff` (gps)<br>`prev_shutdown` (power_mon)<br>`wakeup_reason` (power_mon/apm) | `1793155724563: 15871: GPSD: I: 5879: 6019: GPS First Fix time: 37 sec  [103102600722_2026-10-28/gps.log]`<br>`1793155718957: 9032: PWR: I: 5880: 5880: POWER_MONITOR_ctx->previous_shutdown_reason DBSTATE_SHUTDOWN_MISC_LOWPOWER:SHUTDOWN  [103102600722_2026-10-28/power_mon.log]`<br>`1793239013133: 10281: DEVB3: I: 5973: 5973: WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:TEGRA_BCCPLEX_WATCHDOG  [log_prod/103102600722/2026-10-29/power_mon]` |
+| Cyclic Reboot Time (max_uptime) | h | mean of all samples | uptime_secs of the last "check_uptime" before "CYCLIC_REBOOT: Soak done Ns, rebooting", when the reboot followed (SHUTDOWN_FOR_CYCLIC_REBOOT) | `uptime_long` (power_mon)<br>`soak_done` (power_mon)<br>`shutdown_reason` (power_mon) | `1793568222631: 174564291: PWR: I: 3757: 4125: check_uptime max_uptime 172800 uptime_secs 174609  [log_prod/6603078588/2026-11-01/power_mon] (only uptimes >= 100000 s are kept)`<br>`1793568222635: 174564295: PWR: C: 3757: 4125: CYCLIC_REBOOT: Soak done 1800s, rebooting  [log_prod/6603078588/2026-11-01/power_mon]`<br>`1793144189003: 8081850: PWR: C: 5922: 5922: shutdown reason ::@ time 1793144189001 Shuttingdown because of SHUTDOWN_FOR_IGNITION_OFF  ::  [103102600722_2026-10-28/power_mon.log]` |
+| Cyclic Reboot for Crank High Detection | s | mean of all samples | last "CYCLIC_REBOOT: Uptime Check Pass HIGH" to "Soak done ..., rebooting" (the soak) | `pass_high` (power_mon)<br>`soak_done` (power_mon) | `1793566422289: 172763949: PWR: C: 3757: 4125: CYCLIC_REBOOT: Uptime Check Pass HIGH  [log_prod/6603078588/2026-11-01/power_mon]`<br>`1793568222635: 174564295: PWR: C: 3757: 4125: CYCLIC_REBOOT: Soak done 1800s, rebooting  [log_prod/6603078588/2026-11-01/power_mon]` |
+| Device Shutdown Time | s | mean of all samples | "Device Shutdown Initiated" to "system_execute cmd: shutdown now\|poweroff\|reboot" (the configured delay before it, e.g. 720 s after ignition off, is not included) | `shutdown_initiated` (power_mon)<br>`shutdown_exec` (power_mon) | `1793144910620: 8803467: PWR: I: 5922: 6756: Device Shutdown Initiated (defer_req_cnt=0, defer_time_applied=0s, defer_consumed=NO)  [103102600722_2026-10-28/power_mon.log]`<br>`1793144916027: 8808874: SYS_U: I: 5922: 6636: system_execute cmd: shutdown now  [103102600722_2026-10-28/power_mon.log]` |
 
 ### OTA & Firmware Details
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| OTA Package Size | MB | latest value | "OTA package size in bytes = N" (otacheck / updater) | `ota_size` (otacheck/updater) |
-| OTA Update time | s | latest value | updateEngine "updateTime: N" (install only, not the download) | `sm_update_time` (service_mon)<br>`updater_update_time` (updater) |
-| AON Firmware Version | text | latest value | "AON Ver: 0x.." (service_mon 41015) or apm "get_aon_application_version returns"; bagheera only | `aon_sm` (service_mon)<br>`aon_apm` (apm) |
-| ISP Firmware Version | text | latest value | NOT_FOUND: no ISP firmware version in any uploaded log | — |
-| OBD Firmware | text | latest value | obd "adapter fw ver : X" | `obd_fw` (obd) |
-| Bands Enabled | text | latest value | PARTIAL: Sierra modems; LTE band preference masks decoded to band numbers (Quectel logs no mask) | `band_mask` (conn_mgr)<br>`band_ext` (conn_mgr) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| OTA Package Size | MB | latest value | "OTA package size in bytes = N" (otacheck / updater) | `ota_size` (otacheck/updater) | `2026-10-27 12:54:55,365 - __main__ - INFO - OTA package size in bytes = 45930165, OTA required size in KB = 491643.201171875, space left in device in KB = 10765052  [log_prod/6603014391/2026-10-27/otacheck]` |
+| OTA Update time | s | latest value | updateEngine "updateTime: N" (install only, not the download) | `sm_update_time` (service_mon)<br>`updater_update_time` (updater) | `1793107036850: 1710: SM: E: 9632: 9632: Service error: updateEngine : 1793107036849 : 210003 : -1 : 4.6.17.rc.1 \| updateTime: 71.914 : 3867089  [log_prod/6603014391/2026-10-27/service_mon]`<br>`2026-10-27 13:17:16,849 - __main__ - INFO - OTA updateTime: 71.914 sec  [log_prod/6603014391/2026-10-27/updater]` |
+| AON Firmware Version | text | latest value | "AON Ver: 0x.." (service_mon 41015) or apm "get_aon_application_version returns"; bagheera only | `aon_sm` (service_mon)<br>`aon_apm` (apm) | `1792452409825: 4439: SM: E: 5823: 5823: Service error: APM : 1792452409825 : 41015 : 27 : AON Ver: 0x1B : 27742  [103182502300_2026-10-20/service_mon_c.log]`<br>`1793148920591: 9093: DEVB3: I: 5929: 5929: get_aon_application_version returns : 0x1b  [103102600722_2026-10-28/apm.log]` |
+| ISP Firmware Version | text | latest value | NOT_FOUND: no ISP firmware version in any uploaded log | — | — |
+| OBD Firmware | text | latest value | obd "adapter fw ver : X" | `obd_fw` (obd) | `1793126072623: 6728441: J1939: I: 6207: 6207: adapter fw ver : SP4.4  [6603001461_2026-10-28/obd.log]` |
+| Bands Enabled | text | latest value | PARTIAL: Sierra modems; LTE band preference masks decoded to band numbers (Quectel logs no mask) | `band_mask` (conn_mgr)<br>`band_ext` (conn_mgr) | `1793147286093: 2785: CONN_MGR_UTIL_SIERRA: I: 14620: 15144: LTE band pref from device is 300080a  [6603001461_2026-10-28/conn_mgr.log]`<br>`1793147286093: 2785: CONN_MGR_UTIL_SIERRA: I: 14620: 15144: LTE band pref ext from device bits_65_128 is 42  [6603001461_2026-10-28/conn_mgr.log]` |
 
 ### Device Downtime / Data Loss
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| During OTA Update | s | mean of all samples | updater "-c stop -n bagheera" to the next "first frame for cam num 0" | `updater_stop` (updater)<br>`first_frame` (ndcentral) |
-| Device Cyclic Reboot | s | mean of all samples | "Reboot - Cyclic" (service_mon 40016) to the next boot's first frame | `sm_cyclic` (service_mon)<br>`first_frame` (ndcentral) |
-| Device Reboot from AWS IoT / Cloud Command | s | mean of all samples | awsiot "Received command: reboot-phone" to the next first frame | `iot_reboot` (awsiot)<br>`first_frame` (ndcentral) |
-| Service Restart due to Camera Crash | s | mean of all samples | "cam_num N is crashed" to the next "RECORD_START for cam num N" | `cam_crash` (ndcentral)<br>`record_start` (ndcentral) |
-| Device Abrupt Power Cycle (Without Supercap) | s | mean of all samples | boot whose "Previous Shutdown:" is a bare POWER_DOWN: last ndcentral/power_mon/svc line before it to its first frame | `sm_prev_shutdown` (service_mon)<br>`first_frame` (ndcentral) |
-| Device Abrupt Power Cycle (With Supercap) | s | mean of all samples | same, for a "Previous Shutdown:" with SUPERCAP_DISCHARGE | `sm_prev_shutdown` (service_mon)<br>`first_frame` (ndcentral) |
-| Device Reboot time after Abrupt Power Cycle (till video recording start) | s | mean of all samples | power-on anchor to the first frame, in the boots after an abrupt power cycle | `sm_prev_shutdown` (service_mon)<br>`first_frame` (ndcentral) |
-| Connection Manager - LTE Outage during OTA Update | s | mean of all samples | PARTIAL: after "::Starting OTA update::", the last conn_mgr line / DISCONNECTED before the next "Success : Data session connected" to it | `updater_start` (updater)<br>`conn_session_lost` (conn_mgr)<br>`conn_exit` (conn_mgr)<br>`data_connected` (conn_mgr) |
-| Connection Manager - LTE Outage during Device Disconnection | s | mean of all samples | PARTIAL: "Device disconnected : Exiting App" to the next "Success : Data session connected" without a reboot in between (at shutdown it is the device being off) | `conn_exit` (conn_mgr)<br>`data_connected` (conn_mgr) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| During OTA Update | s | mean of all samples | updater "-c stop -n bagheera" to the next "first frame for cam num 0" | `updater_stop` (updater)<br>`first_frame` (ndcentral) | `2026-10-27 13:16:19,224 - __main__ - INFO - Command from file  2 = sudo /usr/bin/nd_service.sh -c stop -n bagheera -p /home/ubuntu/.nddevice/4.6.17.rc.1/service/  [log_prod/6603014391/2026-10-27/updater]`<br>`1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| Device Cyclic Reboot | s | mean of all samples | "Reboot - Cyclic" (service_mon 40016) to the next boot's first frame | `sm_cyclic` (service_mon)<br>`first_frame` (ndcentral) | `1793568222759: 174564909: SM: E: 3732: 3732: Service error: PWR : 1793568222758 : 40016 : 0 : Reboot - Cyclic : 174608598  [log_prod/6603078588/2026-11-01/service_mon]`<br>`1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| Device Reboot from AWS IoT / Cloud Command | s | mean of all samples | awsiot "Received command: reboot-phone" to the next first frame | `iot_reboot` (awsiot)<br>`first_frame` (ndcentral) | `1793698112367: 1255630: IOT-PRSR: I: 3778: 3778: Received command: reboot-phone  [264080392_2026-11-03/awsiot.log]`<br>`1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| Service Restart due to Camera Crash | s | mean of all samples | "cam_num N is crashed" to the next "RECORD_START for cam num N" | `cam_crash` (ndcentral)<br>`record_start` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]`<br>`1793577114647: 3807: NDC: I: 6651: 6651: RECORD_START for cam num 0 with session_cnt 0 received @ epoch_time_ms: 1793577114619, pts_time: 0  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Device Abrupt Power Cycle (Without Supercap) | s | mean of all samples | boot whose "Previous Shutdown:" is a bare POWER_DOWN: last ndcentral/power_mon/svc line before it to its first frame | `sm_prev_shutdown` (service_mon)<br>`first_frame` (ndcentral) | `1793058577350: 7676: SM: E: 5855: 5855: Service error: PWR : 1793058577350 : 40105 : 53384 : Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: 0.000000) : 30331  [log_prod/103352600191/2026-10-27/service_mon]`<br>`1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| Device Abrupt Power Cycle (With Supercap) | s | mean of all samples | same, for a "Previous Shutdown:" with SUPERCAP_DISCHARGE | `sm_prev_shutdown` (service_mon)<br>`first_frame` (ndcentral) | `1793058577350: 7676: SM: E: 5855: 5855: Service error: PWR : 1793058577350 : 40105 : 53384 : Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: 0.000000) : 30331  [log_prod/103352600191/2026-10-27/service_mon]`<br>`1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| Device Reboot time after Abrupt Power Cycle (till video recording start) | s | mean of all samples | power-on anchor to the first frame, in the boots after an abrupt power cycle | `sm_prev_shutdown` (service_mon)<br>`first_frame` (ndcentral) | `1793058577350: 7676: SM: E: 5855: 5855: Service error: PWR : 1793058577350 : 40105 : 53384 : Previous Shutdown: :DISCHARGE_STATE:RESET_STATE:SHUTDOWN_STATE:SUPERCAP_DISCHARGE:POWER_ON_RESET (Speed: 0.000000) : 30331  [log_prod/103352600191/2026-10-27/service_mon]`<br>`1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
+| Connection Manager - LTE Outage during OTA Update | s | mean of all samples | PARTIAL: after "::Starting OTA update::", the last conn_mgr line / DISCONNECTED before the next "Success : Data session connected" to it | `updater_start` (updater)<br>`conn_session_lost` (conn_mgr)<br>`conn_exit` (conn_mgr)<br>`data_connected` (conn_mgr) | `2026-10-27 13:16:04,933 - __main__ - INFO - ::====================::Starting OTA update ::====================::  [log_prod/6603014391/2026-10-27/updater]`<br>`1793126957818: 7562195: CONN_MGR_CBK: I: 10800: 10877: SessionStateCallback:DISCONNECTED  [6603001461_2026-10-28/conn_mgr.log]`<br>`1793103098100: 2155303: CONN_MGR_MAIN: E: 29430: 29509: Device disconnected : Exiting App  [log_prod/6603014391/2026-10-27/conn_mgr]`<br>`1793107052129: 6497: CONN_MGR_MAIN: I: 11149: 11149: Success : Data session connected  [log_prod/6603014391/2026-10-27/conn_mgr]` |
+| Connection Manager - LTE Outage during Device Disconnection | s | mean of all samples | PARTIAL: "Device disconnected : Exiting App" to the next "Success : Data session connected" without a reboot in between (at shutdown it is the device being off) | `conn_exit` (conn_mgr)<br>`data_connected` (conn_mgr) | `1793103098100: 2155303: CONN_MGR_MAIN: E: 29430: 29509: Device disconnected : Exiting App  [log_prod/6603014391/2026-10-27/conn_mgr]`<br>`1793107052129: 6497: CONN_MGR_MAIN: I: 11149: 11149: Success : Data session connected  [log_prod/6603014391/2026-10-27/conn_mgr]` |
 
 ### Camera Crash Stats
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Outward Camera Crash Count - Total | count | sum over boots | "cam_num 0 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| Outward Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 0 crash | `cam_crash` (ndcentral) |
-| Inward Camera Crash Count - Total | count | sum over boots | "cam_num 1 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| Inward Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 1 crash | `cam_crash` (ndcentral) |
-| Left Camera Crash Count - Total | count | sum over boots | "cam_num 2 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| Left Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 2 crash | `cam_crash` (ndcentral) |
-| Right Camera Crash Count - Total | count | sum over boots | "cam_num 3 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| Right Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 3 crash | `cam_crash` (ndcentral) |
-| MDVR 4 Camera Crash Count - Total | count | sum over boots | "cam_num 4 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| MDVR 4 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 4 crash | `cam_crash` (ndcentral) |
-| MDVR 5 Camera Crash Count - Total | count | sum over boots | "cam_num 5 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| MDVR 5 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 5 crash | `cam_crash` (ndcentral) |
-| MDVR 6 Camera Crash Count - Total | count | sum over boots | "cam_num 6 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| MDVR 6 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 6 crash | `cam_crash` (ndcentral) |
-| MDVR 7 Camera Crash Count - Total | count | sum over boots | "cam_num 7 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| MDVR 7 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 7 crash | `cam_crash` (ndcentral) |
-| DMS Camera Crash Count - Total | count | sum over boots | "cam_num 8 is crashed" (one per second) | `cam_crash` (ndcentral) |
-| DMS Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 8 crash | `cam_crash` (ndcentral) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Outward Camera Crash Count - Total | count | sum over boots | "cam_num 0 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Outward Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 0 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Inward Camera Crash Count - Total | count | sum over boots | "cam_num 1 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Inward Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 1 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Left Camera Crash Count - Total | count | sum over boots | "cam_num 2 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Left Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 2 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Right Camera Crash Count - Total | count | sum over boots | "cam_num 3 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| Right Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 3 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 4 Camera Crash Count - Total | count | sum over boots | "cam_num 4 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 4 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 4 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 5 Camera Crash Count - Total | count | sum over boots | "cam_num 5 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 5 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 5 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 6 Camera Crash Count - Total | count | sum over boots | "cam_num 6 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 6 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 6 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 7 Camera Crash Count - Total | count | sum over boots | "cam_num 7 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| MDVR 7 Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 7 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| DMS Camera Crash Count - Total | count | sum over boots | "cam_num 8 is crashed" (one per second) | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
+| DMS Camera Crash Count % | % | % of boots | % of boots with drive time that had a cam 8 crash | `cam_crash` (ndcentral) | `1793577098083: 106579347: NDC: E: 4365: 4598: cam_num 0 is crashed  [log_prod/6603004626/2026-11-02/ndcentral]` |
 
 ### Video File Size Details - HD
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Outward Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 0_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| Inward Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 1_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| Left Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 2_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| Right Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 3_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| MDVR 4 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 4_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| MDVR 5 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 5_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| MDVR 6 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 6_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| MDVR 7 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 7_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| DMS Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 8_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) |
-| Outward Video - FPS - HD | fps | mean of all samples | "CAM0: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| Inward Video - FPS - HD | fps | mean of all samples | "CAM1: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| Left Video - FPS - HD | fps | mean of all samples | "CAM2: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| Right Video - FPS - HD | fps | mean of all samples | "CAM3: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| MDVR 4 Video - FPS - HD | fps | mean of all samples | "CAM4: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| MDVR 5 Video - FPS - HD | fps | mean of all samples | "CAM5: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| MDVR 6 Video - FPS - HD | fps | mean of all samples | "CAM6: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| MDVR 7 Video - FPS - HD | fps | mean of all samples | "CAM7: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
-| DMS Video - FPS - HD | fps | mean of all samples | "CAM8: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Outward Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 0_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Inward Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 1_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Left Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 2_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Right Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 3_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 4 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 4_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 5 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 5_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 6 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 6_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 7 Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 7_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| DMS Video - File Size - HD | MB | mean of all samples | circ_buff "Pushed file 8_&lt;session&gt;.mp4 with size N" (last per file, files &lt; 10 KB dropped) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Outward Video - FPS - HD | fps | mean of all samples | "CAM0: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| Inward Video - FPS - HD | fps | mean of all samples | "CAM1: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| Left Video - FPS - HD | fps | mean of all samples | "CAM2: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| Right Video - FPS - HD | fps | mean of all samples | "CAM3: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| MDVR 4 Video - FPS - HD | fps | mean of all samples | "CAM4: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| MDVR 5 Video - FPS - HD | fps | mean of all samples | "CAM5: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| MDVR 6 Video - FPS - HD | fps | mean of all samples | "CAM6: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| MDVR 7 Video - FPS - HD | fps | mean of all samples | "CAM7: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| DMS Video - FPS - HD | fps | mean of all samples | "CAM8: Frame count received: N" every 5 s: frames / time | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
 
 ### Video File Size Details - LD
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Outward Video - File Size - LD | MB | mean of all samples | "Pushed file 0_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| Inward Video - File Size - LD | MB | mean of all samples | "Pushed file 1_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| Left Video - File Size - LD | MB | mean of all samples | NOT_FOUND: left camera writes one (already LD) file a minute, see the HD size | — |
-| Right Video - File Size - LD | MB | mean of all samples | NOT_FOUND: right camera writes one (already LD) file a minute, see the HD size | — |
-| MDVR 4 Video - File Size - LD | MB | mean of all samples | "Pushed file 4_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| MDVR 5 Video - File Size - LD | MB | mean of all samples | "Pushed file 5_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| MDVR 6 Video - File Size - LD | MB | mean of all samples | "Pushed file 6_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| MDVR 7 Video - File Size - LD | MB | mean of all samples | "Pushed file 7_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| DMS Video - File Size - LD | MB | mean of all samples | "Pushed file 8_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) |
-| Outward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec) |
-| Inward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Outward Video - File Size - LD | MB | mean of all samples | "Pushed file 0_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Inward Video - File Size - LD | MB | mean of all samples | "Pushed file 1_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Left Video - File Size - LD | MB | mean of all samples | NOT_FOUND: left camera writes one (already LD) file a minute, see the HD size | — | — |
+| Right Video - File Size - LD | MB | mean of all samples | NOT_FOUND: right camera writes one (already LD) file a minute, see the HD size | — | — |
+| MDVR 4 Video - File Size - LD | MB | mean of all samples | "Pushed file 4_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 5 Video - File Size - LD | MB | mean of all samples | "Pushed file 5_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 6 Video - File Size - LD | MB | mean of all samples | "Pushed file 6_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| MDVR 7 Video - File Size - LD | MB | mean of all samples | "Pushed file 7_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| DMS Video - File Size - LD | MB | mean of all samples | "Pushed file 8_&lt;session&gt;.mp4.ld.mp4 with size N" | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Outward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
+| Inward Video - FPS - LD | fps | mean of all samples | PARTIAL: LD is encoded from the same frames, so the HD frame count | `frame_count` (ndcentral/cam_rec) | `1793144465466: 8358899: CAM0: I: 6032: 7147: Frame count recieved: 150   [103102600722_2026-10-28/ndcentral.log] (every 5 s per camera; summed per 10 min in the scan)` |
 
 ### Preview LQ Videos - Video File Size Details
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Outward - LD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_lq["0"] MiB / file count | `storage_info` (deviceHealthClient) |
-| Inward - LD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_lq["1"] MiB / file count | `storage_info` (deviceHealthClient) |
-| Outward - HD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_hq["0"] MiB / file count | `storage_info` (deviceHealthClient) |
-| Inward - HD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_hq["1"] MiB / file count | `storage_info` (deviceHealthClient) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Outward - LD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_lq["0"] MiB / file count | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Inward - LD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_lq["1"] MiB / file count | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Outward - HD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_hq["0"] MiB / file count | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Inward - HD File Size (Average) | MB | latest value | PARTIAL: storage_info no_of_hq["1"] MiB / file count | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 
 ### Obs File Size Details
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Size Allocated for Obs Files (/home/ubuntu/.nddevice/observations) | MB | latest value | NOT_FOUND: no quota is logged | — |
-| Max HD Obs files can be stored - File Count | count | latest value | PARTIAL: obs files on the card (storage_info no_of_obs), the steady state once the card is full | `storage_info` (deviceHealthClient) |
-| HD Obs - Avg size of file | KB | mean of all samples | circ_buff "Pushed file 0_&lt;session&gt;.zip with size N" (last per file) | `pushed_file` (circ_buff) |
-| Max LD Obs files can be stored - File Count | count | latest value | NOT_FOUND: needs the obs allocation, which is not logged | — |
-| LD Obs - Avg size of file | KB | mean of all samples | inference "obsZipDestFile size: b'.../observations/...zip' -- N" | `obs_ld_size` (inference) |
-| Obs File Size (One zip with valid GPS) | KB | mean of all samples | HD obs zips whose name has a GPS fix (not 91.0000_181.0000) | `pushed_file` (circ_buff) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Size Allocated for Obs Files (/home/ubuntu/.nddevice/observations) | MB | latest value | NOT_FOUND: no quota is logged | — | — |
+| Max HD Obs files can be stored - File Count | count | latest value | PARTIAL: obs files on the card (storage_info no_of_obs), the steady state once the card is full | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| HD Obs - Avg size of file | KB | mean of all samples | circ_buff "Pushed file 0_&lt;session&gt;.zip with size N" (last per file) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
+| Max LD Obs files can be stored - File Count | count | latest value | NOT_FOUND: needs the obs allocation, which is not logged | — | — |
+| LD Obs - Avg size of file | KB | mean of all samples | inference "obsZipDestFile size: b'.../observations/...zip' -- N" | `obs_ld_size` (inference) | `2026-10-27 18:30:41,982 - root - INFO - obsZipDestFile size: b'/home/ubuntu/.nddevice/observations/0_trip5689_part05d3c2_33.3346_-117.2435_0.0_1793125756531_y_05468d43cec9da91e04814043039277c.zip' -- 17296  [6603001461_2026-10-28/inference.log]` |
+| Obs File Size (One zip with valid GPS) | KB | mean of all samples | HD obs zips whose name has a GPS fix (not 91.0000_181.0000) | `pushed_file` (circ_buff) | `1793144343499: 8231562: CB: I: 6240: 6240: Pushed file 0_trip1bbf_part00f1c6_33.8681_-117.9309_0.0_1793144282968_y.mp4 with size 38537408 to file_size_check_queue  [103102600722_2026-10-28/circ_buff.log]` |
 
 ### SdCard / eMMC
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Total Outward files in eMMC | count | latest value | storage_info no_of_hq["0"] + no_of_lq["0"] file counts | `storage_info` (deviceHealthClient) |
-| Total Inward files in eMMC | count | latest value | storage_info no_of_hq["1"] + no_of_lq["1"] | `storage_info` (deviceHealthClient) |
-| Total Left files in eMMC | count | latest value | storage_info no_of_hq["2"] | `storage_info` (deviceHealthClient) |
-| Total Right files in eMMC | count | latest value | storage_info no_of_hq["3"] | `storage_info` (deviceHealthClient) |
-| Total MDVR 4 files in eMMC | count | latest value | storage_info no_of_hq["4"] + no_of_lq["4"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) |
-| Total MDVR 5 files in eMMC | count | latest value | storage_info no_of_hq["5"] + no_of_lq["5"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) |
-| Total MDVR 6 files in eMMC | count | latest value | storage_info no_of_hq["6"] + no_of_lq["6"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) |
-| Total MDVR 7 files in eMMC | count | latest value | storage_info no_of_hq["7"] + no_of_lq["7"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) |
-| Total DMS files in eMMC | count | latest value | storage_info no_of_hq["8"] + no_of_lq["8"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) |
-| Obs files in eMMC | count | latest value | storage_info no_of_obs | `storage_info` (deviceHealthClient) |
-| eMMC - Storage Hours | h | latest value | outward LD files / 60 (one file a minute), as test TC_circbuff_777 | `storage_info` (deviceHealthClient) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Total Outward files in eMMC | count | latest value | storage_info no_of_hq["0"] + no_of_lq["0"] file counts | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total Inward files in eMMC | count | latest value | storage_info no_of_hq["1"] + no_of_lq["1"] | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total Left files in eMMC | count | latest value | storage_info no_of_hq["2"] | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total Right files in eMMC | count | latest value | storage_info no_of_hq["3"] | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total MDVR 4 files in eMMC | count | latest value | storage_info no_of_hq["4"] + no_of_lq["4"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total MDVR 5 files in eMMC | count | latest value | storage_info no_of_hq["5"] + no_of_lq["5"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total MDVR 6 files in eMMC | count | latest value | storage_info no_of_hq["6"] + no_of_lq["6"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total MDVR 7 files in eMMC | count | latest value | storage_info no_of_hq["7"] + no_of_lq["7"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Total DMS files in eMMC | count | latest value | storage_info no_of_hq["8"] + no_of_lq["8"] (builds that list the camera on its own) | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| Obs files in eMMC | count | latest value | storage_info no_of_obs | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
+| eMMC - Storage Hours | h | latest value | outward LD files / 60 (one file a minute), as test TC_circbuff_777 | `storage_info` (deviceHealthClient) | `2026-10-27 23:33:25,748 - INFO    - deviceHealthClient        - Received message: {"storage_info": {"timestamp": 1793144002970, "sys_uptime": 132, ... "no_of_hq": {"0": "216/7694.6", ...}, "no_of_lq": {"0": "7639/43084.4", ...}, "no_of_obs": "7594/..."  [103102600722_2026-10-28/deviceHealthClient.log] (values are "file count/MiB")` |
 
 ### Internal Storage - /root
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Storage Size | GB | latest value | PARTIAL: svc "DISK: Free space" + diagnostic "used memory of /dev/mmcblk0" (MiB, or % on some builds) | `disk_free` (svc)<br>`disk_used` (diagnostic) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Storage Size | GB | latest value | PARTIAL: svc "DISK: Free space" + diagnostic "used memory of /dev/mmcblk0" (MiB, or % on some builds) | `disk_free` (svc)<br>`disk_used` (diagnostic) | `1793141592332: 5485201: DISK: I: 5953: 6208: Free space : 3740762112  [103102600722_2026-10-28/svc.log]`<br>`1793143416160: 7307740: DIAG: I: 5914: 6141: used memory of /dev/mmcblk0 is 9747  [103102600722_2026-10-28/diagnostic.log] (MiB; some builds log a percentage: 46.503920)` |
 
 ### WAF - eMMC Metrics
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| External eMMC | WAF | latest value | 2nd "Waf is X" of a diagnostic WAF cycle (bagheera only) | `waf` (diagnostic) |
-| Internal eMMC | WAF | latest value | 1st "Waf is X" of a diagnostic WAF cycle | `waf` (diagnostic) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| External eMMC | WAF | latest value | 2nd "Waf is X" of a diagnostic WAF cycle (bagheera only) | `waf` (diagnostic) | `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external)` |
+| Internal eMMC | WAF | latest value | 1st "Waf is X" of a diagnostic WAF cycle | `waf` (diagnostic) | `1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external)` |
 
 ### Tegra Watchdog Timeout
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Reboot Initiated | count | sum over boots | boots reset by the watchdog (RESET_REASON / previous_shutdown_reason with WATCHDOG); the watchdog firing itself is not logged | `wakeup_reason` (power_mon/apm)<br>`prev_shutdown` (power_mon) |
-| Power Monitor Start after reboot | s | mean of all samples | power-on anchor to "#####STARTING POWER MONITOR#####" in the watchdog boot | `pm_start` (power_mon) |
-| Time taken to Reboot | s | mean of all samples | PARTIAL: last ndcentral/power_mon/svc line of the hung boot to the power monitor start | `pm_start` (power_mon) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Reboot Initiated | count | sum over boots | boots reset by the watchdog (RESET_REASON / previous_shutdown_reason with WATCHDOG); the watchdog firing itself is not logged | `wakeup_reason` (power_mon/apm)<br>`prev_shutdown` (power_mon) | `1793239013133: 10281: DEVB3: I: 5973: 5973: WAKEUP_REASON::POWER_UP -- RESET_REASON::POWER_DOWN:TEGRA_BCCPLEX_WATCHDOG  [log_prod/103102600722/2026-10-29/power_mon]`<br>`1793155718957: 9032: PWR: I: 5880: 5880: POWER_MONITOR_ctx->previous_shutdown_reason DBSTATE_SHUTDOWN_MISC_LOWPOWER:SHUTDOWN  [103102600722_2026-10-28/power_mon.log]` |
+| Power Monitor Start after reboot | s | mean of all samples | power-on anchor to "#####STARTING POWER MONITOR#####" in the watchdog boot | `pm_start` (power_mon) | `1793239003547: 695: PWR: E: 5973: 5973: #####STARTING POWER MONITOR#####  [log_prod/103102600722/2026-10-29/power_mon]` |
+| Time taken to Reboot | s | mean of all samples | PARTIAL: last ndcentral/power_mon/svc line of the hung boot to the power monitor start | `pm_start` (power_mon) | `1793239003547: 695: PWR: E: 5973: 5973: #####STARTING POWER MONITOR#####  [log_prod/103102600722/2026-10-29/power_mon]` |
 
 ### Installer App - Metrics
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Ignition ON Detected | s | mean of all samples | power-on anchor to btfv "IGNITION ON received" | `bt_ignition_on` (btfv) |
-| Scan for Installer App Starts | s | mean of all samples | IGNITION ON to "Inside: RegisterInstallerAppFilter" | `bt_ignition_on` (btfv)<br>`installer_scan_start` (btfv) |
-| Scan for Installer App Stops | s | mean of all samples | IGNITION ON to "InstallerApp timeout cb triggered" | `bt_ignition_on` (btfv)<br>`installer_scan_stop` (btfv) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Ignition ON Detected | s | mean of all samples | power-on anchor to btfv "IGNITION ON received" | `bt_ignition_on` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]` |
+| Scan for Installer App Starts | s | mean of all samples | IGNITION ON to "Inside: RegisterInstallerAppFilter" | `bt_ignition_on` (btfv)<br>`installer_scan_start` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793264889280: 3771: BTMAN: I: 4169: 4169: Inside: RegisterInstallerAppFilter  [105322600008_2026-10-29/btfv.log]` |
+| Scan for Installer App Stops | s | mean of all samples | IGNITION ON to "InstallerApp timeout cb triggered" | `bt_ignition_on` (btfv)<br>`installer_scan_stop` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793684964356: 127492: BTMAN: I: 3747: 4022: InstallerApp timeout cb triggered  [264080392_2026-11-03/btfv.log]` |
 
 ### Driveri App & BT Beacon - Metrics
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Ignition ON Detected | s | mean of all samples | power-on anchor to btfv "IGNITION ON received" | `bt_ignition_on` (btfv) |
-| Advertising Started | s | mean of all samples | IGNITION ON to "Starting Driver Login Advertisement" | `bt_ignition_on` (btfv)<br>`driver_adv_start` (btfv) |
-| Scan for DriveriApp / BT Beacon Starts | s | mean of all samples | IGNITION ON to "Inside: RegisterDriverLoginLegacyFilter" | `bt_ignition_on` (btfv)<br>`driver_scan_start` (btfv) |
-| Scan for DriveriApp / BT Beacon Stops | s | mean of all samples | IGNITION ON to the first "DriverLogin legacy scan complete cb triggered" | `bt_ignition_on` (btfv)<br>`driver_scan_stop` (btfv) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Ignition ON Detected | s | mean of all samples | power-on anchor to btfv "IGNITION ON received" | `bt_ignition_on` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]` |
+| Advertising Started | s | mean of all samples | IGNITION ON to "Starting Driver Login Advertisement" | `bt_ignition_on` (btfv)<br>`driver_adv_start` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793684844137: 7273: BTMAN: I: 3747: 3747: Starting Driver Login Advertisement  [264080392_2026-11-03/btfv.log]` |
+| Scan for DriveriApp / BT Beacon Starts | s | mean of all samples | IGNITION ON to "Inside: RegisterDriverLoginLegacyFilter" | `bt_ignition_on` (btfv)<br>`driver_scan_start` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793684844136: 7272: BTMAN: I: 3747: 3747: Inside: RegisterDriverLoginLegacyFilter  [264080392_2026-11-03/btfv.log]` |
+| Scan for DriveriApp / BT Beacon Stops | s | mean of all samples | IGNITION ON to the first "DriverLogin legacy scan complete cb triggered" | `bt_ignition_on` (btfv)<br>`driver_scan_stop` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793684874335: 37471: BTMAN: I: 3747: 4022: DriverLogin legacy scan complete cb triggered  [264080392_2026-11-03/btfv.log]` |
 
 ### Alert Upload Time - Metrics
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| File Recording Start time | s | mean of all samples | recording start of the alert file (epoch in its name) to the alert detection | `upload_state` (inference)<br>`lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`ialerts_found` (inference_inertial) |
-| Inertial Alert Detection | s | mean of all samples | PARTIAL: recording start to inference_inertial "ialerts.json found at .../&lt;session&gt;/" (non-empty) | `ialerts_found` (inference_inertial) |
-| Inference / Vision Alert Detection / Processing | s | mean of all samples | recording start to the earliest of the analytics "msg_send" (real time) and inference UPLOAD_STATE | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`upload_state` (inference) |
-| Alert Notification to the Cloud - API Call Triggering | s | mean of all samples | detection to the first /upload/eventdata call of the session (session: the "Summary file size" line before it on the same thread) | `eventdata_summary` (unifieduploader)<br>`eventdata_call` (unifieduploader) |
-| Alert Notification to the Cloud - API Call Successful | s | mean of all samples | detection to "Upload successful for &lt;session&gt;.mp4" | `eventdata_ok` (unifieduploader) |
-| Upload Video Request Received from Cloud - Outward | s | mean of all samples | detection to the first "VOD req received ... video: .../0_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - Inward | s | mean of all samples | detection to the first "VOD req received ... video: .../1_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - Left | s | mean of all samples | detection to the first "VOD req received ... video: .../2_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - Right | s | mean of all samples | detection to the first "VOD req received ... video: .../3_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - MDVR 4 | s | mean of all samples | detection to the first "VOD req received ... video: .../4_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - MDVR 5 | s | mean of all samples | detection to the first "VOD req received ... video: .../5_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - MDVR 6 | s | mean of all samples | detection to the first "VOD req received ... video: .../6_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - MDVR 7 | s | mean of all samples | detection to the first "VOD req received ... video: .../7_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Request Received from Cloud - DMS | s | mean of all samples | detection to the first "VOD req received ... video: .../8_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) |
-| Upload Video Successful - Outward | s | mean of all samples | detection to "Upload successful for video: .../0_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - Inward | s | mean of all samples | detection to "Upload successful for video: .../1_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - Left | s | mean of all samples | detection to "Upload successful for video: .../2_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - Right | s | mean of all samples | detection to "Upload successful for video: .../3_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - MDVR 4 | s | mean of all samples | detection to "Upload successful for video: .../4_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - MDVR 5 | s | mean of all samples | detection to "Upload successful for video: .../5_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - MDVR 6 | s | mean of all samples | detection to "Upload successful for video: .../6_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - MDVR 7 | s | mean of all samples | detection to "Upload successful for video: .../7_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Upload Video Successful - DMS | s | mean of all samples | detection to "Upload successful for video: .../8_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) |
-| Total Time Taken for upload (from alert detection) | s | mean of all samples | detection to the last camera's video upload success of the session | `video_ok` (unifieduploader) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| File Recording Start time | s | mean of all samples | recording start of the alert file (epoch in its name) to the alert detection | `upload_state` (inference)<br>`lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`ialerts_found` (inference_inertial) | `2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]`<br>`2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]`<br>`2026-11-02 19:17:21,231 - root - INFO - ialerts.json found at /home/iriscli/ND_OUTPUT/0_trip2b1f_part088982_30.4286_-89.0788_0.0_1793635811955_y/ialerts.json, size=415 bytes  [log_prod/6603007848/2026-11-03/inference_inertial] (size 31 = empty list)` |
+| Inertial Alert Detection | s | mean of all samples | PARTIAL: recording start to inference_inertial "ialerts.json found at .../&lt;session&gt;/" (non-empty) | `ialerts_found` (inference_inertial) | `2026-11-02 19:17:21,231 - root - INFO - ialerts.json found at /home/iriscli/ND_OUTPUT/0_trip2b1f_part088982_30.4286_-89.0788_0.0_1793635811955_y/ialerts.json, size=415 bytes  [log_prod/6603007848/2026-11-03/inference_inertial] (size 31 = empty list)` |
+| Inference / Vision Alert Detection / Processing | s | mean of all samples | recording start to the earliest of the analytics "msg_send" (real time) and inference UPLOAD_STATE | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`upload_state` (inference) | `2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]`<br>`2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]` |
+| Alert Notification to the Cloud - API Call Triggering | s | mean of all samples | detection to the first /upload/eventdata call of the session (session: the "Summary file size" line before it on the same thread) | `eventdata_summary` (unifieduploader)<br>`eventdata_call` (unifieduploader) | `1793198232440: 1561332: UPL: I: 3381: 3751: Summary file size: 328107 name: /dev/shm/0_trip568d_part05d441_32.9981_-117.0829_0.0_1793198116548_y_summary.json.7z  [6603001461_2026-10-28/unifieduploader.log]`<br>`1793198232519: 1561411: UPL: I: 3381: 3751: Calling service: https://idms.netradyne.com/restserver/api/v1/upload/eventdata  [6603001461_2026-10-28/unifieduploader.log]` |
+| Alert Notification to the Cloud - API Call Successful | s | mean of all samples | detection to "Upload successful for &lt;session&gt;.mp4" | `eventdata_ok` (unifieduploader) | `1793219851656: 1559795: UPL: I: 5887: 6361: Upload successful for 0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - Outward | s | mean of all samples | detection to the first "VOD req received ... video: .../0_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - Inward | s | mean of all samples | detection to the first "VOD req received ... video: .../1_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - Left | s | mean of all samples | detection to the first "VOD req received ... video: .../2_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - Right | s | mean of all samples | detection to the first "VOD req received ... video: .../3_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - MDVR 4 | s | mean of all samples | detection to the first "VOD req received ... video: .../4_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - MDVR 5 | s | mean of all samples | detection to the first "VOD req received ... video: .../5_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - MDVR 6 | s | mean of all samples | detection to the first "VOD req received ... video: .../6_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - MDVR 7 | s | mean of all samples | detection to the first "VOD req received ... video: .../7_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Request Received from Cloud - DMS | s | mean of all samples | detection to the first "VOD req received ... video: .../8_&lt;session&gt;.mp4" | `vod_req` (unifieduploader) | `1793219859559: 1567698: UPL: I: 5887: 5887: VOD req received. Id: 1023368905, vod_id: vod-v2-1023368905-589283893506-1 , video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 , cancelled: 0, priority: 5  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - Outward | s | mean of all samples | detection to "Upload successful for video: .../0_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - Inward | s | mean of all samples | detection to "Upload successful for video: .../1_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - Left | s | mean of all samples | detection to "Upload successful for video: .../2_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - Right | s | mean of all samples | detection to "Upload successful for video: .../3_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - MDVR 4 | s | mean of all samples | detection to "Upload successful for video: .../4_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - MDVR 5 | s | mean of all samples | detection to "Upload successful for video: .../5_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - MDVR 6 | s | mean of all samples | detection to "Upload successful for video: .../6_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - MDVR 7 | s | mean of all samples | detection to "Upload successful for video: .../7_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Upload Video Successful - DMS | s | mean of all samples | detection to "Upload successful for video: .../8_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| Total Time Taken for upload (from alert detection) | s | mean of all samples | detection to the last camera's video upload success of the session | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
 
 ### Obs Data Zip Upload - Metrics
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| Upload Request for Obs zip - Received | s | mean of all samples | request time (rt, in the line) to "Upload Observations Request Received" | `obs_req` (unifieduploader) |
-| Files adding into zip - Completion (10 files) | s | mean of all samples | request received to "Creating observations zip file at once!" (last file added) | `obs_req` (unifieduploader)<br>`obs_zip_start` (unifieduploader) |
-| Creating Obs Zip | s | mean of all samples | "Creating observations zip file at once!" to "Obs zip file created!" | `obs_zip_start` (unifieduploader)<br>`obs_zip_done` (unifieduploader) |
-| Uploading Obs Zip - Start | s | mean of all samples | request received to "Calling service: .../upload/observations" | `obs_req` (unifieduploader)<br>`obs_call` (unifieduploader) |
-| Uploading Obs Zip - Successful | s | mean of all samples | request received to "File uploaded. Deleting" | `obs_req` (unifieduploader)<br>`obs_uploaded` (unifieduploader) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Upload Request for Obs zip - Received | s | mean of all samples | request time (rt, in the line) to "Upload Observations Request Received" | `obs_req` (unifieduploader) | `1793144884738: 8779929: UPL: I: 5828: 6403: Upload Observations Request Received 1793144883745430  [103102600722_2026-10-28/unifieduploader.log]` |
+| Files adding into zip - Completion (10 files) | s | mean of all samples | request received to "Creating observations zip file at once!" (last file added) | `obs_req` (unifieduploader)<br>`obs_zip_start` (unifieduploader) | `1793144884738: 8779929: UPL: I: 5828: 6403: Upload Observations Request Received 1793144883745430  [103102600722_2026-10-28/unifieduploader.log]`<br>`1793144885066: 8780257: UPL: I: 5828: 6403: Creating observations zip file at once!  [103102600722_2026-10-28/unifieduploader.log]` |
+| Creating Obs Zip | s | mean of all samples | "Creating observations zip file at once!" to "Obs zip file created!" | `obs_zip_start` (unifieduploader)<br>`obs_zip_done` (unifieduploader) | `1793144885066: 8780257: UPL: I: 5828: 6403: Creating observations zip file at once!  [103102600722_2026-10-28/unifieduploader.log]`<br>`1793144892816: 8788007: UPL: I: 5828: 6403: Obs zip file created!  [103102600722_2026-10-28/unifieduploader.log]` |
+| Uploading Obs Zip - Start | s | mean of all samples | request received to "Calling service: .../upload/observations" | `obs_req` (unifieduploader)<br>`obs_call` (unifieduploader) | `1793144884738: 8779929: UPL: I: 5828: 6403: Upload Observations Request Received 1793144883745430  [103102600722_2026-10-28/unifieduploader.log]`<br>`1793144892999: 8788190: UPL: I: 5828: 6403: Calling service: https://idms.netradyne.com/restserver/api/v1/upload/observations  [103102600722_2026-10-28/unifieduploader.log]` |
+| Uploading Obs Zip - Successful | s | mean of all samples | request received to "File uploaded. Deleting" | `obs_req` (unifieduploader)<br>`obs_uploaded` (unifieduploader) | `1793144884738: 8779929: UPL: I: 5828: 6403: Upload Observations Request Received 1793144883745430  [103102600722_2026-10-28/unifieduploader.log]`<br>`1793144893723: 8788914: UPL: I: 5828: 6403: File uploaded. Deleting 1  [103102600722_2026-10-28/unifieduploader.log]` |
 
 ### Retry Count & Duration for API / Upload Calls
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| upload-eventdata - Retry Count | count | sum over boots | "Details: type - msg type: 100" (one per retry) | `retry_details` (unifieduploader) |
-| upload-eventdata - Retry Duration | s | mean of all samples | first "Upload failed for &lt;session&gt;.mp4" to its "Upload successful" | `eventdata_fail` (unifieduploader)<br>`eventdata_ok` (unifieduploader) |
-| upload-video - Retry Count | count | sum over boots | "VOD upload attempt failed" minus "Exhausted all upload retries" (critical logs too) | `vod_attempt_failed` (unifieduploader)<br>`vod_exhausted` (unifieduploader) |
-| upload-video - Retry Duration | s | mean of all samples | first failed attempt of a vod_id to "deleted VOD upload req ... - &lt;vod_id&gt; from DB" (uploaded or given up) | `vod_attempt_failed` (unifieduploader)<br>`vod_deleted` (unifieduploader) |
-| upload-observationdata - Retry Count | count | sum over boots | "Details: type - msg type: 110" | `retry_details` (unifieduploader) |
-| upload-observationdata - Retry Duration | s | mean of all samples | first "Failed to fetch url (.../upload/observations)" to the next "File uploaded" on that thread | `obs_fail` (unifieduploader)<br>`obs_uploaded` (unifieduploader) |
-| videolist - Retry Count | count | sum over boots | PARTIAL: "collect_notify_videolist is FAILED" (the next periodic call is the retry) | `videolist_failed` (circ_buff) |
-| videolist - Retry Duration | s | mean of all samples | PARTIAL: first FAILED to the next "is succeded" | `videolist_failed` (circ_buff)<br>`videolist_ok` (circ_buff) |
-| upload-device-status - Retry Count | count | sum over boots | health "curl_with_health: curl exited N" (failed status POST, re-sent from backup) | `health_post_failed` (health) |
-| upload-device-status - Retry Duration | s | mean of all samples | first failed POST to the next "Upload of Health Stats successful" | `health_post_failed` (health)<br>`health_ok` (health) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| upload-eventdata - Retry Count | count | sum over boots | "Details: type - msg type: 100" (one per retry) | `retry_details` (unifieduploader) | `1793268120515: 238693: UPL: I: 1305: 2748: PS Details: type - msg type: 100 msg level: 0  [105322600008_2026-10-29/unifieduploader.log] (logged right after "Retrying... retry_count: n"; 100 eventdata, 101 video, 110 observations)` |
+| upload-eventdata - Retry Duration | s | mean of all samples | first "Upload failed for &lt;session&gt;.mp4" to its "Upload successful" | `eventdata_fail` (unifieduploader)<br>`eventdata_ok` (unifieduploader) | `1793268143193: 261371: UPL: I: 1305: 2748: Upload failed for 0_trip0003_part00000d_91.0000_181.0000_0.0_1793267415178_y.mp4  [105322600008_2026-10-29/unifieduploader.log]`<br>`1793219851656: 1559795: UPL: I: 5887: 6361: Upload successful for 0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
+| upload-video - Retry Count | count | sum over boots | "VOD upload attempt failed" minus "Exhausted all upload retries" (critical logs too) | `vod_attempt_failed` (unifieduploader)<br>`vod_exhausted` (unifieduploader) | `1793276679063: 1227729: UPL: E: 1211: 2675: VOD upload attempt failed: vod-v2-19665441-2252965591-0, vod_id  [105322600008_2026-10-29/unifieduploader.log]`<br>`1792455673698: 2912304: UPL: C: 5963: 6390: Exhausted all upload retries for vod-v2-19523042-2234900699-0 : 6. Max retry: 6  [103182502300_2026-10-20/unifieduploader_c.log]` |
+| upload-video - Retry Duration | s | mean of all samples | first failed attempt of a vod_id to "deleted VOD upload req ... - &lt;vod_id&gt; from DB" (uploaded or given up) | `vod_attempt_failed` (unifieduploader)<br>`vod_deleted` (unifieduploader) | `1793276679063: 1227729: UPL: E: 1211: 2675: VOD upload attempt failed: vod-v2-19665441-2252965591-0, vod_id  [105322600008_2026-10-29/unifieduploader.log]`<br>`1793219883086: 1591225: UDB: I: 5887: 6362: deleted VOD upload req /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4 - vod-v2-1023368905-589283893506-1 from DB. msg_type = 101  [103102600722_2026-10-28/unifieduploader.log]` |
+| upload-observationdata - Retry Count | count | sum over boots | "Details: type - msg type: 110" | `retry_details` (unifieduploader) | `1793268120515: 238693: UPL: I: 1305: 2748: PS Details: type - msg type: 100 msg level: 0  [105322600008_2026-10-29/unifieduploader.log] (logged right after "Retrying... retry_count: n"; 100 eventdata, 101 video, 110 observations)` |
+| upload-observationdata - Retry Duration | s | mean of all samples | first "Failed to fetch url (.../upload/observations)" to the next "File uploaded" on that thread | `obs_fail` (unifieduploader)<br>`obs_uploaded` (unifieduploader) | `1793213578240: 56922: UPL: I: 5984: 6412: ERROR: Failed to fetch url (https://idms.netradyne.com/restserver/api/v1/upload/observations) - curl said: Couldn't resolve host name  [103102600722_2026-10-28/unifieduploader.log]`<br>`1793144893723: 8788914: UPL: I: 5828: 6403: File uploaded. Deleting 1  [103102600722_2026-10-28/unifieduploader.log]` |
+| videolist - Retry Count | count | sum over boots | PARTIAL: "collect_notify_videolist is FAILED" (the next periodic call is the retry) | `videolist_failed` (circ_buff) | `1793264997847: 107142: CB: I: 4620: 5443: collect_notify_videolist is FAILED  [105322600008_2026-10-29/circ_buff.log]` |
+| videolist - Retry Duration | s | mean of all samples | PARTIAL: first FAILED to the next "is succeded" | `videolist_failed` (circ_buff)<br>`videolist_ok` (circ_buff) | `1793264997847: 107142: CB: I: 4620: 5443: collect_notify_videolist is FAILED  [105322600008_2026-10-29/circ_buff.log]`<br>`1793144354479: 8242542: CB: I: 6240: 7648: collect_notify_videolist is succeded  [103102600722_2026-10-28/circ_buff.log]` |
+| upload-device-status - Retry Count | count | sum over boots | health "curl_with_health: curl exited N" (failed status POST, re-sent from backup) | `health_post_failed` (health) | `2026-10-28 07:42:02,449 - health - ERROR - curl_with_health: curl exited 6: % Total    % Received ...  [6603001461_2026-10-28/health.log]` |
+| upload-device-status - Retry Duration | s | mean of all samples | first failed POST to the next "Upload of Health Stats successful" | `health_post_failed` (health)<br>`health_ok` (health) | `2026-10-28 07:42:02,449 - health - ERROR - curl_with_health: curl exited 6: % Total    % Received ...  [6603001461_2026-10-28/health.log]`<br>`2026-10-27 23:33:09,424 - health - INFO - Upload of Health Stats successful  [103102600722_2026-10-28/health.log]` |
 
 ### LLA - Metrics
 
-| KPI | Unit | Device value | How it is computed | Log lines used |
-|---|---|---|---|---|
-| File Recording Start time | s | mean of all samples | recording start of the alert file (epoch in videoName) to the analytics "msg_send" (LLA detection) | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient) |
-| NDCentral LLA creation | s | mean of all samples | msg_send to the next ndcentral "lla_message :{" | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`ndc_lla_message` (ndcentral) |
-| NDCentral LLA notifying to uploader | s | mean of all samples | msg_send to the uploader "lla_&lt;uuid&gt;_0": {"uploadadd": T} (hand-off received) | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`lla_hs_add` (unifieduploader) |
-| Uploader LLA Notification to the Cloud - API Call Triggering | s | mean of all samples | msg_send to "uploadstart" of attempt 0 | `lla_hs_result` (unifieduploader) |
-| Uploader LLA Notification to the Cloud - API Call Successful | s | mean of all samples | msg_send to "uploadend" of the attempt with status pass | `lla_hs_result` (unifieduploader) |
-| Total Time Taken for upload (from alert detection) | s | mean of all samples | alert end_timestamp (in msg_send) to the passing "uploadend" | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`lla_hs_result` (unifieduploader) |
-| LLA retry count | count | sum over boots | highest attempt n of "lla_&lt;uuid&gt;_&lt;n&gt;" per LLA | `lla_hs_result` (unifieduploader) |
-| LLA retry duration | s | mean of all samples | uploadend of attempt 0 to the passing (or last) attempt's uploadend, for LLAs that retried | `lla_hs_result` (unifieduploader) |
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| File Recording Start time | s | mean of all samples | recording start of the alert file (epoch in videoName) to the analytics "msg_send" (LLA detection) | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient) | `2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]` |
+| NDCentral LLA creation | s | mean of all samples | msg_send to the next ndcentral "lla_message :{" | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`ndc_lla_message` (ndcentral) | `2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]`<br>`1793198169230: 1495306: NDC: C: 3808: 5800: lla_message :{"inference_data": {"alerts_data": {"alerts": [{"speed_info": 68.029000458893947, "end_timestamp": 1793198167449, ...  [6603001461_2026-10-28/ndcentral.log] (cut at ~300 chars, so paired by time)` |
+| NDCentral LLA notifying to uploader | s | mean of all samples | msg_send to the uploader "lla_&lt;uuid&gt;_0": {"uploadadd": T} (hand-off received) | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`lla_hs_add` (unifieduploader) | `2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]`<br>`1793198169246: 1498138: UPL: I: 3381: 3625: sending msg to hs--: {"session": "0_trip568d_part05d441_32.9981_-117.0829_0.0_1793198116548_y", "alert_info": {"lla_4294e556792744d8bf466d02c4d1f98f_0": {"uploadadd": 1793198169244}}}  [6603001461_2026-10-28/unifieduploader.log]` |
+| Uploader LLA Notification to the Cloud - API Call Triggering | s | mean of all samples | msg_send to "uploadstart" of attempt 0 | `lla_hs_result` (unifieduploader) | `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
+| Uploader LLA Notification to the Cloud - API Call Successful | s | mean of all samples | msg_send to "uploadend" of the attempt with status pass | `lla_hs_result` (unifieduploader) | `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
+| Total Time Taken for upload (from alert detection) | s | mean of all samples | alert end_timestamp (in msg_send) to the passing "uploadend" | `lla_msg_send` (outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient)<br>`lla_hs_result` (unifieduploader) | `2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]`<br>`1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
+| LLA retry count | count | sum over boots | highest attempt n of "lla_&lt;uuid&gt;_&lt;n&gt;" per LLA | `lla_hs_result` (unifieduploader) | `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
+| LLA retry duration | s | mean of all samples | uploadend of attempt 0 to the passing (or last) attempt's uploadend, for LLAs that retried | `lla_hs_result` (unifieduploader) | `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
 ### Analytics KPIs
 
-| KPI | How it is computed | Log lines used |
-|---|---|---|
-| Unique event codes and the count against each | each analytics event once (by uuid, over inference and inference_inertial), counted per event code; table: code, unique events, devices with it, P90 of the per-device counts | `event_code` (inference/inference_inertial) |
+| KPI | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|
+| Unique event codes and the count against each | each analytics event once (by uuid, over inference and inference_inertial), counted per event code; table: code, unique events, devices with it, P90 of the per-device counts | `event_code` (inference/inference_inertial) | `2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log]` |
 
 The `is_alert=` lines list every analytics event (turns, backing, ...), not only the ones
 raised as alerts; alert counts are in the Alerts Summary table.
@@ -524,11 +528,74 @@ Detection, Bands Enabled, LTE outages, LD FPS, Preview LQ sizes, Max HD Obs file
 Storage Size, videolist retries, Tegra watchdog Time taken to Reboot. The table rows above
 say what each one measures.
 
+## Assumptions to review
+
+Every sample line in this file is copied from a real log, and every regex matched real lines
+in the test runs. What is assumed is listed here: lines seen on few devices, what a KPI is
+taken to mean, and how values in a line are read. Check these first.
+
+### Log lines seen on one or two devices only
+
+| Log line(s) | Seen on | Risk |
+|---|---|---|
+| `ota_size`, `sm_update_time`, `updater_update_time`, `updater_start`, `updater_stop` | one OTA: 6603014391 (krait2, 4.6.16.rc.6 -> 4.6.17.rc.1) | wording may differ on bagheera / other builds |
+| `pass_high`, `soak_done`, `uptime_long`, `sm_cyclic` | one completed cyclic reboot device: 6603078588 (krait2) | on other krait2 devices the reboot is cancelled after "Soak done" |
+| `iot_reboot` | one event: 264080392 (krait EU) | |
+| `wakeup_reason` with `TEGRA_BCCPLEX_WATCHDOG` | two events: 103102600722, 103352600193 (bagheera3) | krait may log the watchdog reset differently |
+| `sm_prev_shutdown` classification (abrupt with / without supercap) | one supercap event (103352600191), a few POWER_DOWN | 264080392 (EU) logs POWER_DOWN on most boots: may count non-abrupt boots |
+| `ialerts_found` (inertial alert) | 6603007848 only; no inertial alert on the other samples | detection can come hours after recording, in a later boot |
+| camera 8 (DMS) lines | 103402300078, 103212503854 | |
+| cameras 4-7 (MDVR) lines | krait2 placeholders (4, 5); 6603062324 / 6603045897 file lines; numbering 4-7 / Octo 4, 5, 6 as given, not tested on Octo logs | MDVR FPS and eMMC lines not seen |
+| `installer_scan_start` / `installer_scan_stop` | 9.6.16, EU krait, some bagheera3 boots | not on every build |
+| `eventdata_fail`, `obs_fail`, `vod_exhausted`, `health_post_failed` | a few lines each | |
+
+### What a KPI is taken to mean
+
+| KPI | Assumed meaning |
+|---|---|
+| Device Bootup Time (Power ON) - left LED | no LED is logged: kernel start (power-on anchor) to the first service start |
+| Device Bootup Time (Reboot Log) - left LED green | power-on to the first `@Reboot Entering` |
+| System Uptime / Service Uptime - right LED red | ndcentral `System Uptime` at its start / first `serviceUpTime` |
+| Modem Enumeration | `GPS Port Enumerate Time` (the modem's GPS tty) |
+| HW Button Detection - LED glow | power-on to `Button event thread created successfully` (button ready), not a press -> LED time |
+| Keep Alive @ Reboot | power-on to the first power_mon keep alive `reached_cloud 1` |
+| GPS TTFF after low power wakeup / cyclic / crank | boot classified by previous shutdown reason (`LOWPOWER`, `CYCLIC`) or wakeup reason (`IGNITION`, `CRANK`) |
+| Cyclic Reboot for Crank High Detection | last `Uptime Check Pass HIGH` -> `Soak done` (the soak); "crank high" = this line is an interpretation |
+| Device Shutdown Time | `Device Shutdown Initiated` -> `system_execute shutdown`; the configured delay before it is not included |
+| During OTA Update (downtime) | updater stop bagheera -> next first frame (the OTA seen did not reboot the device) |
+| Device Abrupt Power Cycle | last log line before the power-on -> first frame; the power cut itself is not logged, so it includes the time the device was off |
+| LTE Outage during OTA / Device Disconnection | DISCONNECTED / conn_mgr killed -> `Data session connected`; disconnection only without a reboot in between |
+| Alert detection (Alert Upload Time) | earliest of real-time `msg_send`, inertial `ialerts.json`, inference `UPLOAD_STATE` |
+| Alert Notification to the Cloud | the eventdata upload (every alert has one), not the LLA call |
+| File Recording Start time (alerts and LLA) | recording start (epoch in the video name) -> detection |
+| LLA Total Time | alert `end_timestamp` -> passing `uploadend` |
+| Retry counts | eventdata / obs: `Details: type - msg type: 100 / 110` lines; video: attempts failed - exhausted; videolist: FAILED cycles; device status: `curl exited` (failed POST, re-sent from backup) |
+| Tegra watchdog Reboot Initiated | number of watchdog resets (the watchdog firing is not logged) |
+| Time taken to Reboot (watchdog) | last line of the hung boot -> power monitor start |
+| Preview LQ Videos sizes | average size of the card's hq / lq files (storage_info), not preview uploads |
+| Max HD Obs files can be stored | obs files on the card now (steady state once full), not a configured maximum |
+| Obs File Size (valid GPS) | HD obs zips whose name has a GPS position other than 91.0000_181.0000 |
+| LD FPS | same frame count as HD (LD is encoded from the same frames) |
+| Unique event codes | every analytics event (`is_alert=0` and `1`) once per uuid, not only alerts |
+| Camera Crash % | % of boots with drive time that had a crash of that camera |
+
+### How values in a line are read
+
+- storage_info buckets are `"file count/MiB"`; MiB x 1.048576 = MB.
+- diagnostic `used memory of /dev/mmcblk0`: a whole number is MiB, a decimal is a percentage (both seen; told apart by the decimal point).
+- WAF: in a diagnostic cycle the 1st `Waf is` line is the internal eMMC, the 2nd the external.
+- Bands: bit n of `LTE band pref from device is` = band n+1, bit n of `bits_65_128` = band n+65 (Sierra; checked against one US device: B2,B4,B12,B25,B26,B66,B71).
+- `Frame count received: N` covers 5 s, so FPS = frames / (lines x 5 s) (results 30 / 15 fps match the configured rates).
+- Python service timestamps (`YYYY-MM-DD HH:MM:SS,mmm`) are UTC (checked: health / analytics client times match the epoch lines).
+- obs `Upload Observations Request Received <rt>`: rt is epoch microseconds.
+- Files under 10 KB are placeholders (privacy mode, MDVR on krait2).
+- Thresholds: power-on estimates within 5 s are one power-on; a boot starts at a power-on up to 120 s before its first service; since-power-on values over 900 s and ignition -> BT values over 300 s are dropped; a 20 s silence marks the last line before a reboot.
+
 ## Log line reference
 
 Every line the KPIs read (`KPI_LOG_LINES`). grep text is what the grep pass matches
 (case-insensitive); the regex then reads the named groups. Samples are verbatim lines from
-the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern only).
+the device-day in brackets; ` ...` marks where a long line was cut.
 
 #### `alive`
 
@@ -589,7 +656,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `service_mon`  (also in critical `_c` logs)
 - grep text: `GPS Port Enumerate Time`
 - Regex: `ND_GPS : \d+ : \d+ : -?\d+ : GPS Port Enumerate Time: \d+ seconds : (?P<ms>\d+)`
-- Sample: `Service error: ND_GPS : <epoch> : <code> : <n> : GPS Port Enumerate Time: <s> seconds : <ms>  [service_mon_c.log; critical-only fallback of gps_enum]`
+- Sample: `1793148919562: 7849: SM: E: 6001: 6001: Service error: ND_GPS : 1793148919561 : 37501 : 0 : GPS Port Enumerate Time: 31 seconds : 31562  [103102600722_2026-10-28/service_mon.log]`
 - Used by: Modem Enumeration
 
 #### `svc_start`
@@ -709,7 +776,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `power_mon`
 - grep text: `Device Shutdown Initiated`
 - Regex: `Device Shutdown Initiated \(defer_req_cnt=`
-- Sample: `PWR: I: <pid>: <tid>: Device Shutdown Initiated (defer_req_cnt=...)  [power_mon.log; 5-8 s before system_execute shutdown]`
+- Sample: `1793144910620: 8803467: PWR: I: 5922: 6756: Device Shutdown Initiated (defer_req_cnt=0, defer_time_applied=0s, defer_consumed=NO)  [103102600722_2026-10-28/power_mon.log]`
 - Used by: Device Shutdown Time
 
 #### `shutdown_exec`
@@ -853,7 +920,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `conn_mgr`
 - grep text: `SessionStateCallback:DISCONNECTED`
 - Regex: `SessionStateCallback:DISCONNECTED`
-- Sample: `CONN_MGR_CBK: I: <pid>: <tid>: SessionStateCallback:DISCONNECTED  [conn_mgr.log]`
+- Sample: `1793126957818: 7562195: CONN_MGR_CBK: I: 10800: 10877: SessionStateCallback:DISCONNECTED  [6603001461_2026-10-28/conn_mgr.log]`
 - Used by: Connection Manager - LTE Outage during OTA Update
 
 #### `conn_exit`
@@ -942,7 +1009,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `btfv`
 - grep text: `RegisterInstallerAppFilter`
 - Regex: `Inside: RegisterInstallerAppFilter`
-- Sample: `BTMAN: I: <pid>: <tid>: Inside: RegisterInstallerAppFilter  [264080392_2026-11-03/btfv.log] (0-17 ms after IGNITION ON)`
+- Sample: `1793264889280: 3771: BTMAN: I: 4169: 4169: Inside: RegisterInstallerAppFilter  [105322600008_2026-10-29/btfv.log]`
 - Used by: Scan for Installer App Starts
 
 #### `installer_scan_stop`
@@ -998,7 +1065,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `outwardAnalyticsClient/inwardAnalyticsClient/dmsAnalyticsClient/inertialAnalyticsClient`
 - grep text: `msg_send: `
 - Regex: `lla_handler\s+- msg_send: (?=.*"videoName": "\d_(?P<key>trip[^"]+?_y)(?:\.mp4)?")(?=.*"uuid": "(?P<uuid>[0-9a-f]{32})")(?=(?:.*"end_timestamp": (?P<end>\d{13}))?)(?=(?:.*"event_code": "(?P<code>[\d.]+)")?)`
-- Sample: `2026-10-28 14:36:09,025 - INFO    - src.lla_handler           - msg_send: {"inference_data": {"alerts_data": {"alerts": [{"speed_info": 68.03, "end_timestamp": 1793198167449, "event_code": "1.0.0.0", "uuid": "4294e556792744d8bf466d02c4d1f98f", ... "videoName": "0_trip568d_part05d441_32.9981_-117.0829_0.0_1793198116548_y.mp4"  [6603001461_2026-10-28/outwardAnalyticsClient.log]`
+- Sample: `2026-10-28 14:26:38,588 - INFO    - src.lla_handler           - msg_send: {"videoName": "0_trip1be5_part00f2d1_34.0352_-117.9515_0.0_1793197556451_y.mp4", "inference_data": {"alerts_data": {"alerts": [{"event_code": "2.1.1", "uuid": "0f61851ca1d941a08fa9fc70e29bf68a", "start_timestamp": 179319758789 ...  [103102600722_2026-10-28/outwardAnalyticsClient.log]`
 - Used by: File Recording Start time, Inference / Vision Alert Detection / Processing, File Recording Start time, NDCentral LLA creation, NDCentral LLA notifying to uploader, Total Time Taken for upload (from alert detection)
 
 #### `ialerts_found`
@@ -1071,7 +1138,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `unifieduploader`
 - grep text: `Upload Observations Request Received`
 - Regex: `UPL: I: \d+: (?P<tid>\d+): Upload Observations Request Received (?P<rt>\d{16})`
-- Sample: `1793144349601: 8237664: UPL: I: 5887: 6370: Upload Observations Request Received 1793144349588391  [103102600722_2026-10-28/unifieduploader.log] (rt = request time, epoch us)`
+- Sample: `1793144884738: 8779929: UPL: I: 5828: 6403: Upload Observations Request Received 1793144883745430  [103102600722_2026-10-28/unifieduploader.log]`
 - Used by: Upload Request for Obs zip - Received, Files adding into zip - Completion (10 files), Uploading Obs Zip - Start, Uploading Obs Zip - Successful
 
 #### `obs_zip_start`
@@ -1079,7 +1146,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `unifieduploader`
 - grep text: `Creating observations zip file at once`
 - Regex: `UPL: I: \d+: (?P<tid>\d+): Creating observations zip file at once!`
-- Sample: `UPL: I: <pid>: <tid>: Creating observations zip file at once!  [unifieduploader.log] (same ms as the last "adding obs json zip cmd")`
+- Sample: `1793144885066: 8780257: UPL: I: 5828: 6403: Creating observations zip file at once!  [103102600722_2026-10-28/unifieduploader.log]`
 - Used by: Files adding into zip - Completion (10 files), Creating Obs Zip
 
 #### `obs_zip_done`
@@ -1087,7 +1154,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `unifieduploader`
 - grep text: `Obs zip file created`
 - Regex: `UPL: I: \d+: (?P<tid>\d+): Obs zip file created!`
-- Sample: `UPL: I: <pid>: <tid>: Obs zip file created!  [unifieduploader.log]`
+- Sample: `1793144892816: 8788007: UPL: I: 5828: 6403: Obs zip file created!  [103102600722_2026-10-28/unifieduploader.log]`
 - Used by: Creating Obs Zip
 
 #### `obs_call`
@@ -1095,7 +1162,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `unifieduploader`
 - grep text: `upload/observations`
 - Regex: `UPL: I: \d+: (?P<tid>\d+): Calling service: \S+/upload/observations\b`
-- Sample: `UPL: I: <pid>: <tid>: Calling service: https://idms.netradyne.com/restserver/api/v1/upload/observations  [unifieduploader.log]`
+- Sample: `1793144892999: 8788190: UPL: I: 5828: 6403: Calling service: https://idms.netradyne.com/restserver/api/v1/upload/observations  [103102600722_2026-10-28/unifieduploader.log]`
 - Used by: Uploading Obs Zip - Start
 
 #### `obs_uploaded`
@@ -1103,7 +1170,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `unifieduploader`
 - grep text: `File uploaded. Deleting`
 - Regex: `UPL: I: \d+: (?P<tid>\d+): File uploaded\. Deleting \d+`
-- Sample: `UPL: I: <pid>: <tid>: File uploaded. Deleting 1  [unifieduploader.log]`
+- Sample: `1793144893723: 8788914: UPL: I: 5828: 6403: File uploaded. Deleting 1  [103102600722_2026-10-28/unifieduploader.log]`
 - Used by: Uploading Obs Zip - Successful, upload-observationdata - Retry Duration
 
 #### `obs_fail`
@@ -1111,7 +1178,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `unifieduploader`
 - grep text: `Failed to fetch url`
 - Regex: `UPL: I: \d+: (?P<tid>\d+): ERROR: Failed to fetch url \(\S+/upload/observations\)`
-- Sample: `1793213578240: 56922: UPL: I: 5984: 6412: ERROR: Failed to fetch url (https://idms.netradyne.com/restserver/api/v1/upload/observations) - curl said: Couldn't resolve host name  [unifieduploader.log]`
+- Sample: `1793213578240: 56922: UPL: I: 5984: 6412: ERROR: Failed to fetch url (https://idms.netradyne.com/restserver/api/v1/upload/observations) - curl said: Couldn't resolve host name  [103102600722_2026-10-28/unifieduploader.log]`
 - Used by: upload-observationdata - Retry Duration
 
 #### `retry_details`
@@ -1159,7 +1226,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `circ_buff`
 - grep text: `collect_notify_videolist is succeded`
 - Regex: `collect_notify_videolist is succeded`
-- Sample: `CB: I: <pid>: <tid>: collect_notify_videolist is succeded  [circ_buff.log]`
+- Sample: `1793144354479: 8242542: CB: I: 6240: 7648: collect_notify_videolist is succeded  [103102600722_2026-10-28/circ_buff.log]`
 - Used by: videolist - Retry Duration
 
 #### `health_post_failed`
@@ -1175,7 +1242,7 @@ the device-day in brackets (`<pid>` / `<tid>` mark lines quoted from the pattern
 - Service log: `health`
 - grep text: `Upload of Health Stats successful`
 - Regex: `Upload of Health Stats successful`
-- Sample: `2026-10-27 18:30:14,6xx - health - INFO - Upload of Health Stats successful  [6603001461_2026-10-28/health.log]`
+- Sample: `2026-10-27 23:33:09,424 - health - INFO - Upload of Health Stats successful  [103102600722_2026-10-28/health.log]`
 - Used by: upload-device-status - Retry Duration
 
 #### `ndc_lla_message`
