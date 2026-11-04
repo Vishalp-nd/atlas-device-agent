@@ -1569,11 +1569,10 @@ def _cloud_key_list(keys):
 
 def _cloud_config_section(report):
     cc = report.get('cloud_config')
-    if cc is None:  # a report made before the check existed (re-rendered by refresh_callouts)
+    # Not shown when the check didn't run (switched off, or a report made before the check existed)
+    if not (cc and cc.get('enabled')):
         return ''
     head = '<section id="cloud-config"><h2>Cloud Config Check</h2>'
-    if not cc.get('enabled'):
-        return head + '<p class="muted">Off: no IDMS credentials (IDMS_USERNAME / IDMS_PASSWORD) or CLOUD_CONFIG=0</p></section>'
     active, verdicts, devices = cc['active'], cc['verdicts'], cc['devices']
     tiles = (_tile(len(active), 'Active devices', devices=active)
              + _tile(len(verdicts['PASS']), 'Pass (same as cloud)', _pct(len(verdicts['PASS']), len(active)), 'c-pass', devices=verdicts['PASS'])
@@ -1671,7 +1670,8 @@ def _feature_level_section(report):
 
 def render_html(report):
     ota, sm = report['ota_version'], report.get('summary') or {}
-    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV)
+    cloud_on = bool((report.get('cloud_config') or {}).get('enabled'))
+    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV if i != 'cloud-config' or cloud_on)
     body = [f'<div class="top"><h1>{_esc(ota)}</h1><span>{_esc(report["generated_at"])}</span></div>']
     if sm:
         body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
@@ -2256,14 +2256,17 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
         log.warning('No device boots with an OTA version found in the range')
 
     cloud = None
-    if cloud_config.enabled():
-        # Devices that uploaded only critical logs are skipped (cloud_config_check): not fetched
-        on_ota = sorted({d for summaries in by_ota.values() for d in summaries
-                         if device_info.get(d, {}).get('detailed_days')})
-        with timed(log, 'cloud_config', timings, devices=len(on_ota)):
-            cloud = cloud_config.fetch_all(on_ota)
-    else:
-        log.info('Cloud override config check: off (CLOUD_CONFIG / IDMS credentials)')
+    # Cloud override config check: call skipped for now (cloud stays None -> check off in the reports).
+    # Uncomment the block below to turn it back on.
+    # if cloud_config.enabled():
+    #     # Devices that uploaded only critical logs are skipped (cloud_config_check): not fetched
+    #     on_ota = sorted({d for summaries in by_ota.values() for d in summaries
+    #                      if device_info.get(d, {}).get('detailed_days')})
+    #     with timed(log, 'cloud_config', timings, devices=len(on_ota)):
+    #         cloud = cloud_config.fetch_all(on_ota)
+    # else:
+    #     log.info('Cloud override config check: off (CLOUD_CONFIG / IDMS credentials)')
+    log.info('Cloud override config check: skipped (call commented out in ota_report.run)')
     reports = {}
     for ota, device_summaries in sorted(by_ota.items()):
         with timed(log, 'features', timings, ota=ota, devices=len(device_summaries)):
