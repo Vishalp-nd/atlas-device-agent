@@ -387,9 +387,26 @@ class OTADownloader:
         'D475': 's3://netradyne-sharing/Products/Qualcomm_D475/Unified_OS_OTA/{ota_version}/nd_app_setup.tar.gz',
     }
 
+    # Regional builds (e.g. 2.6.16.rc.6.global.rc.1) live in <product>_<region>/ (krait_global);
+    # india builds may also be in the global folder, so it is tried next
+    REGION_RE = re.compile(r'\.(global|india)(?=[._]|$)')
+    REGION_FOLDERS = {'global': ('global',), 'india': ('india', 'global')}
+
     def __init__(self, ota_version, product_name=None, s3_path=None):
         self.ota_version = ota_version
         self.product_name = product_name or self.product_from_version(ota_version)
+        # Folders to try, for every product line: as given, or for an inferred product
+        #   india build:  <product>_india, <product>_global, <product>
+        #   global build: <product>_global, <product>
+        #   other builds: <product>, then <product>_global, <product>_india
+        if product_name:
+            self.product_folders = [product_name]
+        else:
+            region = self.REGION_RE.search(ota_version)
+            if region:
+                self.product_folders = [f'{self.product_name}_{s}' for s in self.REGION_FOLDERS[region.group(1)]] + [self.product_name]
+            else:
+                self.product_folders = [self.product_name] + [f'{self.product_name}_{s}' for s in ('global', 'india')]
         self.s3_path = s3_path
         self.dir_name = os.path.join(self.INPUT_DIR, ota_version)
 
@@ -417,7 +434,8 @@ class OTADownloader:
             candidates = [self.get_bucket_key(s3_path)]
         else:
             # Older OTAs are package.tar.gz, newer ones package.7z
-            candidates = [(bucket, f'ota_packages/{self.product_name}/{self.ota_version}/{name}')
+            candidates = [(bucket, f'ota_packages/{product}/{self.ota_version}/{name}')
+                          for product in self.product_folders
                           for bucket in self.BUCKETS for name in ('package.tar.gz', 'package.7z')]
 
         for bucket, s3_file_path in candidates:
