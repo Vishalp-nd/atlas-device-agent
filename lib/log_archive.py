@@ -135,10 +135,10 @@ def merge_archives(day_archives, logs_dir, work):
             continue
         members = _archive_members(path, work)
         if members is None:
-            # mergelog wipes what it merged so far and carries on with the next archive
-            log.warning('%s may be corrupted, dropping what was merged so far (as mergelog does)', path)
-            shutil.rmtree(logs_dir)
-            os.makedirs(logs_dir)
+            # Only this archive is skipped, like extractor.Extract.mergelog today (it used to wipe
+            # what was merged so far, losing every earlier archive of the day for one bad file,
+            # e.g. a truncated duplicate upload <stem>_critical.7z.7z)
+            log.warning('%s may be corrupted, skipping it', path)
             continue
         stem = path.name.split('.')[0]
         for name, data in members:

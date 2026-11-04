@@ -63,7 +63,7 @@ import urllib.parse
 from array import array
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import api_calls
@@ -160,6 +160,26 @@ def device_days(device, start, end):
     end_d = datetime.strptime(end, '%Y-%m-%d').date()
     return [day.isoformat() for day in cfg_parser_logs.daterange(start_d, end_d)
             if log_archive.has_logs(LOG_BASE_DIR / str(device) / day.isoformat())]
+
+
+def next_day(day):
+    """The day after a YYYY-MM-DD day."""
+    return (datetime.strptime(day, '%Y-%m-%d').date() + timedelta(days=1)).isoformat()
+
+
+def read_days(device, start, end):
+    """Days to read for [start, end]: device_days plus, if downloaded, the day after end.
+
+    The s3 day folders follow the upload, not the log time: the last archive of a day (written
+    at shutdown) is often uploaded, and so filed, the next day, and a drive's udid_node record
+    is only written early in the *next* boot. The day after the range completes its last boots;
+    boots starting on it are dropped again in finish_device (range_end_ms).
+    """
+    days = device_days(device, start, end)
+    after = next_day(end)
+    if days and log_archive.has_logs(LOG_BASE_DIR / str(device) / after):
+        days.append(after)
+    return days
 
 
 # ── boots ───────────────────────────────────────────────────────────────
@@ -548,8 +568,8 @@ def scan_device_day(device, day):
 
 def process_device(device, start, end, product=None, report_dir=None, otas=None):
     """Everything for one device, its days read one after another (run() reads them in parallel)."""
-    return finish_device(device, [scan_device_day(device, day) for day in device_days(device, start, end)],
-                         product, report_dir, otas, start)
+    return finish_device(device, [scan_device_day(device, day) for day in read_days(device, start, end)],
+                         product, report_dir, otas, start, end)
 
 
 def run_start_ms(start):
@@ -559,11 +579,21 @@ def run_start_ms(start):
     return int(datetime.strptime(str(start), '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
-def finish_device(device, day_results, product=None, report_dir=None, otas=None, start=None):
+def range_end_ms(end):
+    """Epoch ms where the run's end date (YYYY-MM-DD, UTC) is over: boots starting from here are
+    on the day after the range (read only to complete the range's last boots), or None."""
+    return run_start_ms(next_day(str(end))) if end else None
+
+
+def finish_device(device, day_results, product=None, report_dir=None, otas=None, start=None, end=None):
     """Boots, OTA per boot, config + tests + drive metrics + override values per boot, from
     the scan_device_day() results of every day. Writes <report_dir>/<ota>/devices/<device>.json
     for every OTA the device has boots on (only those in otas, if given); the HTML page
     follows once the features are known (complete_device_reports).
+
+    day_results may include the day after end (read_days): it only completes the boots that
+    started in the range (end time, udid_node record); boots starting on it are dropped and
+    it is not counted as a day of the device.
 
     Returns (device, {ota: summary}, timings, info), timings being one entry per step
     (see run_logging.timed), info {'days', 'detailed_days', 'otas'} for the report summary.
@@ -572,9 +602,11 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
     report_dir = Path(report_dir or REPORT_BASE_DIR)
     day_results = sorted(day_results, key=lambda r: r['day'])
     days = [r['day'] for r in day_results]
+    in_range = [r for r in day_results if not end or r['day'] <= str(end)]
+    range_days = [r['day'] for r in in_range]
     timings = [t for r in day_results for t in r['timings']]
     device_start = time.perf_counter()
-    info = {'days': len(days), 'detailed_days': sum(r['detailed'] for r in day_results), 'otas': []}
+    info = {'days': len(range_days), 'detailed_days': sum(r['detailed'] for r in in_range), 'otas': []}
     if not days:
         return device, {}, timings, info
     versions, services, calls = set(), set(), set()
@@ -598,9 +630,14 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
             events.finish()
             evidence.finish()
             udid_records = drive_metrics.assign_udids(events, boots)
+        # Boots starting on the day after the range only served to end the last boot in it
+        cut = range_end_ms(end)
+        if cut is not None:
+            boots = [b for b in boots if b['start'] is None or b['start'] < cut]
         found_otas = sorted({b['ota'] for b in boots if b['ota']})
         info['otas'] = found_otas
-        log.info('%s: %d boot(s) over %d day(s), OTA %s', device, len(starts), len(days), found_otas)
+        log.info('%s: %d boot(s) over %d day(s)%s, OTA %s', device, len(boots) - 1, len(range_days),
+                 ' (+ the next day to complete the last boot)' if len(days) > len(range_days) else '', found_otas)
         with timed(log, 'load_hits', timings, level=logging.DEBUG, device=device):
             hits = load_hits([r['spool'] for r in day_results], services, starts)
     finally:
@@ -686,7 +723,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         out_dir = report_dir / ota / 'devices'
         out_dir.mkdir(parents=True, exist_ok=True)
         ini_keys = ini_keys_by_ota.get(ota)
-        doc = device_doc(device, ota, days, boot_details, ini_keys)
+        doc = device_doc(device, ota, range_days, boot_details, ini_keys)
         # The HTML page is written once the features are known (complete_device_reports)
         with open(out_dir / f'{device}.json', 'w') as f:
             json.dump(doc, f, separators=(',', ':'))
@@ -697,7 +734,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         summaries[ota]['api'] = doc['api_summary']
         summaries[ota]['profiles'] = profiles.get(ota, {})
         # Days whose upload has detailed logs: only those carry the override information
-        summaries[ota]['detailed_days'] = sorted(r['day'] for r in day_results if r['detailed'])
+        summaries[ota]['detailed_days'] = sorted(r['day'] for r in in_range if r['detailed'])
     total = round(time.perf_counter() - device_start, 3)
     timings.append({'step': 'device_total', 'device': device, 'status': 'ok', 'duration_s': total})
     log.info('%s: evaluated %d boot(s), device took %.2fs', device,
@@ -2132,7 +2169,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     # its last day is read. Day jobs are fed a few at a time so finishing jobs (with their LLM
     # calls) do not wait behind every remaining day. Workers fork after _TESTS/_PATTERNS/_FEATURES
     # are set, so they inherit them.
-    device_day_list = {d: device_days(d, start, end) for d in devices}
+    device_day_list = {d: read_days(d, start, end) for d in devices}
     # Biggest days first, so the slowest reads don't run alone at the end
     # (Reading every archive header takes ~0.1 s a day, so it is spread over the workers)
     jobs = [(d, day) for d in devices for day in device_day_list[d]]
@@ -2234,7 +2271,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
                                     device_done(device, device_errors[device])
                                 else:
                                     pending[pool.submit(finish_device, device, day_results, product,
-                                                        report_dir, otas, start)] = ('finish', device)
+                                                        report_dir, otas, start, end)] = ('finish', device)
                         elif result is not None:
                             spools.pop(device, None)  # finish_device deleted them
                             _, summaries, device_timings, device_info[device] = result

@@ -87,6 +87,9 @@ def download(run: dict, devices: list[str], timings: list[dict]) -> None:
     env = ENVIRONMENTS[run["environment"]]
     server = run["environment"]
     extract = bool(run["options"].get("extract_logs"))
+    # Also the day after the range: the last archive of a day is often uploaded (and so filed)
+    # the next day, and a drive's UDID record is written in the next boot (ota_report.read_days)
+    last_day = (datetime.strptime(run["end_date"], "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
     for i, device in enumerate(devices, 1):
         db.update_run(run["id"], progress={"stage": "download", "done": i - 1, "total": len(devices),
                                            "device": device})
@@ -94,7 +97,7 @@ def download(run: dict, devices: list[str], timings: list[dict]) -> None:
             # Day folders that already exist are skipped by the downloader
             Downloader(server, filetype="log", extract_logs=extract,
                        log_root=str(env["log_root"])).download_manager(
-                device, run["start_date"], run["end_date"])
+                device, run["start_date"], last_day)
     db.update_run(run["id"], progress={"stage": "download", "done": len(devices), "total": len(devices)})
 
 

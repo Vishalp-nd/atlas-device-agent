@@ -8,11 +8,17 @@ from logsize import LogSize
 import time
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from botocore.credentials import InstanceMetadataProvider, InstanceMetadataFetcher
 from botocore.session import Session as BotocoreSession
 
 # from ndutility.dbaccess import DB
+
+# A log day folder holding this file was downloaded after the device finished uploading
+# that day; it is not listed in s3 again (see Downloader.download_content)
+COMPLETE_MARKER = '.download_complete'
+# Hours after a day ends before its download counts as complete (ATLAS_LOG_FINAL_HOURS)
+FINAL_AFTER_HOURS = float(os.environ.get('ATLAS_LOG_FINAL_HOURS', '24'))
 
 def timer(func):
     def wrap_func(*args, **kwargs):
@@ -142,9 +148,9 @@ class Downloader:
             pass
 
         if os.path.exists(destFile):
-            pass
-        else:
-            self.bucket.download_file(s3file.key, destFile)
+            return False
+        self.bucket.download_file(s3file.key, destFile)
+        return True
 
     def extract(self, device, date,dest, keep_extract=True):
         # print('Downloading completed... Extraction Started...')
@@ -160,17 +166,33 @@ class Downloader:
             print(f'{device} and {date} logs are corrupeted .. skipping')
         # print('Extraction completed')
 
+    @staticmethod
+    def _day_is_final(date):
+        """True once the day ended FINAL_AFTER_HOURS ago: the device has uploaded that day's logs by then."""
+        try:
+            day_end = datetime.strptime(date, '%Y-%m-%d').replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError:
+            return False
+        return datetime.now(timezone.utc) >= day_end + timedelta(hours=FINAL_AFTER_HOURS)
+
     def download_content(self, device, date):
         """
-            To download s3 files and folders
+            To download s3 files and folders.
+
+            A log day folder is only skipped when it is marked complete (COMPLETE_MARKER, written
+            by a download made FINAL_AFTER_HOURS after the day ended). Otherwise s3 is listed
+            again and only the archives not already on disk are fetched, so a day downloaded
+            while the device was still uploading picks up the rest.
         """
         t = None
+        existing_dir = None
         if self.filetype == 'log':
             existing_dir = os.path.join(self.log_root, device, date)
-            if os.path.isdir(existing_dir):
-                print(f"{device} : {date} ==> skipped (already exists)")
+            if os.path.isfile(os.path.join(existing_dir, COMPLETE_MARKER)):
+                print(f"{device} : {date} ==> skipped (already downloaded, complete)")
                 self.dest_dir = existing_dir
                 return existing_dir
+        final = self._day_is_final(date)
         # device = devicedate[0]
         # date = devicedate[1]
         s3files = self.__get_content(device, date)
@@ -186,11 +208,20 @@ class Downloader:
         
         # t1 = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            executor.map(self.__boto_download, s3files)
+            new_files = sum(bool(r) for r in executor.map(self.__boto_download, s3files))
         # t2 = time.perf_counter()
         # print(f'Finished in {round(t2-t1, 2)} seconds')
-        if self.filetype == 'log' and self.extract_logs:
+        if existing_dir is not None:
+            print(f"{device} : {date} ==> {new_files} new file(s)")
+        # Merge again only when something new arrived (mergelog rebuilds logs/ from every archive)
+        if self.filetype == 'log' and self.extract_logs and (new_files or not os.path.isdir(os.path.join(self.dest_dir, 'logs'))):
             self.extract(device, date, self.dest_dir, False)
+        if self.filetype == 'log' and final:
+            try:
+                with open(os.path.join(self.dest_dir, COMPLETE_MARKER), 'w') as f:
+                    f.write(datetime.now(timezone.utc).isoformat() + '\n')
+            except OSError as exc:  # e.g. a folder owned by another user; listed again next time
+                print(f"{device} : {date} ==> could not mark complete: {exc}")
         return self.dest_dir
 
     def download_manager(self,  deviceid: list, startdate, enddate):
