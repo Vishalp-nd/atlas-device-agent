@@ -630,13 +630,17 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
             events.finish()
             evidence.finish()
             udid_records = drive_metrics.assign_udids(events, boots)
-        # Boots starting on the day after the range only served to end the last boot in it
-        cut = range_end_ms(end)
+        # Only boots that started in the range: not boot 0 (already running when the logs begin,
+        # i.e. started before them; a day's folder also holds the end of the day before), nor
+        # boots starting on the day after the range (read only to end the last boot in it)
+        first, cut = run_start_ms(start), range_end_ms(end)
+        if first is not None:
+            boots = [b for b in boots if b['start'] is not None and b['start'] >= first]
         if cut is not None:
             boots = [b for b in boots if b['start'] is None or b['start'] < cut]
         found_otas = sorted({b['ota'] for b in boots if b['ota']})
         info['otas'] = found_otas
-        log.info('%s: %d boot(s) over %d day(s)%s, OTA %s', device, len(boots) - 1, len(range_days),
+        log.info('%s: %d boot(s) over %d day(s)%s, OTA %s', device, sum(b['start'] is not None for b in boots), len(range_days),
                  ' (+ the next day to complete the last boot)' if len(days) > len(range_days) else '', found_otas)
         with timed(log, 'load_hits', timings, level=logging.DEBUG, device=device):
             hits = load_hits([r['spool'] for r in day_results], services, starts)
