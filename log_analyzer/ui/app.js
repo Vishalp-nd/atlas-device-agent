@@ -272,11 +272,13 @@ function summaryLine(s) {
   </div>`;
 }
 
-function verdictCard(rep) {
+function verdictCard(rep, run) {
   const total = rep.pass + rep.fail || 1;
   const w = (n) => `${(100 * n) / total}%`;
+  const picked = isPicked(run.id, rep.ota_version);
   return `
-    <div class="report">
+    <div class="report${picked ? ' picked' : ''}" data-run="${run.id}" data-ota="${esc(rep.ota_version)}" data-env="${esc(run.environment)}">
+      <button type="button" class="dots" aria-label="More actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
       <div class="top"><span class="ota" title="${esc(rep.ota_version)}">${esc(rep.ota_version)}</span>
         <span class="sub">${rep.devices} device${rep.devices === 1 ? '' : 's'} · ${rep.boots} boot${rep.boots === 1 ? '' : 's'}</span></div>
       <div class="verdicts" title="Test-case verdicts, one per test case per boot">
@@ -383,7 +385,7 @@ async function renderRun(id) {
         <span>${p.total ? `${p.done} / ${p.total}` : ''}</span></div>${progressBar(run)}</div>` : ''}
       ${run.error ? `<div class="alert${run.status === 'succeeded' ? ' warn' : ''}">${esc(run.error)}</div>` : ''}
       ${Object.keys(run.device_errors || {}).length ? `<div class="alert warn">${Object.keys(run.device_errors).length} device(s) failed${debug ? ' — see Devices below' : ''}.</div>` : ''}
-      ${reports.length ? `<h3>Reports</h3><div class="reports">${reports.map(verdictCard).join('')}</div>` : ''}
+      ${reports.length ? `<h3>Reports</h3><div class="reports">${reports.map((rep) => verdictCard(rep, run)).join('')}</div>` : ''}
       ${debug ? `<h3>Timings</h3>${stepsTable(steps)}
       ${devicesTable(devices, run.device_errors || {})}
       <div class="log-head"><h3>Log</h3><label class="muted"><input type="checkbox" id="follow" ${state.follow ? 'checked' : ''}> Follow</label></div>
@@ -434,7 +436,9 @@ async function renderRun(id) {
 function route() {
   clearTimeout(timer);
   const m = location.hash.match(/^#\/runs\/(\d+)/);
+  const c = location.hash.match(/^#\/compare\/(\d+)/);
   if (m) renderRun(Number(m[1]));
+  else if (c) renderCompare(Number(c[1]));
   else renderList();
 }
 
@@ -450,6 +454,194 @@ async function health() {
     el.title = err.message;
   }
 }
+
+// ── report comparison ────────────────────────────────────────────────────
+// The floating button opens a panel: compare two OTAs or two devices over a date range (a
+// normal run per side, then the comparison report), or two existing reports picked with
+// "Add to compare" in a report tile's ⋯ menu (kept for the browser, at most 2).
+const CMP_KEY = 'log-analyzer-compare';
+let cmpPicked = [];
+try { cmpPicked = JSON.parse(localStorage.getItem(CMP_KEY) || '[]').slice(0, 2); } catch (_) { cmpPicked = []; }
+const isPicked = (runId, ota) => cmpPicked.some((p) => p.run_id === runId && p.ota_version === ota);
+const fab = $('#cmp-fab'), panel = $('#cmp-panel');
+
+function saveCmp() {
+  try { localStorage.setItem(CMP_KEY, JSON.stringify(cmpPicked)); } catch (_) { /* storage blocked */ }
+  const n = cmpPicked.length;
+  $('#cmp-count').hidden = !n;
+  $('#cmp-count').textContent = `${n}/2`;
+  document.querySelectorAll('.report[data-run]').forEach((el) =>
+    el.classList.toggle('picked', isPicked(Number(el.dataset.run), el.dataset.ota)));
+  renderPicked();
+}
+
+function togglePick(item) {
+  if (isPicked(item.run_id, item.ota_version)) {
+    cmpPicked = cmpPicked.filter((p) => !(p.run_id === item.run_id && p.ota_version === item.ota_version));
+  } else {
+    if (cmpPicked.length >= 2) { alert('Only 2 reports can be compared. Remove one from the comparison first.'); return; }
+    cmpPicked.push(item);
+  }
+  saveCmp();
+  if (cmpPicked.length === 2) openPanel();
+}
+
+function renderPicked() {
+  const box = $('#cmp-picked');
+  if (!cmpPicked.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<h3>Selected reports · ${cmpPicked.length}/2</h3><ul class="cmp-list">${cmpPicked.map((p, i) => `
+    <li><span class="cmp-tag ${i ? 'b' : 'a'}">${i ? 'B' : 'A'}</span>
+      <span class="mono" title="${esc(p.ota_version)}">${esc(p.ota_version)}</span>
+      <a href="#/runs/${p.run_id}" class="muted" style="flex:0 0 auto">#${p.run_id}</a>${envBadge(p.environment)}
+      <button type="button" data-unpick="${i}" aria-label="Remove">×</button></li>`).join('')}</ul>
+    <button class="primary" type="button" id="cmp-reports" ${cmpPicked.length === 2 ? '' : 'disabled'}>
+      <span>${cmpPicked.length === 2 ? 'Compare selected reports' : 'Add one more report to compare'}</span></button>`;
+  box.querySelectorAll('[data-unpick]').forEach((b) => b.addEventListener('click', () => {
+    cmpPicked.splice(Number(b.dataset.unpick), 1);
+    saveCmp();
+  }));
+  const go = $('#cmp-reports');
+  if (go) go.addEventListener('click', async () => {
+    go.disabled = true;
+    try {
+      const c = await api('/comparisons/reports', { method: 'POST', body: JSON.stringify({
+        items: cmpPicked.map((p) => ({ run_id: p.run_id, ota_version: p.ota_version })) }) });
+      cmpPicked = [];
+      saveCmp();
+      closePanel();
+      location.hash = `#/compare/${c.id}`;
+    } catch (err) { alert(err.message); go.disabled = false; }
+  });
+}
+
+const cmpName = (c) => c.items.map((i) => i.label || i.target).join(' vs ');
+
+async function renderRecent() {
+  const box = $('#cmp-recent');
+  try {
+    const { comparisons } = await api('/comparisons?limit=6');
+    box.innerHTML = comparisons.length ? `<h3>Recent comparisons</h3><ul class="cmp-list">${comparisons.map((c) => `
+      <li><a href="#/compare/${c.id}" title="${esc(cmpName(c))}">${esc(cmpName(c))}</a>${pill(c.status)}</li>`).join('')}</ul>` : '';
+  } catch (_) { box.innerHTML = ''; }
+}
+
+function openPanel() {
+  panel.hidden = false;
+  fab.setAttribute('aria-expanded', 'true');
+  if (!$('#cmp-start').value) { $('#cmp-start').value = $('#start').value; $('#cmp-end').value = $('#end').value; }
+  $('#cmp-a-env').value = $('#cmp-a-env').dataset.touched ? $('#cmp-a-env').value : env;
+  $('#cmp-b-env').value = $('#cmp-b-env').dataset.touched ? $('#cmp-b-env').value : env;
+  renderPicked();
+  renderRecent();
+}
+function closePanel() {
+  panel.hidden = true;
+  fab.setAttribute('aria-expanded', 'false');
+}
+fab.addEventListener('click', openPanel);
+$('#cmp-close').addEventListener('click', closePanel);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) closePanel(); });
+['#cmp-a-env', '#cmp-b-env'].forEach((sel) => $(sel).addEventListener('change', (e) => { e.target.dataset.touched = '1'; }));
+
+const DEVICE_ID = /^\d{6,14}$/;
+$('#cmp-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const error = $('#cmp-error');
+  error.textContent = '';
+  const a = $('#cmp-a').value.trim(), b = $('#cmp-b').value.trim();
+  const start = $('#cmp-start').value, end = $('#cmp-end').value;
+  if (!a || !b) { error.textContent = 'Enter a device ID or an OTA version on both sides.'; return; }
+  if (DEVICE_ID.test(a) !== DEVICE_ID.test(b)) { error.textContent = 'Both sides must be OTA versions, or both device IDs.'; return; }
+  if (!start || !end) { error.textContent = 'Pick a date range.'; return; }
+  if (start > end) { error.textContent = '“From” must be on or before “To”.'; return; }
+  const items = [{ target: a, environment: $('#cmp-a-env').value }, { target: b, environment: $('#cmp-b-env').value }];
+  if (items.some((i) => i.environment === 'prod') && !confirm('Start production runs for this comparison?')) return;
+  const button = $('#cmp-submit');
+  button.disabled = true;
+  button.firstElementChild.textContent = 'Starting…';
+  try {
+    const c = await api('/comparisons', { method: 'POST', body: JSON.stringify({ start, end, items }) });
+    closePanel();
+    location.hash = `#/compare/${c.id}`;
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+    button.firstElementChild.textContent = 'Compare';
+  }
+});
+
+// Report tiles: ⋯ opens a small menu with Add to / Remove from compare
+let openMenu = null;
+function closeMenu() {
+  if (!openMenu) return;
+  openMenu.remove();
+  document.querySelectorAll('.report .dots[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  openMenu = null;
+}
+document.addEventListener('click', (e) => {
+  const dots = e.target.closest('.report .dots');
+  if (!dots) { if (openMenu && !openMenu.contains(e.target)) closeMenu(); return; }
+  e.preventDefault();
+  const tile = dots.closest('.report');
+  const wasOpen = dots.getAttribute('aria-expanded') === 'true';
+  closeMenu();
+  if (wasOpen) return;
+  const item = { run_id: Number(tile.dataset.run), ota_version: tile.dataset.ota, environment: tile.dataset.env };
+  const picked = isPicked(item.run_id, item.ota_version);
+  const full = !picked && cmpPicked.length >= 2;
+  openMenu = document.createElement('div');
+  openMenu.className = 'tile-menu';
+  openMenu.setAttribute('role', 'menu');
+  openMenu.innerHTML = `<button type="button" role="menuitem" ${full ? 'disabled title="Only 2 reports can be compared"' : ''}>
+    ${picked ? 'Remove from compare' : full ? 'Add to compare (2 already selected)' : 'Add to compare'}</button>`;
+  openMenu.querySelector('button').addEventListener('click', () => { closeMenu(); togglePick(item); });
+  tile.appendChild(openMenu);
+  dots.setAttribute('aria-expanded', 'true');
+});
+
+async function renderCompare(id) {
+  const state = { kind: 'compare', id };
+  current = state;
+  view.innerHTML = '<a class="back" href="#/">← All runs</a><div class="skeleton" style="width:40%"></div><div class="skeleton"></div>';
+  async function refresh() {
+    if (current !== state) return;
+    let c;
+    try { c = await api(`/comparisons/${id}`); } catch (err) {
+      view.innerHTML = `<a class="back" href="#/">← All runs</a><div class="alert">${esc(err.message)}</div>`;
+      return;
+    }
+    if (current !== state) return;
+    const active = ACTIVE.has(c.status);
+    const runs = Object.fromEntries((c.runs || []).map((r) => [r.id, r]));
+    const kindLabel = { ota: 'Two OTA versions', devices: 'Two devices', reports: 'Two existing reports' }[c.kind] || c.kind;
+    const stage = { waiting: 'Waiting for both reports', building: 'Building the comparison report' }[c.stage] || '';
+    const sideCard = (item, i) => {
+      const r = runs[item.run_id];
+      const p = r?.progress || {};
+      return `<div class="side"><div><span class="cmp-tag ${i ? 'b' : 'a'}">${i ? 'B' : 'A'}</span>
+          <span class="name" title="${esc(item.label || item.target)}">${esc(item.label || item.target)}</span></div>
+        <div class="legend"><a href="#/runs/${item.run_id}">Run #${item.run_id}</a>${envBadge(item.environment)}
+          ${r ? pill(r.status) : ''}${r && ACTIVE.has(r.status) ? `<span>${esc(STAGES[r.stage] || r.stage || '')}${p.total ? ` · ${p.done} / ${p.total}` : ''}</span>` : ''}</div>
+        ${r && ACTIVE.has(r.status) ? progressBar(r) : ''}</div>`;
+    };
+    view.innerHTML = `
+      <a class="back" href="#/">← All runs</a>
+      <div class="detail-head"><div>
+        <h2>${esc(cmpName(c))} ${pill(c.status)}</h2>
+        <div class="sub"><span>Comparison #${c.id}</span><span>${esc(kindLabel)}</span>
+          ${c.start_date ? `<span>${esc(range(c))}</span>` : ''}<span>${fmtAgo(c.created_at)}</span></div>
+      </div>
+      <div class="actions">${c.url ? `<a class="button" href="${esc(API.replace(/\/log-analyzer$/, '') + c.url)}" target="_blank" rel="noopener">Open comparison report ↗</a>` : ''}</div></div>
+      ${active && stage ? `<div class="stage"><div class="label"><span>${esc(stage)}</span></div><div class="bar indeterminate"><span></span></div></div>` : ''}
+      ${c.error ? `<div class="alert">${esc(c.error)}</div>` : ''}
+      <div class="sides">${c.items.map(sideCard).join('')}</div>
+      ${c.kind !== 'reports' && active ? '<p class="hint" style="margin-top:14px">Each side runs as a normal analysis (listed under Runs); the comparison report is built when both are done.</p>' : ''}`;
+    if (active) schedule(refresh, 4000);
+  }
+  refresh();
+}
+saveCmp();
 
 window.addEventListener('hashchange', route);
 renderEnv();

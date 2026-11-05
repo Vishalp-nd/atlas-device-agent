@@ -117,11 +117,41 @@ Context:
 KPIs outside their baseline:
 {rows}"""
 
+COMPARE_SYSTEM_PROMPT = QA_ROLE + """
+Now you compare two reports, A and B (two OTA versions, or the same device on two builds / periods), for one
+section of the comparison report. Every row is already normalised so the two sides can be compared directly:
+counts are per drive hour (per_drive_h) or per boot, shares are % of boots / drives / devices, timings are the
+P90 over the devices. Differences in drive time, number of devices or boots are therefore already taken out:
+never explain a difference by more or less driving, more devices or more boots, and never just restate that a
+raw count is higher. change_pct is (B - A) / A in %. expected is the KPI's baseline when there is one, with
+a_outside / b_outside telling which side misses it.
+Write what really differs and what it points to: a regression or an improvement on B (crossing the baseline
+matters most), how large, and the likely area (a service, a camera, connectivity, upload path, boot sequence),
+linking rows that move together (e.g. more crashes and fewer videos uploaded, slower boot and later first frame).
+Ignore changes under 10% unless they cross a baseline or go to / from zero. Only use the given numbers; never
+invent values or causes that the rows do not support. At most {max_callouts} callouts, most important first, each
+one or two plain, specific sentences naming A and B by their labels. Level: critical (B regressed past a baseline
+or by a large margin), warning (a smaller regression or a notable change), info (an improvement or a neutral
+difference worth knowing).
+Answer with JSON only: {{"callouts": [{{"level": "critical|warning|info", "topic": "<the API or KPI table the
+callout is mainly about, as given in the rows>", "text": "<callout>"}}]}}"""
+
+COMPARE_HUMAN_PROMPT = """A: {a}
+B: {b}
+Section: {section}
+
+Context (both sides):
+{context}
+
+Rows (only those that differ):
+{rows}"""
+
 # KPI units not shown after the name (as in the report)
 NO_UNIT = {'count', 'WAF', 'text'}
 
-_chain = None
-_kpi_chain = None
+PROMPTS = {'api': (SYSTEM_PROMPT, HUMAN_PROMPT), 'kpi': (KPI_SYSTEM_PROMPT, KPI_HUMAN_PROMPT),
+           'compare': (COMPARE_SYSTEM_PROMPT, COMPARE_HUMAN_PROMPT)}
+_chains = {}
 _chain_lock = threading.Lock()
 
 
@@ -146,21 +176,17 @@ def _llm():
     )
 
 
-def _get_chain(kpi=False):
-    """The API callouts chain, or the KPI callouts one (same model, retries and timeout)."""
-    global _chain, _kpi_chain
+def _get_chain(kind='api'):
+    """The chain of one prompt (PROMPTS: api, kpi, compare); same model, retries and timeout."""
     with _chain_lock:
-        if (_kpi_chain if kpi else _chain) is None:
+        if kind not in _chains:
             from langchain_core.output_parsers import JsonOutputParser
             from langchain_core.prompts import ChatPromptTemplate
 
-            system, human = (KPI_SYSTEM_PROMPT, KPI_HUMAN_PROMPT) if kpi else (SYSTEM_PROMPT, HUMAN_PROMPT)
-            chain = ChatPromptTemplate.from_messages([('system', system), ('human', human)]) | _llm() | JsonOutputParser()
-            if kpi:
-                _kpi_chain = chain
-            else:
-                _chain = chain
-    return _kpi_chain if kpi else _chain
+            system, human = PROMPTS[kind]
+            _chains[kind] = (ChatPromptTemplate.from_messages([('system', system), ('human', human)])
+                             | _llm() | JsonOutputParser())
+    return _chains[kind]
 
 
 def _number(value):
@@ -242,10 +268,11 @@ def callout_data(summary, device_summaries, device_info, defaults):
     }
 
 
-def _cached_invoke(variables, kpi=False):
+def _cached_invoke(variables, kpi=False, kind=None):
     """(answer, source) for one prompt, from the disk cache or the LLM."""
+    kind = kind or ('kpi' if kpi else 'api')
     model = os.environ.get('OAI_MODEL', '').strip()
-    system = KPI_SYSTEM_PROMPT if kpi else SYSTEM_PROMPT
+    system = PROMPTS[kind][0]
     digest = hashlib.sha256(json.dumps([PROMPT_VERSION, model, system, variables],
                                        sort_keys=True).encode()).hexdigest()
     cache_path = CACHE_DIR / digest[:2] / f'{digest}.json'
@@ -254,11 +281,14 @@ def _cached_invoke(variables, kpi=False):
             return json.loads(cache_path.read_text()), 'cache'
         except ValueError:
             pass
-    raw = _get_chain(kpi).invoke(variables)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cache_path.with_suffix(f'.{os.getpid()}.{threading.get_ident()}.tmp')
-    tmp.write_text(json.dumps(raw))
-    tmp.replace(cache_path)
+    raw = _get_chain(kind).invoke(variables)
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_suffix(f'.{os.getpid()}.{threading.get_ident()}.tmp')
+        tmp.write_text(json.dumps(raw))
+        tmp.replace(cache_path)
+    except OSError as exc:  # e.g. a cache folder made by another user: keep the answer
+        log.warning('callouts cache not written (%s): %s', cache_path, exc)
     return raw, 'llm'
 
 
@@ -442,4 +472,71 @@ def build_kpi(ota, report_kpi, device_summaries, device_type):
         'cached': sum(1 for _, src, _ in results if src == 'cache'),
         'error': (None if use_llm else 'LLM not configured (REPORT_CALLOUTS / Azure credentials): plain texts shown')
                  if not errors else f'LLM call failed for some KPI tables ({", ".join(errors)}): plain texts shown',
+    }
+
+
+# ── comparison callouts (lib/compare_report.py) ─────────────────────────────────────────
+
+def _compare_group(labels, section, group, rows, context, max_callouts):
+    variables = {'a': labels[0], 'b': labels[1], 'section': f'{section}: {group}' if group != section else section,
+                 'context': json.dumps(context, separators=(',', ':')),
+                 'rows': json.dumps(rows, separators=(',', ':')), 'max_callouts': max_callouts}
+    callouts, source, error = [], None, None
+    try:
+        raw, source = _cached_invoke(variables, kind='compare')
+        for item in ((raw.get('callouts') if isinstance(raw, dict) else None) or [])[:max_callouts]:
+            text = str((item or {}).get('text', '')).strip() if isinstance(item, dict) else ''
+            if text:
+                level = item.get('level') if item.get('level') in LEVELS else 'warning'
+                topic = str(item.get('topic') or '').strip()[:80] or group
+                callouts.append({'level': level, 'api': topic, 'kind': 'compare', 'text': text[:800], 'devices': []})
+    except Exception as exc:
+        log.exception('comparison callouts LLM call for %s failed: %s', group, exc)
+        error = f'{type(exc).__name__}'
+    if not callouts:
+        callouts = _plain_compare_callouts(group, rows, error)
+    return callouts, source, error
+
+
+def _plain_compare_callouts(group, rows, error=None):
+    out = []
+    for r in rows[:8]:
+        name = r.get('kpi') or r.get('api') or r.get('code') or r.get('row') or '?'
+        change = r.get('change_pct')
+        key = next((k[2:] for k in r if k.startswith('a_') and f'b_{k[2:]}' in r and k[2:] not in ('outside',)), None)
+        a, b = (r.get('a'), r.get('b')) if 'a' in r else (r.get(f'a_{key}'), r.get(f'b_{key}')) if key else (None, None)
+        basis = f' {key.replace("_", " ")}' if key and 'a' not in r else f' ({r["basis"]})' if r.get('basis') else ''
+        text = (f'{name}{basis}: A {a} vs B {b}' + (f' ({change:+.0f}%)' if isinstance(change, (int, float)) else '')
+                + (' (LLM text unavailable)' if error else ''))
+        out.append({'level': 'warning' if r.get('b_outside') and not r.get('a_outside') else 'info',
+                    'api': r.get('table') or group, 'kind': 'compare', 'text': text, 'devices': []})
+    return out
+
+
+def build_compare(labels, section, groups, context, max_callouts=8):
+    """Callouts on what differs between two reports, for one section of the comparison report.
+    groups: {group title: rows (only the rows that differ, normalised)}; one LLM call per group,
+    in parallel, as the OTA report callouts. Same result format as build() / build_kpi()."""
+    groups = {g: rows for g, rows in groups.items() if rows}
+    if not groups:
+        return {'callouts': [{'level': 'info', 'api': 'General', 'kind': 'ok', 'devices': [],
+                              'text': 'No notable difference between the two reports once normalised.'}],
+                'llm_calls': 0, 'cached': 0, 'error': None}
+    use_llm = enabled()
+    if use_llm:
+        with ThreadPoolExecutor(min(LLM_PARALLEL, len(groups))) as pool:
+            results = list(pool.map(lambda kv: _compare_group(labels, section, kv[0], kv[1], context, max_callouts),
+                                    groups.items()))
+    else:
+        results = [(_plain_compare_callouts(g, rows), None, None) for g, rows in groups.items()]
+    order = list(groups)
+    callouts = [c for cs, _, _ in results for c in cs]
+    callouts.sort(key=lambda c: (LEVELS.index(c['level']), order.index(c['api']) if c['api'] in order else 99))
+    errors = sorted({e for _, _, e in results if e})
+    return {
+        'callouts': callouts,
+        'llm_calls': sum(1 for _, src, _ in results if src == 'llm'),
+        'cached': sum(1 for _, src, _ in results if src == 'cache'),
+        'error': (None if use_llm else 'LLM not configured (REPORT_CALLOUTS / Azure credentials): plain texts shown')
+                 if not errors else f'LLM call failed for some sections ({", ".join(errors)}): plain texts shown',
     }

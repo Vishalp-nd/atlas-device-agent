@@ -87,6 +87,23 @@ def start_run(run_id: int) -> int:
     return proc.pid
 
 
+def start_compare(comparison_id: int) -> int:
+    """Launch the worker of a report comparison (log_analyzer/compare_worker.py)."""
+    folder = RUNS_DIR / "compare" / str(comparison_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    out = open(folder / "worker.out", "ab")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "log_analyzer.compare_worker", str(comparison_id)],
+        cwd=REPO_ROOT, stdout=out, stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONUNBUFFERED="1"),
+        start_new_session=True,
+    )
+    out.close()
+    db.update_comparison(comparison_id, pid=proc.pid)
+    threading.Thread(target=proc.wait, daemon=True).start()
+    log.info("comparison %s: worker started (pid %s)", comparison_id, proc.pid)
+    return proc.pid
+
+
 def _alive(pid: int | None) -> bool:
     if not pid:
         return False
@@ -127,6 +144,11 @@ def reconcile() -> None:
             db.update_run(run["id"], status="failed", error="Interrupted: the worker process is gone "
                           "(API restarted?)", finished_at=datetime.now(timezone.utc), pid=None)
             log.warning("run %s: worker gone, marked failed", run["id"])
+    # A comparison only waits and then builds: restart its worker
+    for comparison in db.list_comparisons(200, ("queued", "running")):
+        if not _alive(comparison.get("pid")):
+            log.warning("comparison %s: worker gone, restarting it", comparison["id"])
+            start_compare(comparison["id"])
 
 
 def read_log(run: dict, offset: int, max_bytes: int = 256 * 1024) -> tuple[str, int]:

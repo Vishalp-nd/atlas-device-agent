@@ -2,6 +2,8 @@
 
 Trigger a boot-wise config/test-case report (lib/ota_report.py) for an OTA version
 or a device list, and follow it: runs, per-step timings, live log, report files.
+Report comparisons (/comparisons): two OTAs or two devices over a date range (a normal run per
+side, then lib/compare_report.py in log_analyzer/compare_worker.py), or two existing reports.
 The UI (log_analyzer/ui/) runs separately (log_analyzer/serve_ui.py) and only talks to these routes.
 
 Handlers are plain `def`: they do short blocking Postgres calls, which FastAPI
@@ -24,8 +26,8 @@ from fastapi.responses import FileResponse
 
 from . import db, service
 from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR, run_subpath
-from .models import (Environment, Environments, OtaSuggestions, Run, RunCreateRequest, RunDetail, RunList, RunLog,
-                     RunReport)
+from .models import (Comparison, ComparisonCreateRequest, ComparisonList, ComparisonReportsRequest, Environment,
+                     Environments, OtaSuggestions, Run, RunCreateRequest, RunDetail, RunList, RunLog, RunReport)
 
 log = logging.getLogger("log_analyzer.router")
 
@@ -191,3 +193,94 @@ def ota_suggestions(environment: str = DEFAULT_ENVIRONMENT) -> OtaSuggestions:
         otas += sorted((p.name for p in input_dir.iterdir()
                         if p.is_dir() and (p / "bagheera_config.ini").exists()), reverse=True)
     return OtaSuggestions(otas=list(dict.fromkeys(otas)))
+
+
+# ── report comparisons ──────────────────────────────────────────────────────────────────
+
+def _comparison_out(c: dict) -> Comparison:
+    runs = []
+    for item in c["items"]:
+        run = db.get_run(item["run_id"]) if item.get("run_id") else None
+        if run:
+            runs.append({k: run[k] for k in ("id", "status", "stage", "progress", "error", "environment")})
+    url = f"/log-analyzer/comparisons/{c['id']}/files/{c['report_path']}" if c.get("report_path") else None
+    return Comparison(**{k: v for k, v in c.items() if k in Comparison.model_fields}, url=url, runs=runs)
+
+
+@router.post("/comparisons", response_model=Comparison, status_code=201)
+def create_comparison(req: ComparisonCreateRequest) -> Comparison:
+    """Compare two OTAs or two devices over a date range: a normal run per side (shown in the
+    run list), then the comparison report (a device: its latest OTA's report)."""
+    _ready()
+    start, end = _parse_date(req.start, "start"), _parse_date(req.end, "end")
+    try:
+        service.validate_range(start, end)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    targets = [i.target.strip() for i in req.items]
+    devices = [bool(service.DEVICE_RE.match(t)) for t in targets]
+    if devices[0] != devices[1]:
+        raise HTTPException(status_code=422, detail="Compare two OTA versions or two device IDs, not one of each")
+    if not devices[0] and not all(service.OTA_RE.match(t) for t in targets):
+        raise HTTPException(status_code=422, detail="Enter a valid OTA version or device ID on both sides")
+    if targets[0] == targets[1] and req.items[0].environment == req.items[1].environment:
+        raise HTTPException(status_code=422, detail="The two sides are the same")
+    kind = "devices" if devices[0] else "ota"
+    items = []
+    for target, item in zip(targets, req.items):
+        if kind == "ota":
+            run_id = db.create_run("ota", item.environment, target, [], start, end,
+                                   (req.product or "").strip() or None, {}, req.requested_by)
+        else:
+            run_id = db.create_run("devices", item.environment, None, [target], start, end,
+                                   (req.product or "").strip() or None, {}, req.requested_by)
+        service.start_run(run_id)
+        items.append({"target": target, "environment": item.environment, "run_id": run_id})
+    comparison_id = db.create_comparison(kind, start, end, items, req.requested_by)
+    service.start_compare(comparison_id)
+    log.info("comparison %s created: %s vs %s (runs %s)", comparison_id, targets[0], targets[1],
+             [i["run_id"] for i in items])
+    return _comparison_out(db.get_comparison(comparison_id))
+
+
+@router.post("/comparisons/reports", response_model=Comparison, status_code=201)
+def compare_reports(req: ComparisonReportsRequest) -> Comparison:
+    """Compare two existing reports (a run's report tile each)."""
+    _ready()
+    keys = [(i.run_id, i.ota_version) for i in req.items]
+    if keys[0] == keys[1]:
+        raise HTTPException(status_code=422, detail="Pick two different reports")
+    items = []
+    for run_id, ota in keys:
+        run = _run_or_404(run_id)
+        if not any(r["ota_version"] == ota for r in db.get_reports(run_id)):
+            raise HTTPException(status_code=404, detail=f"Run {run_id} has no report for OTA {ota}")
+        items.append({"target": ota, "environment": run["environment"], "run_id": run_id, "ota_version": ota})
+    comparison_id = db.create_comparison("reports", None, None, items, req.requested_by)
+    service.start_compare(comparison_id)
+    log.info("comparison %s created from reports %s", comparison_id, keys)
+    return _comparison_out(db.get_comparison(comparison_id))
+
+
+@router.get("/comparisons", response_model=ComparisonList)
+def list_comparisons(limit: int = 20) -> ComparisonList:
+    _ready()
+    return ComparisonList(comparisons=[_comparison_out(c) for c in db.list_comparisons(min(max(limit, 1), 200))])
+
+
+@router.get("/comparisons/{comparison_id}", response_model=Comparison)
+def get_comparison(comparison_id: int) -> Comparison:
+    _ready()
+    c = db.get_comparison(comparison_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"Comparison {comparison_id} not found")
+    return _comparison_out(c)
+
+
+@router.get("/comparisons/{comparison_id}/files/{path:path}")
+def comparison_file(comparison_id: int, path: str):
+    base = (RUNS_DIR / "compare" / str(comparison_id)).resolve()
+    target = (base / path).resolve()
+    if base not in target.parents or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(target, media_type=mimetypes.guess_type(target.name)[0] or "application/octet-stream")

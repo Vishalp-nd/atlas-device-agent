@@ -108,3 +108,52 @@ class Environment(BaseModel):
 class Environments(BaseModel):
     environments: list[Environment]
     default: str
+
+
+class CompareTarget(BaseModel):
+    target: str
+    """A device id or an OTA version (both sides must be the same kind)."""
+    environment: Literal["stag", "prod"] = "stag"
+
+
+class ComparisonCreateRequest(BaseModel):
+    """Two OTAs or two devices over a date range: each side triggers a normal run, then the
+    comparison report is built from their reports (a device's latest OTA)."""
+    start: str
+    end: str
+    items: list[CompareTarget] = Field(min_length=2, max_length=2)
+    product: str | None = None
+    requested_by: str | None = None
+
+
+class CompareReport(BaseModel):
+    run_id: int
+    ota_version: str
+
+
+class ComparisonReportsRequest(BaseModel):
+    """Two existing reports (a run's report tile each)."""
+    items: list[CompareReport] = Field(min_length=2, max_length=2)
+    requested_by: str | None = None
+
+
+class Comparison(BaseModel):
+    id: int
+    kind: str
+    start_date: str | None
+    end_date: str | None
+    items: list[dict]
+    status: str
+    stage: str | None
+    error: str | None
+    requested_by: str | None
+    created_at: str
+    finished_at: str | None
+    url: str | None = None
+    """The comparison report, once built."""
+    runs: list[dict] = []
+    """Per side: the run's id, status, stage and progress."""
+
+
+class ComparisonList(BaseModel):
+    comparisons: list[Comparison]

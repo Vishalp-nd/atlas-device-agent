@@ -67,3 +67,24 @@ CREATE TABLE IF NOT EXISTS log_analyzer.run_reports (
 );
 -- Report summary (devices active / detailed logs, drive time, low power, feature sets)
 ALTER TABLE log_analyzer.run_reports ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DEFAULT '{}';
+
+-- Report comparisons: two OTA reports side by side (lib/compare_report.py). kind: two OTAs or two
+-- devices (each side triggers a normal run first), or two existing reports. items: side A then B,
+-- [{target, environment, run_id, ota_version, label}].
+CREATE TABLE IF NOT EXISTS log_analyzer.comparisons (
+    id           BIGSERIAL PRIMARY KEY,
+    kind         TEXT NOT NULL CHECK (kind IN ('ota', 'devices', 'reports')),
+    start_date   DATE,
+    end_date     DATE,
+    items        JSONB NOT NULL DEFAULT '[]',
+    status       TEXT NOT NULL DEFAULT 'queued'
+                 CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+    stage        TEXT,
+    error        TEXT,
+    pid          INTEGER,
+    requested_by TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at  TIMESTAMPTZ,
+    report_path  TEXT
+);
+CREATE INDEX IF NOT EXISTS comparisons_created_at_idx ON log_analyzer.comparisons (created_at DESC);

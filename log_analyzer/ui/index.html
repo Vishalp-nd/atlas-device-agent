@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log Monitoring Agent</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%2315803d'/%3E%3Cpath d='M4 11V5m4 6V3m4 8V7' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <header class="topbar">
@@ -95,8 +95,35 @@
     </div>
   </template>
 
+  <!-- Report comparison: floating button, expands into a small panel -->
+  <button type="button" class="cmp-fab" id="cmp-fab" aria-expanded="false" aria-controls="cmp-panel">
+    <span aria-hidden="true">⇄</span> Report Comparison <span class="cmp-count" id="cmp-count" hidden></span>
+  </button>
+  <section class="cmp-panel" id="cmp-panel" hidden aria-labelledby="cmp-title">
+    <header><h2 id="cmp-title">Report Comparison</h2><button type="button" class="cmp-close" id="cmp-close" aria-label="Close">×</button></header>
+    <form id="cmp-form" novalidate>
+      <div class="row">
+        <div class="field"><label for="cmp-start">From</label><input id="cmp-start" type="date" required></div>
+        <div class="field"><label for="cmp-end">To</label><input id="cmp-end" type="date" required></div>
+      </div>
+      <div class="cmp-side"><span class="cmp-tag a">A</span>
+        <input id="cmp-a" list="ota-list" placeholder="Device ID or OTA version" autocomplete="off" spellcheck="false">
+        <select id="cmp-a-env" aria-label="Environment of A"><option value="stag">Staging</option><option value="prod">Production</option></select>
+      </div>
+      <div class="cmp-side"><span class="cmp-tag b">B</span>
+        <input id="cmp-b" list="ota-list" placeholder="Device ID or OTA version" autocomplete="off" spellcheck="false">
+        <select id="cmp-b-env" aria-label="Environment of B"><option value="stag">Staging</option><option value="prod">Production</option></select>
+      </div>
+      <p class="hint">Two OTA versions or two device IDs. Both get a normal report first; a device upgraded in the range is compared on its latest OTA.</p>
+      <p class="form-error" id="cmp-error" role="alert"></p>
+      <button class="primary" type="submit" id="cmp-submit"><span>Compare</span></button>
+    </form>
+    <div class="cmp-picked" id="cmp-picked"></div>
+    <div class="cmp-recent" id="cmp-recent"></div>
+  </section>
+
   <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
   <script src="config.js"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

@@ -225,3 +225,48 @@ def known_otas(environment: str, limit: int = 200) -> list[str]:
             (environment, environment, limit),
         )
         return [r[0] for r in cur.fetchall()]
+
+
+# ── report comparisons ──────────────────────────────────────────────────────────────────
+
+COMPARISON_COLUMNS = ("id, kind, start_date, end_date, items, status, stage, error, pid, requested_by, "
+                      "created_at, finished_at, report_path")
+_COMPARISON_UPDATABLE = {"items", "status", "stage", "error", "pid", "finished_at", "report_path"}
+
+
+def create_comparison(kind: str, start_date: date | None, end_date: date | None, items: list[dict],
+                      requested_by: str | None) -> int:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO log_analyzer.comparisons (kind, start_date, end_date, items, requested_by)
+               VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+            (kind, start_date, end_date, json.dumps(items), requested_by),
+        )
+        return cur.fetchone()[0]
+
+
+def update_comparison(comparison_id: int, **fields) -> None:
+    unknown = set(fields) - _COMPARISON_UPDATABLE
+    if unknown:
+        raise ValueError(f"Cannot update comparison fields {unknown}")
+    if not fields:
+        return
+    assignments = ", ".join(f"{name} = %s" for name in fields)
+    values = [json.dumps(v) if name == "items" else v for name, v in fields.items()]
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(f"UPDATE log_analyzer.comparisons SET {assignments} WHERE id = %s", (*values, comparison_id))
+
+
+def get_comparison(comparison_id: int) -> dict | None:
+    with connect() as conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT {COMPARISON_COLUMNS} FROM log_analyzer.comparisons WHERE id = %s", (comparison_id,))
+        row = cur.fetchone()
+    return _json_safe(dict(row)) if row else None
+
+
+def list_comparisons(limit: int = 20, statuses: tuple[str, ...] | None = None) -> list[dict]:
+    where, params = ("WHERE status = ANY(%s)", [list(statuses)]) if statuses else ("", [])
+    with connect() as conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT {COMPARISON_COLUMNS} FROM log_analyzer.comparisons {where} ORDER BY id DESC LIMIT %s",
+                    (*params, limit))
+        return [_json_safe(dict(r)) for r in cur.fetchall()]

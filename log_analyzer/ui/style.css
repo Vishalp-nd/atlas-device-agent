@@ -250,3 +250,52 @@ pre.log .lw { color: #e2b04a; } pre.log .le { color: #ff7a70; } pre.log .lt { co
 .skeleton { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-2), var(--line), var(--surface-2));
   background-size: 200% 100%; animation: shimmer 1.2s linear infinite; margin: 12px 0; }
 @keyframes shimmer { to { background-position: -200% 0; } }
+
+/* report comparison: floating button, its panel, the report tiles' menu */
+.cmp-fab {
+  position: fixed; right: 24px; bottom: 24px; z-index: 40; display: inline-flex; align-items: center; gap: 8px;
+  font: inherit; font-weight: 600; font-size: 13.5px; padding: 11px 18px; border: 0; border-radius: 12px; cursor: pointer;
+  background: var(--accent); color: var(--accent-fg); box-shadow: 0 6px 20px rgba(20, 20, 30, .18);
+  transition: transform .15s, filter .15s;
+}
+.cmp-fab:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.cmp-fab[aria-expanded="true"] { display: none; }
+.cmp-count { background: var(--accent-fg); color: var(--accent); border-radius: 99px; font-size: 11px; padding: 0 7px; }
+.cmp-panel {
+  position: fixed; right: 24px; bottom: 24px; z-index: 41; width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 48px);
+  overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
+  box-shadow: 0 12px 36px rgba(20, 20, 30, .22); animation: cmp-in .16s ease-out;
+}
+@keyframes cmp-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.cmp-panel header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.cmp-panel h2 { margin: 0; }
+.cmp-close { font: inherit; font-size: 20px; line-height: 1; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.cmp-close:hover { background: var(--surface-2); color: var(--fg); }
+.cmp-side { display: grid; grid-template-columns: auto minmax(0, 1fr) 112px; gap: 8px; align-items: center; margin-bottom: 10px; }
+.cmp-tag { font-weight: 700; font-size: 12px; color: #fff; border-radius: 6px; padding: 2px 8px; }
+.cmp-tag.a { background: #2f6fde; } .cmp-tag.b { background: #a447c9; }
+.cmp-panel .hint { margin: 2px 0 12px; }
+.cmp-picked:empty, .cmp-recent:empty { display: none; }
+.cmp-picked, .cmp-recent { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.cmp-picked h3, .cmp-recent h3 { margin: 0 0 8px; }
+.cmp-list { list-style: none; margin: 0 0 10px; padding: 0; font-size: 12.5px; }
+.cmp-list li { display: flex; align-items: center; gap: 8px; padding: 5px 0; min-width: 0; }
+.cmp-list li > span, .cmp-list li > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.cmp-list .mono { font-family: var(--mono); }
+.cmp-list button { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.cmp-list button:hover { color: var(--bad); }
+.report { position: relative; }
+.report .dots { position: absolute; right: 10px; bottom: 10px; font: inherit; font-size: 16px; line-height: 1; letter-spacing: 1px;
+  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 7px; padding: 4px 8px; cursor: pointer; }
+.report .dots:hover, .report .dots[aria-expanded="true"] { background: var(--surface-2); border-color: var(--line); color: var(--fg); }
+.report.picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.tile-menu { position: absolute; right: 10px; bottom: 44px; z-index: 30; min-width: 170px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(20, 20, 30, .16); padding: 4px; }
+.tile-menu button { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; border: 0; background: none;
+  color: var(--fg); padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+.tile-menu button:hover { background: var(--surface-2); }
+.tile-menu button:disabled { color: var(--faint); cursor: not-allowed; background: none; }
+.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.side { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.side .name { font-weight: 650; font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 700px) { .sides { grid-template-columns: 1fr; } }
