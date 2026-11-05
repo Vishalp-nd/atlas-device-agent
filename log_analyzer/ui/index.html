@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log Monitoring Agent</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%2315803d'/%3E%3Cpath d='M4 11V5m4 6V3m4 8V7' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -114,7 +114,6 @@
         <input id="cmp-b" list="ota-list" placeholder="Device ID or OTA version" autocomplete="off" spellcheck="false">
         <select id="cmp-b-env" aria-label="Environment of B"><option value="stag">Staging</option><option value="prod">Production</option></select>
       </div>
-      <p class="hint">Two OTA versions or two device IDs. Both get a normal report first; a device upgraded in the range is compared on its latest OTA.</p>
       <p class="form-error" id="cmp-error" role="alert"></p>
       <button class="primary" type="submit" id="cmp-submit"><span>Compare</span></button>
     </form>
@@ -124,6 +123,6 @@
 
   <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
   <script src="config.js"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

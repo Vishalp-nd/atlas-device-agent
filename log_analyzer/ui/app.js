@@ -98,7 +98,7 @@ function setEnv(next) {
   renderEnv();
   loadSuggestions();
   if (current?.kind === 'list') renderList();
-  else location.hash = '#/';
+  else if (current?.kind !== 'comparisons') location.hash = '#/';
 }
 document.querySelectorAll('.env-opt').forEach((b) => b.addEventListener('click', () => setEnv(b.dataset.env)));
 
@@ -240,7 +240,7 @@ async function renderList() {
   const filters = ['', 'running', 'succeeded', 'failed'].map((f) =>
     `<button class="filter ${f === listFilter ? 'active' : ''}" data-filter="${f}">${f || 'All'}</button>`).join('');
   view.innerHTML = `
-    <div class="list-head"><h2>Runs ${envBadge(env)}</h2><div class="filters">${filters}</div></div>
+    <div class="list-head"><div class="left">${viewTabs('runs')}${envBadge(env)}</div><div class="filters">${filters}</div></div>
     ${runs.length ? `<ul class="runs">${runs.map((r) => `
       <li><a class="run" href="#/runs/${r.id}">
         <span class="id">#${r.id}</span>
@@ -259,6 +259,10 @@ async function renderList() {
   }));
   schedule(renderList, runs.some((r) => ACTIVE.has(r.status)) ? 4000 : 20000);
 }
+
+const viewTabs = (active) => `<nav class="view-tabs" aria-label="Show">
+  <a href="#/" class="${active === 'runs' ? 'active' : ''}">Runs</a>
+  <a href="#/comparisons" class="${active === 'comparisons' ? 'active' : ''}">Comparisons</a></nav>`;
 
 function summaryLine(s) {
   if (!s || s.devices_given == null) return '';
@@ -439,6 +443,7 @@ function route() {
   const c = location.hash.match(/^#\/compare\/(\d+)/);
   if (m) renderRun(Number(m[1]));
   else if (c) renderCompare(Number(c[1]));
+  else if (location.hash.startsWith('#/comparisons')) renderComparisons();
   else renderList();
 }
 
@@ -488,6 +493,8 @@ function togglePick(item) {
 
 function renderPicked() {
   const box = $('#cmp-picked');
+  // Picked reports are compared as they are: the new comparison form only shows without them
+  $('#cmp-form').hidden = cmpPicked.length > 0;
   if (!cmpPicked.length) { box.innerHTML = ''; return; }
   box.innerHTML = `<h3>Selected reports · ${cmpPicked.length}/2</h3><ul class="cmp-list">${cmpPicked.map((p, i) => `
     <li><span class="cmp-tag ${i ? 'b' : 'a'}">${i ? 'B' : 'A'}</span>
@@ -519,9 +526,10 @@ const cmpName = (c) => c.items.map((i) => i.label || i.target).join(' vs ');
 async function renderRecent() {
   const box = $('#cmp-recent');
   try {
-    const { comparisons } = await api('/comparisons?limit=6');
-    box.innerHTML = comparisons.length ? `<h3>Recent comparisons</h3><ul class="cmp-list">${comparisons.map((c) => `
+    const { comparisons } = await api('/comparisons?limit=5');
+    box.innerHTML = comparisons.length ? `<h3><a href="#/comparisons" id="cmp-all">Recent comparisons <span aria-hidden="true">›</span></a></h3><ul class="cmp-list">${comparisons.map((c) => `
       <li><a href="#/compare/${c.id}" title="${esc(cmpName(c))}">${esc(cmpName(c))}</a>${pill(c.status)}</li>`).join('')}</ul>` : '';
+    box.querySelectorAll('a').forEach((a) => a.addEventListener('click', closePanel));
   } catch (_) { box.innerHTML = ''; }
 }
 
@@ -603,12 +611,12 @@ document.addEventListener('click', (e) => {
 async function renderCompare(id) {
   const state = { kind: 'compare', id };
   current = state;
-  view.innerHTML = '<a class="back" href="#/">← All runs</a><div class="skeleton" style="width:40%"></div><div class="skeleton"></div>';
+  view.innerHTML = '<a class="back" href="#/comparisons">← All comparisons</a><div class="skeleton" style="width:40%"></div><div class="skeleton"></div>';
   async function refresh() {
     if (current !== state) return;
     let c;
     try { c = await api(`/comparisons/${id}`); } catch (err) {
-      view.innerHTML = `<a class="back" href="#/">← All runs</a><div class="alert">${esc(err.message)}</div>`;
+      view.innerHTML = `<a class="back" href="#/comparisons">← All comparisons</a><div class="alert">${esc(err.message)}</div>`;
       return;
     }
     if (current !== state) return;
@@ -626,7 +634,7 @@ async function renderCompare(id) {
         ${r && ACTIVE.has(r.status) ? progressBar(r) : ''}</div>`;
     };
     view.innerHTML = `
-      <a class="back" href="#/">← All runs</a>
+      <a class="back" href="#/comparisons">← All comparisons</a>
       <div class="detail-head"><div>
         <h2>${esc(cmpName(c))} ${pill(c.status)}</h2>
         <div class="sub"><span>Comparison #${c.id}</span><span>${esc(kindLabel)}</span>
@@ -641,6 +649,36 @@ async function renderCompare(id) {
   }
   refresh();
 }
+// All comparisons, like the runs list (every environment: a side carries its own)
+const CMP_KINDS = { ota: 'OTA vs OTA', devices: 'Device vs device', reports: 'Existing reports' };
+async function renderComparisons() {
+  const state = { kind: 'comparisons' };
+  current = state;
+  let comparisons;
+  try {
+    ({ comparisons } = await api('/comparisons?limit=100'));
+  } catch (err) {
+    view.innerHTML = `<div class="alert">${esc(err.message)}</div>`;
+    schedule(renderComparisons, 10000);
+    return;
+  }
+  if (current !== state) return;
+  view.innerHTML = `
+    <div class="list-head"><div class="left">${viewTabs('comparisons')}</div></div>
+    ${comparisons.length ? `<ul class="runs">${comparisons.map((c) => `
+      <li><a class="run" href="#/compare/${c.id}">
+        <span class="id">C${c.id}</span>
+        <span class="target" title="${esc(cmpName(c))}">${esc(cmpName(c))}</span>
+        <span class="right">${pill(c.status)}<span class="muted" style="font-size:12px">${esc(CMP_KINDS[c.kind] || c.kind)}</span></span>
+        <span class="meta">${c.start_date ? `<span>${esc(range(c))}</span>` : ''}
+          ${[...new Set(c.items.map((i) => i.environment))].map(envBadge).join('')}
+          <span>${c.items.map((i) => `#${i.run_id}`).join(' · ')}</span>
+          <span>${fmtAgo(c.created_at)}</span></span>
+      </a></li>`).join('')}</ul>`
+    : '<div class="empty"><div class="empty-mark" aria-hidden="true"></div><p>No comparisons yet. Start one with Report Comparison.</p></div>'}`;
+  schedule(renderComparisons, comparisons.some((c) => ACTIVE.has(c.status)) ? 4000 : 20000);
+}
+
 saveCmp();
 
 window.addEventListener('hashchange', route);
