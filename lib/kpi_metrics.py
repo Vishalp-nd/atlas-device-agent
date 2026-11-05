@@ -1649,7 +1649,8 @@ def p90(values):
 
 def merge_summaries(device_summaries):
     """OTA level from {device: summarize()}: per metric the devices' values, P90, total
-    (sum metrics; boot-weighted for %), most common text; event codes with devices."""
+    (sum metrics; boot-weighted for %; the average over all samples for means), most common
+    text; event codes with devices."""
     devices = {d: (s or {}).get('metrics', {}) for d, s in device_summaries.items()}
     columns = {}
     for mid, metric in METRICS.items():
@@ -1662,9 +1663,11 @@ def merge_summaries(device_summaries):
             col['p90'] = p90([v[0] for v in vals])
             if metric.agg == 'sum':
                 col['total'] = sum(v[0] for v in vals)
-            elif metric.agg == 'pct':
+            elif metric.agg in ('pct', 'mean'):
+                # % boot-weighted; mean: the average over every sample (boot / event) of every device
                 n = sum(v[1] for v in vals)
                 col['total'] = sum(v[0] * v[1] for v in vals) / n if n else None
+                col['samples'] = n
         columns[mid] = col
     codes, code_devices = Counter(), Counter()
     per_device_codes = defaultdict(list)

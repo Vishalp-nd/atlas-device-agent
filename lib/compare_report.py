@@ -6,9 +6,10 @@ Comparison report: two OTA reports (lib/ota_report.py ota_report.json) side by s
 Same sections and look as the OTA report, each with A and B next to each other and the change.
 Everything that depends on how much the devices drove is normalised before it is compared,
 so a difference in drive time, devices or boots never shows up as a difference by itself:
-  - counts (API calls, alerts, crashes, retries, ... every KPI summed over boots) per drive hour
+  - API calls, alerts, retries per drive hour; boot-related KPIs (bootup, downtime, camera
+    crashes, watchdog) per boot over the boots of all devices (TABLE_BASIS)
   - shares as % of boots / drives / devices / test cases
-  - timings and other KPIs: the P90 over the devices, as in the OTA report
+  - KPIs that are already per session / event or a snapshot: the P90 over the devices
 Change = (B - A) / A in %. KPI cells outside their baseline are amber, as in the OTA report.
 
 Callouts-API Summary and Callouts-KPI Metrics (report_callouts.build_compare) say what differs
@@ -264,36 +265,67 @@ def _features_section(A, B):
     return ('<section id="features"><h2>Feature Level Summary</h2>' + tiles + _sortable(head, rows) + '</section>'), a, b
 
 
-def _kpi_value(S, m):
-    """(shown value, comparable value, basis) of one KPI on one side: sums of counts per drive
-    hour (from the total over devices), other KPIs their P90 (text: the most common value)."""
+# How each KPI table is compared beyond its P90 (tables not listed: the P90 only, as their KPIs
+# are already per session / per event, or a device snapshot):
+#   boot     counts per boot (summed over devices / the boots of all devices), % boot-weighted,
+#            times averaged over every boot of every device
+#   drive_h  counts per drive hour (they grow with driving: alerts, retries); times the P90 only
+TABLE_BASIS = {'kpi-boot': 'boot', 'kpi-downtime': 'boot', 'kpi-crash': 'boot', 'kpi-watchdog': 'boot',
+               'kpi-alerts': 'drive_h', 'kpi-retry': 'drive_h', 'kpi-lla': 'drive_h'}
+BASIS_HEAD = {'boot': 'per boot', 'drive_h': 'per drive h'}
+
+
+def _mean_over_samples(S, m, col):
+    """A mean KPI averaged over all samples: the report's total (newer reports), else the
+    average of the device values."""
+    if col.get('total') is not None:
+        return col['total']
+    vals = [v[m.id] for v in ((S['report'].get('kpi') or {}).get('devices') or {}).values()
+            if isinstance(v.get(m.id), (int, float))]
+    return sum(vals) / len(vals) if vals else None
+
+
+def _kpi_value(S, m, basis):
+    """(P90 / most common, normalised value or None) of one KPI on one side."""
     col = ((S['report'].get('kpi') or {}).get('columns') or {}).get(m.id) or {}
     if m.unit == 'text':
-        v = col.get('common')
-        return v, v, 'most common'
+        return col.get('common'), None
     p90 = col.get('p90')
-    if m.agg == 'sum' and m.unit == 'count':
-        total = col.get('total')
-        return p90, _per(total, S['hours']) if total is not None else None, 'per drive h'
-    return p90, p90, 'P90'
+    if basis == 'boot':
+        if m.agg == 'sum':
+            return p90, _per(col['total'], S['boots']) if col.get('total') is not None else None
+        if m.agg == 'pct':
+            return p90, col.get('total')
+        if m.agg == 'mean':
+            return p90, _mean_over_samples(S, m, col)
+        return p90, None
+    if basis == 'drive_h' and m.agg == 'sum' and m.unit == 'count':
+        return p90, _per(col['total'], S['hours']) if col.get('total') is not None else None
+    return p90, None
 
 
 def _kpi_rows(A, B):
-    """{table title: [row]} for every KPI either side has."""
+    """{table title: (table id, basis, [row])} for every KPI either side has; a row's a / b are
+    compared: the normalised values when there are, else the P90s."""
     tables = {}
     for table in kpi_metrics.KPI_TABLES:
+        basis = TABLE_BASIS.get(table.id)
         rows = []
         for m in table.metrics:
-            sa, sb = _kpi_value(A, m), _kpi_value(B, m)
-            if sa[0] is None and sb[0] is None:
+            (pa, na), (pb, nb) = _kpi_value(A, m, basis), _kpi_value(B, m, basis)
+            if pa is None and pb is None:
                 continue
             unit = '' if m.unit in KPI_NO_UNIT else f' ({m.unit})'
             name = m.name + ('' if m.name.endswith(m.unit) else unit)
-            rows.append({'metric': m, 'name': name, 'basis': sa[2], 'a_p90': sa[0], 'b_p90': sb[0], 'a': sa[1], 'b': sb[1],
-                         'a_warn': kpi_metrics.baseline_issue(m.id, sa[0], A['device_type']),
-                         'b_warn': kpi_metrics.baseline_issue(m.id, sb[0], B['device_type'])})
+            normalised = na is not None or nb is not None
+            rows.append({'metric': m, 'name': name, 'basis': BASIS_HEAD[basis] if normalised else
+                         ('most common' if m.unit == 'text' else 'P90'),
+                         'a_p90': pa, 'b_p90': pb, 'a_norm': na, 'b_norm': nb,
+                         'a': na if normalised else pa, 'b': nb if normalised else pb,
+                         'a_warn': kpi_metrics.baseline_issue(m.id, pa, A['device_type']),
+                         'b_warn': kpi_metrics.baseline_issue(m.id, pb, B['device_type'])})
         if rows:
-            tables[table.title] = (table.id, rows)
+            tables[table.title] = (table.id, basis, rows)
     return tables
 
 
@@ -308,26 +340,33 @@ def _kpi_cell(value, unit, warn=None):
 
 def _kpi_sections(tables):
     out = []
-    for title, (tid, rows) in tables.items():
+    for title, (tid, basis, rows) in tables.items():
         body = []
         for r in rows:
             m = r['metric']
-            per_h = r['basis'] == 'per drive h'
             if m.unit == 'text':
                 chg = '<td class="same">same</td>' if r['a'] == r['b'] else '<td class="chg">changed</td>'
             else:
                 chg = _chg_cell(r['a'], r['b'])
-            norm = (f'<td class="num">{_fmt(r["a"])}</td><td class="num">{_fmt(r["b"])}</td>' if per_h
-                    else '<td class="num zero"></td><td class="num zero"></td>')
+            norm = ''
+            if basis:
+                unit = '%' if m.agg == 'pct' else ''
+                norm = (f'<td class="num">{_fmt(r["a_norm"], unit)}</td><td class="num">{_fmt(r["b_norm"], unit)}</td>'
+                        if r['a_norm'] is not None or r['b_norm'] is not None
+                        else '<td class="num zero"></td><td class="num zero"></td>')
             body.append(f'<tr><td>{_esc(r["name"])}</td>{_kpi_cell(r["a_p90"], m.unit, r["a_warn"])}'
                         f'{_kpi_cell(r["b_p90"], m.unit, r["b_warn"])}{norm}{chg}</tr>')
-        head = ['<th>KPI</th>', '<th class="num a">A P90</th>', '<th class="num b">B P90</th>',
-                '<th class="num a">A per drive h</th>', '<th class="num b">B per drive h</th>', '<th class="num">Change</th>']
+        head = ['<th>KPI</th>', '<th class="num a">A P90</th>', '<th class="num b">B P90</th>']
+        if basis:
+            head += [f'<th class="num a">A {BASIS_HEAD[basis]}</th>', f'<th class="num b">B {BASIS_HEAD[basis]}</th>']
+        head.append('<th class="num">Change</th>')
         sid = 'kpi' if not out else tid
         out.append(f'<section id="{sid}" class="kpi"><h2>{_esc(title)}</h2>' + _sortable(head, body) + '</section>')
     if out:
-        out.insert(0, '<p class="legend-ab" style="margin-top:4px">KPI Summary: counts summed over boots are '
-                      'compared per drive hour; every other KPI by its P90 over the devices. Amber: outside the baseline.</p>')
+        out.insert(0, '<p class="legend-ab" style="margin-top:4px">KPI Summary: per boot = counts over the boots of '
+                      'all devices, times averaged over all boots; per drive h = counts per drive hour; other KPIs '
+                      'are compared by their P90 over the devices. Change uses the per boot / per drive h value '
+                      'when there is one. Amber: outside the baseline.</p>')
     return ''.join(out)
 
 
@@ -400,7 +439,7 @@ def _api_callout_rows(rows):
 
 def _kpi_callout_groups(tables, codes, A, B):
     groups = {}
-    for title, (_, rows) in tables.items():
+    for title, (_, _, rows) in tables.items():
         out = []
         for r in rows:
             m = r['metric']
