@@ -94,9 +94,11 @@ and the since-power-on KPIs are empty.
 
 ### Placing values in report boots
 
-Each sample goes to the report boot its time falls in. A report boot starts at its
-power-on when one lies at most 120 s (`POWER_ON_LEAD_MS`) before its first service start,
-else at the first service start. Values whose time is before the run's start date or in the
+Each sample goes to the report boot its time falls in. Report boots come from
+time_sync: it logs a udid_node record line as it starts in every boot, so each record line
+marks a boot (without time_sync lines: clusters of service restarts, `ota_report.udid_boots`). A report boot starts at its power-on when one
+lies at most 120 s (`POWER_ON_LEAD_MS`) before its first service start, else at the boot
+start (the earlier of the udid_node drive_start and the first service start). Values whose time is before the run's start date or in the
 day after the end date are dropped with their boots (as for every other part of the report).
 Downtime KPIs start before a power-on and end after it: the value goes to the boot of the end line.
 

@@ -4,14 +4,14 @@ Boot-wise config + test-case validation report from downloaded device logs.
 For every device over the date range (all days are read together):
   1. Collect CFG_PRSR lines per service process with its first_ts
      (lib/cfg_parser_logs.py -> OUTPUT/config/<device>/<day>.json).
-  2. Detect device boots: MIN_BOOT_SERVICES or more services starting fresh
-     (first CFG_PRSR line within BOOT_START_UPTIME_MS of the process start)
-     within BOOT_CLUSTER_MS of each other. Short-lived services that restart
-     far more often than the rest (bhcopy, ...) are left out of this count.
-     A boot's first_ts is the earliest of those process starts, and boot N
-     covers [first_ts N, first_ts N+1); every grep hit is bound to a boot by
-     its timestamp. Lines logged before the first detected boot form boot 0, a
-     partial boot that started before the logs (kept only if it has matches).
+  2. Device boots (udid_boots), from time_sync only: it logs a udid_node record line as it
+     starts in every boot, with the UDID and drive of the boot before. Every record line
+     marks a boot, starting at its drive's drive_start (else its time_sync start); its UDID
+     and drive are those of the record logged in the next boot. A boot without a record (the
+     last one) shows Log not available, with the power monitor drive. Boot N covers
+     [start N, start N+1); every grep hit is bound to a boot by its timestamp. Lines logged
+     before the first boot form boot 0, a partial boot that started before the logs (kept
+     only if it has matches).
   3. OTA of each boot: first "CurrentVersion X" in otacheck.log inside the boot,
      else the last one before it. Boots are grouped by OTA.
   4. Config coverage per boot: every key in INPUT/<ota>/bagheera_config.ini
@@ -33,6 +33,9 @@ For every device over the date range (all days are read together):
      the OTA's default config plus the keys CFG_PRSR shows as overridden. What a
      service normally reads is learned over every device on the OTA, so this runs
      once all devices are done, and then completes the device pages.
+
+A device whose days in the range have only critical (_c) logs is not analysed: it is only
+listed in the Log Upload Summary of the OTAs it logged.
 
 Devices are processed in parallel (--workers). Output per OTA:
   OUTPUT/ota_reports/<ota>/ota_report.{json,html}        summary over devices/boots
@@ -97,9 +100,10 @@ KEY_TOKEN_RE = re.compile(r'[\w.]+')
 
 # A process whose first CFG_PRSR line is this close to its start started fresh
 BOOT_START_UPTIME_MS = 60 * 1000
-# Fresh starts of at least MIN_BOOT_SERVICES services this close together are one device boot
+# KPI bootup time: a boot's first service start is searched this long after the boot start,
+# and up to SVC_LEAD_MS before a boot starting at its time_sync start
 BOOT_CLUSTER_MS = 3 * 60 * 1000
-MIN_BOOT_SERVICES = 5
+SVC_LEAD_MS = 60 * 1000
 # Services that fresh-start this many times more than the median service (short-lived
 # processes like bhcopy) say nothing about device boots
 CHATTY_START_FACTOR = 3
@@ -244,25 +248,72 @@ def load_process_boots(device, days):
     return procs
 
 
-def detect_boot_starts(procs):
-    """Sorted epoch-ms starts of device boots (clusters of fresh service starts)."""
+def fresh_starts(procs):
+    """Sorted (epoch ms, service) starts of the processes that started fresh, without the
+    short-lived services that restart far more often than the rest."""
     fresh = [p for p in procs if p['uptime'] is not None and p['uptime'] <= BOOT_START_UPTIME_MS]
     counts = Counter(p['service'] for p in fresh)
     if not counts:
         return []
     median = sorted(counts.values())[len(counts) // 2]
-    starts = sorted((p['first_ts'] - p['uptime'], p['service']) for p in fresh
-                    if counts[p['service']] <= CHATTY_START_FACTOR * median)
-    boots, i = [], 0
-    while i < len(starts):
-        j = i
-        while j < len(starts) and starts[j][0] - starts[i][0] <= BOOT_CLUSTER_MS:
-            j += 1
-        if len({s for _, s in starts[i:j]}) >= MIN_BOOT_SERVICES:
-            boots.append(starts[i][0])
-            i = j
-        else:
-            i += 1
+    return sorted((p['first_ts'] - p['uptime'], p['service']) for p in fresh
+                  if counts[p['service']] <= CHATTY_START_FACTOR * median)
+
+
+def _first_restart(starts, lo, hi):
+    """First fresh service start in [lo, hi) (fresh_starts()), or None. Only for the KPI
+    bootup time (power-on to the first service start); boots come from time_sync alone."""
+    i = bisect.bisect_left(starts, (lo,))
+    return starts[i][0] if i < len(starts) and starts[i][0] < hi else None
+
+
+def udid_boots(procs, finals):
+    """{boot start: {'source', 'svc_start', 'udid_rec'}} for the device's boots, from time_sync only.
+
+    time_sync logs a udid_node record line (drive_metrics DriveEvents.final_list) within a
+    second of starting, in every boot: the record of the drive of the boot before. So every
+    record line marks a boot, and the record logged in the next boot gives its UDID and
+    drive. The boot starts at that drive's drive_start when the drive started in it (after
+    the previous boot's time_sync start), else at its own time_sync start (the line's time -
+    time_sync's uptime). The boot before the first record line starts at that record's
+    drive_start. A boot without a record (the last one: its record is only logged in the
+    next boot) has no UDID (Log not available) and its drive comes from the power monitor
+    (drive_metrics.partial_drive). No record line at all: no boots (only boot 0).
+
+    Usually the UDID changes on every reboot, but a drive can go on with the same UDID after
+    one (e.g. the OTA install reboot): its boots share the UDID, and each boot's drive starts
+    at the boot.
+
+    svc_start (the boot's first service start) is only for the KPI bootup time.
+    """
+    starts = fresh_starts(procs)
+    finals = [f for f in finals if f['drive_start'] >= cfg_parser_logs.EPOCH_MS_MIN
+              and f['drive_end'] >= f['drive_start']]
+    boots = {}
+    if not finals:
+        return boots
+    first = finals[0]
+    if first['drive_start'] < first['ts_start']:
+        boots[first['drive_start']] = {'source': 'drive_start', 'udid_rec': first}
+    for k, f in enumerate(finals):
+        # A drive started in this boot when it started after the previous boot began
+        t, prev_t = f['ts_start'], finals[k - 1]['ts_start'] if k else first['drive_start']
+        rec = finals[k + 1] if k + 1 < len(finals) else None
+        if rec is not None and rec['drive_start'] > t:
+            rec = None  # a record line in between is missing: not this boot's drive
+        if rec is not None and rec['drive_start'] > prev_t:
+            boots[rec['drive_start']] = {'source': 'drive_start', 'udid_rec': rec}
+            continue
+        if rec is not None:  # same UDID since before this boot: its drive here starts at the boot
+            rec = dict(rec, drive_start=t, resumed_from=rec['drive_start'],
+                       rtc_jump_from=max(rec['rtc_jump_from'], t), rtc_jump_to=max(rec['rtc_jump_to'], t))
+        boots[t] = {'source': 'time_sync', 'udid_rec': rec}
+    boots = dict(sorted(boots.items()))
+    edges = [None, *boots, float('inf')]
+    for prev, start, nxt in zip(edges, edges[1:], edges[2:]):
+        # A boot starting at its time_sync start: its services started up to ~30 s before it
+        lo = start if boots[start]['source'] == 'drive_start' else max(start - SVC_LEAD_MS, (prev or 0) + 1)
+        boots[start]['svc_start'] = _first_restart(starts, lo, min(nxt, start + BOOT_CLUSTER_MS))
     return boots
 
 
@@ -273,8 +324,13 @@ def boot_window(boot, span, drive=None):
     log line), the last one ends at the last log line."""
     first, last = span.get('first'), span.get('last')
     w = {}
-    if boot['start'] is not None:
-        w['start'], w['start_note'] = boot['start'], 'boot start: services restarted'
+    if boot['start'] is not None and boot['partial']:
+        w['start'], w['start_note'] = boot['start'], 'started before the logs; drive start from time_sync udid_node'
+    elif boot['start'] is not None:
+        w['start'], w['start_note'] = boot['start'], {
+            'drive_start': 'boot start: time_sync udid_node drive start',
+            'time_sync': 'boot start: time_sync started',
+        }.get(boot.get('source'), 'boot start')
     elif drive and drive.get('drive_start'):
         w['start'] = drive['drive_start']
         w['start_note'] = 'started before the logs; drive start from time_sync udid_node'
@@ -298,16 +354,26 @@ def boot_ota(versions, start, end):
     return versions[lo - 1][1] if lo > 0 else None
 
 
-def make_boots(starts, versions):
-    """Boot dicts for detected boot starts; boot 0 is the partial boot before the first start."""
-    edges = [None, *starts, None]
-    return [{
-        'index': i,
-        'partial': i == 0,
-        'start': edges[i],
-        'end': edges[i + 1],
-        'ota': boot_ota(versions, edges[i], edges[i + 1]),
-    } for i in range(len(edges) - 1)]
+def make_boots(found, versions, logs_first=None):
+    """Boot dicts for the boots of udid_boots(); boot 0 is the partial boot before the first
+    start. A boot whose services did not restart in the logs (its drive started before the
+    first log line) is partial too."""
+    edges = [None, *found, None]
+    boots = []
+    for i in range(len(edges) - 1):
+        info = found.get(edges[i], {})
+        boots.append({
+            'index': i,
+            'partial': i == 0 or (info.get('svc_start') is None and logs_first is not None
+                                  and edges[i] < logs_first),
+            'start': edges[i],
+            'end': edges[i + 1],
+            'source': info.get('source'),
+            # First service restart of the boot (KPI bootup time), if seen
+            'svc_start': info.get('svc_start'),
+            'ota': boot_ota(versions, edges[i], edges[i + 1]),
+        })
+    return boots
 
 
 # ── config key coverage ─────────────────────────────────────────────────
@@ -626,6 +692,17 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
     info = {'days': len(range_days), 'detailed_days': sum(r['detailed'] for r in in_range), 'otas': []}
     if not days:
         return device, {}, timings, info
+    if not info['detailed_days']:
+        # Only critical logs over the range: no analysis, only the OTAs it logged (Log Upload Summary)
+        lo, hi = run_start_ms(start), range_end_ms(end)
+        info['otas'] = sorted({v for r in in_range for ts, v in r['versions']
+                               if (lo is None or ts >= lo) and (hi is None or ts < hi)})
+        info['critical_only'] = True
+        for r in day_results:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(r['spool'])
+        log.info('%s: only critical logs over the range, skipped (OTA %s)', device, info['otas'])
+        return device, {}, timings, info
     versions, services, calls, kpi_hits = set(), set(), set(), set()
     firsts = [r['log_span']['first'] for r in day_results if r.get('log_span', {}).get('first')]
     lasts = [r['log_span']['last'] for r in day_results if r.get('log_span', {}).get('last')]
@@ -643,12 +720,14 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
                 evidence.lines.setdefault(norm, []).extend(hits_)
         with timed(log, 'detect_boots', timings, level=logging.DEBUG, device=device):
             procs = load_process_boots(device, days)
-            starts = detect_boot_starts(procs)
-            boots = make_boots(starts, sorted(versions))
-            all_boots = list(boots)  # KPI times are placed in boots, also those left out below
             events.finish()
             evidence.finish()
-            udid_records = drive_metrics.assign_udids(events, boots)
+            found = udid_boots(procs, events.final_list)
+            starts = list(found)
+            boots = make_boots(found, sorted(versions), span['first'][0] if span.get('first') else None)
+            all_boots = list(boots)  # KPI times are placed in boots, also those left out below
+            udid_records = {b['index']: found[b['start']]['udid_rec'] for b in boots
+                            if b['start'] is not None and found[b['start']]['udid_rec']}
         # Boots whose drive ends on or after the start date: those that started in the range,
         # and those that started before it (on the day before, or before the logs) and drove
         # on into it. The drive's end is its udid_node drive_end, else its last power_mon line.
@@ -684,13 +763,13 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
     calls_by_api = api_calls.by_api(calls)
     inis = {ota: ensure_ini(ota, product) for ota in sorted({b['ota'] for b in boots if b['ota']})}
     ini_keys_by_ota = {ota: keys for ota, (keys, _) in inis.items() if keys is not None}
-    # Boot 0 (before the first boot in the logs) is noise unless something matched in it
-    partial_used = any(0 in by_boot for sh in hits.values() if sh for by_boot in sh.values())
+    # A partial boot (started before the logs) is noise unless something matched in it
+    matched_boots = {i for sh in hits.values() if sh for by_boot in sh.values() for i in by_boot}
     detail_by_ota = defaultdict(list)
     profiles = defaultdict(dict)  # ota -> {boot index: {service: not-overridden keys}}, for the features
     llm_jobs = []
     for boot in boots:
-        if boot['ota'] is None or (boot['partial'] and not partial_used):
+        if boot['ota'] is None or (boot['partial'] and boot['index'] not in matched_boots):
             continue
         detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']))
         detail.update(drive_metrics.boot_metrics(events, boot['start'], boot['end'], udid_records.get(boot['index']),
@@ -1059,7 +1138,9 @@ def report_summary(ota, device_summaries, given, device_info, features):
     given = list(dict.fromkeys(given))
     no_logs = [d for d in given if not device_info.get(d, {}).get('days')]
     on_ota = sorted(device_summaries)
-    other_ota = [d for d in given if d not in device_summaries and d not in no_logs]
+    # Devices with only critical logs are not analysed; listed on the OTAs they logged
+    critical_only = [d for d in given if device_info.get(d, {}).get('critical_only')]
+    other_ota = [d for d in given if d not in device_summaries and d not in no_logs and d not in critical_only]
     detailed = [d for d in on_ota if device_info.get(d, {}).get('detailed_days')]
     minutes = {d: device_summaries[d]['drive']['drive_minutes_total'] for d in on_ota}
     boots = {d: len(device_summaries[d]['boots']) for d in on_ota}
@@ -1090,7 +1171,7 @@ def report_summary(ota, device_summaries, given, device_info, features):
         'devices_on_ota': len(on_ota),
         'devices_other_ota_only': other_ota,
         'devices_detailed_logs': detailed,
-        'devices_critical_only': [d for d in on_ota if d not in detailed],
+        'devices_critical_only': [d for d in critical_only if ota in device_info[d].get('otas', ())],
         'drive_minutes_total': sum(minutes.values()),
         'drive_minutes_by_device': minutes,
         'boots_by_device': boots,
@@ -1194,11 +1275,8 @@ def _summary_chips(summary, order=SHOWN_VERDICTS):
 
 
 def boot_name(b):
-    """The boot's UDID (323), or Log not available when no time_sync udid_node line gave it (the
-    service_mon inference is not exact, so it is not shown)."""
-    if b.get('udid') is None or b.get('udid_source') == 'service_mon':
-        return 'Log not available'
-    return str(b['udid'])
+    """The boot's UDID (323), or Log not available when no time_sync udid_node record gave it."""
+    return 'Log not available' if b.get('udid') is None else str(b['udid'])
 
 
 def _boot_label(b):
@@ -1585,12 +1663,12 @@ def _devices_section(sm):
 
 
 def _logs_section(sm):
-    """Log uploads of the devices with boots on this OTA."""
-    total = sm['devices_on_ota']
+    """Log uploads of the devices on this OTA: analysed (detailed logs) and skipped (only critical logs)."""
     detailed, critical = sm['devices_detailed_logs'], sm['devices_critical_only']
+    total = sm['devices_on_ota'] + len(critical)
     return ('<section id="logs"><h2>Log Upload Summary</h2><div class="tiles">'
             + _tile(len(detailed), 'Devices with detailed logs enabled', _pct(len(detailed), total), 'c-acc', devices=detailed)
-            + _tile(len(critical), 'Devices with only critical logs enabled', _pct(len(critical), total), 'c-nt', devices=critical)
+            + _tile(len(critical), 'Devices with only critical logs', _pct(len(critical), total), 'c-nt', devices=critical)
             + '</div></section>')
 
 
@@ -1905,7 +1983,7 @@ function renderDrive(b) {
   const d = b.drive, p = b.power || {};
   const rows = [];
   if (b.device_type) rows.push(['Device type', `${b.device_type} (from OTA ${b.ota}); test cases for other device types are skipped`]);
-  rows.push(['UDID', b.udid != null && b.udid_source !== 'service_mon' ? `${b.udid}` : 'Log not available']);
+  rows.push(['UDID', b.udid != null ? `${b.udid}` : 'Log not available']);
   if (d) {
     rows.push(['Drive', `${fmt(d.drive_start)} → ${fmt(d.drive_end)} · ${d.duration_min} min`]);
     if (d.rtc_jump_from !== d.drive_end) rows.push(['RTC jump', `${fmt(d.rtc_jump_from)} → ${fmt(d.rtc_jump_to)}`]);

@@ -908,15 +908,18 @@ class Device:
         self.power_ons = self._power_ons()
         self.boots = sorted((b for b in boots if b.get('start') is not None), key=lambda b: b['start'])
         # A boot starts at its power-on when that is just before its first service start
+        # (svc_start; else the boot start, a udid_node drive_start cut to the second)
         self.boot_anchor = {}
         for b in self.boots:
-            i = bisect.bisect_right(self.power_ons, b['start']) - 1
-            if i >= 0 and b['start'] - self.power_ons[i] <= POWER_ON_LEAD_MS:
+            ref = b.get('svc_start') or b['start'] + 1000
+            i = bisect.bisect_right(self.power_ons, ref) - 1
+            if i >= 0 and ref - self.power_ons[i] <= POWER_ON_LEAD_MS:
                 self.boot_anchor[b['index']] = self.power_ons[i]
         self._starts = []
         for b in self.boots:
             eff = self.boot_anchor.get(b['index'], b['start'])
             self._starts.append(max(eff, self._starts[-1] + 1) if self._starts else eff)
+        self.start_of = {b['index']: s for b, s in zip(self.boots, self._starts)}
         self.details = details or {}
         self._cache = {}
 
@@ -1117,8 +1120,8 @@ def _between(start_keys, end_keys, pair=None, start='first', same_power_on=False
 
 
 def _boot_start_since_power_on(d):
-    return [(b['start'], (b['start'] - d.boot_anchor[b['index']]) / 1000)
-            for b in d.boots if b['index'] in d.boot_anchor]
+    return [(d.start_of[b['index']], (b['svc_start'] - d.boot_anchor[b['index']]) / 1000)
+            for b in d.boots if b['index'] in d.boot_anchor and b.get('svc_start')]
 
 
 def _boot_after_lpw(d, u):
@@ -1228,8 +1231,8 @@ def _crash_boots(cam):
     """1 / 0 per boot with drive time: whether the camera crashed in it."""
     def fn(d):
         crashed = {b for b, hits in d.by_boot('cam_crash').items() if any(h.g['cam'] == str(cam) for h in hits)}
-        return [(det['start'], int(i in crashed)) for i, det in d.details.items()
-                if det.get('start') is not None and det.get('drive_minutes')]
+        return [(d.start_of[i], int(i in crashed)) for i, det in d.details.items()
+                if i in d.start_of and det.get('drive_minutes')]
     return fn
 
 

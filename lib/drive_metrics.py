@@ -7,15 +7,15 @@ scan_day(logs_dir) greps the few lines these need, one `grep -F` per service:
                crank voltage state changed, previous_shutdown_reason
   ndcentral    creating folder for session     (sessions created)
   circ_buff    Found no entry with NAME ...mp4 (sessions available)
-  service_mon  Non-Alert ... Latest UDID: N    (UDID fallback for critical-only logs)
 Days are merged with DriveEvents.add (overlapping downloads repeat lines, so events
 are kept in sets), then boot_metrics() derives everything for one boot.
 
 UDID of a boot: the udid_node line is written early in the *next* boot and
 describes the drive that just ended, whose drive_start is the boot it belongs to.
-So the boot gets the record whose drive_start is closest to its start. Logs with
-only the critical (_c) files have no udid_node lines; there the boot's UDID is
-the "Latest UDID" service_mon reports during it (the last finished drive) + 1.
+time_sync logs the record within a second of starting, so every record line marks a
+boot (ota_report.udid_boots). Usually the UDID changes with the reboot, but a drive can go
+on with the same UDID after one (e.g. the OTA install reboot): then its boots share it. A boot without a record (the last drive, whose record is not
+logged yet; logs with only the critical (_c) files) has no UDID: it is not guessed.
 
 Deviations from the md, on purpose:
   - Low power wakeup lines are matched by regex ("lowpower_wakeups N < ...max M")
@@ -39,7 +39,6 @@ PATTERNS = {
                   'crank voltage state changed', 'previous_shutdown_reason'],
     'ndcentral': ['creating folder for session'],
     'circ_buff': ['Found no entry with NAME'],
-    'service_mon': ['Non-Alert Oldest UDID'],
 }
 
 LINE_RE = re.compile(r'^(\d{13}):\s*(\d+):')
@@ -51,9 +50,8 @@ CRANK_RE = re.compile(r'crank voltage state changed ([01])')
 SHUTDOWN_RE = re.compile(r'previous_shutdown_reason\s*:?\s*(\S+)')
 SESSION_RE = re.compile(r'creating folder for session (\S+)')
 AVAILABLE_RE = re.compile(r'Found no entry with NAME (0_trip\S*_y\.mp4)\.')
-LATEST_UDID_RE = re.compile(r'Non-Alert Oldest UDID: \d+ SC: \d+ Latest UDID: (\d+)')
 
-# udid_node drive_start (seconds precision) vs the detected boot start
+# udid_node drive_start (seconds precision) vs the boot's service restarts (ota_report.udid_boots)
 UDID_MATCH_MS = 2 * 60 * 1000
 # DRIVE_METRICS_LOGIC.md section 5 merge_asof tolerances
 PM_START_TOLERANCE_MS = 30 * 1000
@@ -108,6 +106,7 @@ class DriveEvents:
 
     def __init__(self):
         self.udids = {}          # (udid, drive_start) -> record
+        self.finals = {}         # (time_sync start, udid, drive_start) -> record: one per boot that logged it
         self.lpw = set()         # (ts, counter, max)
         self.pm_starts = set()   # ts
         self.pm_stops = set()
@@ -115,22 +114,24 @@ class DriveEvents:
         self.shutdowns = set()   # (ts, reason)
         self.created = set()     # session ts
         self.available = set()
-        self.latest_udid = set()  # (ts, udid)
         self.run_ends = set()    # (ts, uptime) of the last power_mon line before a restart / end of file
         self.pm_firsts = set()   # ts of the first line of each power_mon file
 
     def add(self, other):
         self.udids.update(other.udids)
+        self.finals.update(other.finals)
         for name in ('lpw', 'pm_starts', 'pm_stops', 'cranks', 'shutdowns', 'created', 'available',
-                     'latest_udid', 'run_ends', 'pm_firsts'):
+                     'run_ends', 'pm_firsts'):
             getattr(self, name).update(getattr(other, name))
 
     def finish(self):
         """Sorted lists for the per-boot lookups."""
         self.udid_list = sorted(self.udids.values(), key=lambda r: r['drive_start'])
+        # Every record line, in the order time_sync logged them (ota_report.udid_boots)
+        self.final_list = [self.finals[k] for k in sorted(self.finals)]
         self.udid_counts = Counter(r['udid'] for r in self.udid_list)
         for name in ('lpw', 'pm_starts', 'pm_stops', 'cranks', 'shutdowns', 'created', 'available',
-                     'latest_udid', 'run_ends', 'pm_firsts'):
+                     'run_ends', 'pm_firsts'):
             setattr(self, name + '_sorted', sorted(getattr(self, name)))
         self.crank_low = [ts for ts, state in self.cranks_sorted if state == 0]
         return self
@@ -195,7 +196,7 @@ def scan_day(logs_dir):
             continue
         args = ['-F', *sum((['-e', p] for p in patterns), [])]
         for _, line in cfg_parser_logs.grep_lines(args, files):
-            ts, _ = _line_ts(line)
+            ts, uptime = _line_ts(line)
             if ts is None:
                 continue
             if service == 'time_sync':
@@ -203,7 +204,8 @@ def scan_day(logs_dir):
                 fields = {name: rx.search(line) for name, rx in UDID_FIELDS.items()}
                 if not m or not fields['drive_start'] or not fields['drive_end']:
                     continue
-                rec = {'udid': int(m.group(1)), 'logged_at': ts,
+                # time_sync logs the record when it starts: ts - its uptime is in the boot's startup
+                rec = {'udid': int(m.group(1)), 'logged_at': ts, 'ts_start': ts - uptime,
                        **{name: int(f.group(1)) if f else 0 for name, f in fields.items()}}
                 # No time sync during the drive: both jump points are the drive end
                 if rec['rtc_jump_to'] == 0:
@@ -211,6 +213,7 @@ def scan_day(logs_dir):
                 if rec['rtc_jump_from'] == 0:
                     rec['rtc_jump_from'] = rec['drive_end']
                 events.udids[(rec['udid'], rec['drive_start'])] = rec
+                events.finals[(rec['ts_start'], rec['udid'], rec['drive_start'])] = rec
             elif service == 'ndcentral':
                 m = SESSION_RE.search(line)
                 session_ts = _session_ts(m.group(1)) if m else None
@@ -221,10 +224,6 @@ def scan_day(logs_dir):
                 session_ts = _session_ts(m.group(1)) if m else None
                 if session_ts:
                     events.available.add(session_ts)
-            elif service == 'service_mon':
-                m = LATEST_UDID_RE.search(line)
-                if m:
-                    events.latest_udid.add((ts, int(m.group(1))))
     return events
 
 
@@ -254,34 +253,6 @@ def _nearest(sorted_ts, target, tolerance):
 def _last_before(sorted_ts, target, tolerance):
     i = bisect.bisect_right(sorted_ts, target)
     return sorted_ts[i - 1] if i and target - sorted_ts[i - 1] <= tolerance else None
-
-
-def assign_udids(events, boots):
-    """{boot index: udid_node record}: each record goes to the one boot whose start is
-    closest to its drive_start (within UDID_MATCH_MS), each boot gets at most one record."""
-    starts = [(b['start'], b['index']) for b in boots if b['start'] is not None]
-    pairs = []
-    for rec in events.udid_list:
-        for start, index in starts:
-            gap = abs(rec['drive_start'] - start)
-            if gap <= UDID_MATCH_MS:
-                pairs.append((gap, index, rec['udid'], rec['drive_start']))
-    assigned, used = {}, set()
-    for gap, index, udid, drive_start in sorted(pairs):
-        if index not in assigned and (udid, drive_start) not in used:
-            assigned[index] = events.udids[(udid, drive_start)]
-            used.add((udid, drive_start))
-    # The boot before the first detected one started before the logs, so its start can't be
-    # matched; it gets the latest unused drive that started before its end and ended with it
-    for b in boots:
-        if b['start'] is None and b['end'] is not None and b['index'] not in assigned:
-            inside = [r for r in events.udid_list if (r['udid'], r['drive_start']) not in used
-                      and r['drive_start'] < b['end'] and r['drive_end'] <= b['end'] + UDID_MATCH_MS]
-            if inside:
-                rec = max(inside, key=lambda r: r['drive_start'])
-                assigned[b['index']] = events.udids[(rec['udid'], rec['drive_start'])]
-                used.add((rec['udid'], rec['drive_start']))
-    return assigned
 
 
 def drive_window_metrics(events, rec):
@@ -333,18 +304,18 @@ def _power_mon_span(events, start, hi, logs_start=None):
 
 
 def partial_drive(events, start, hi, udid, minutes, logs_start=None):
-    """Drive fields for a boot without a udid_node record: from its first power monitor start
-    (else the boot start, else its first power_mon line) to its last power_mon line; the
-    minutes are the boot's estimated drive minutes."""
-    ends = [ts for ts, _ in _between(events.run_ends_sorted, start, hi, key=lambda x: x[0])]
+    """Drive fields for a boot without a udid_node record: the power monitor run from its first
+    power monitor start to the run's last power_mon line (before the next power monitor
+    start; without a start in the boot: the boot start, else its first power_mon line, to its
+    last power_mon line); the minutes are the boot's estimated drive minutes."""
     starts = _between(events.pm_starts_sorted, start, hi, key=None)
     if starts:
-        # A power monitor run can end after the next boot was detected (as for its minutes):
-        # the last line before the power monitor's next start
         all_starts = events.pm_starts_sorted
-        i = bisect.bisect_right(all_starts, starts[-1])
+        i = bisect.bisect_right(all_starts, starts[0])
         nxt = all_starts[i] if i < len(all_starts) else float('inf')
-        ends += [ts for ts, _ in _between(events.run_ends_sorted, starts[-1], nxt - 1, key=lambda x: x[0])]
+        ends = [ts for ts, _ in _between(events.run_ends_sorted, starts[0], nxt - 1, key=lambda x: x[0])]
+    else:
+        ends = [ts for ts, _ in _between(events.run_ends_sorted, start, hi, key=lambda x: x[0])]
     if not ends:
         return None
     firsts = _between(events.pm_firsts_sorted, start, hi, key=None)
@@ -371,15 +342,12 @@ def drive_end(events, start, end, rec=None):
 def boot_metrics(events, start, end, rec=None, logs_start=None):
     """UDID and drive/power-monitor numbers for the boot [start, end).
 
-    rec: the boot's udid_node record (assign_udids), if any. logs_start: epoch ms of the
+    rec: the boot's udid_node record (ota_report.udid_boots), if any. logs_start: epoch ms of the
     run's start date, for the drive time of a boot that started before the logs.
     """
     hi = (end - 1) if end is not None else None
-    if rec:
-        udid, source = rec['udid'], 'udid_node'
-    else:
-        latest = _between(events.latest_udid_sorted, start, hi, key=lambda x: x[0])
-        udid, source = (latest[0][1] + 1, 'service_mon') if latest else (None, None)
+    # No record: no UDID (Log not available), it is not guessed
+    udid, source = (rec['udid'], 'udid_node') if rec else (None, None)
 
     starts = _between(events.pm_starts_sorted, start, hi, key=None)
     run_ends = events.run_ends_sorted
@@ -419,7 +387,7 @@ def boot_metrics(events, start, end, rec=None, logs_start=None):
     cranks = _between(events.cranks_sorted, start, hi, key=lambda x: x[0])
     return {
         'udid': udid,
-        # udid_node: logged by the device; service_mon: "Latest UDID" + 1 (critical logs only)
+        # udid_node (logged by the device), else None
         'udid_source': source,
         'drive': drive,
         'drive_minutes': drive_minutes,
