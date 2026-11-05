@@ -238,6 +238,9 @@ KPI_LOG_LINES = {
     'alerts_contains': Line(
         'inference', 'alerts.json contains', r'(?<!i)alerts\.json contains (?P<n>\d+) alert\(s\)',
         '2026-10-28 20:37:23,630 - root - INFO - alerts.json contains 1 alert(s)  [103102600722_2026-10-28/inference.log]'),
+    'alerts_writing': Line(
+        'inference', 'Writing alerts (', r'Writing alerts \((?P<n>\d+)\) to \S*/\d_(?P<key>trip\S+?_y)/alerts\.json',
+        '2026-11-04 05:14:36,714 - src.outwardNonRealTime - INFO - Writing alerts (1) to /home/iriscli/ND_OUTPUT/0_trip002b_part000814_12.9830_77.7513_0.0_1793769193224_y/alerts.json  [264080392_2026-11-04/inference.log] (outward and inward write the same list again: last per session kept)'),
     'upload_state': Line(
         'inference', 'to UPLOAD_STATE', r'Moving \S*/\d_(?P<key>trip\S+?_y)\.STATE to UPLOAD_STATE\s+alerts found',
         '2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]'),
@@ -343,6 +346,8 @@ BUCKET = {'frame_count': (600_000, 'frames')}
 # is another alert.
 ONCE = {'event_code': 'det'}
 ONCE_GAP_MS = 60_000
+# "alerts.json contains N" and its session's UPLOAD_STATE line, logged right after it
+ALERTS_PAIR_MS = 2_000
 
 
 def _first_once(key, ts, groups, last):
@@ -381,8 +386,9 @@ def _tables():
     cam_names = sorted(CAMS.items())
     return [
         Table('kpi-alerts', 'Alerts Summary', [
-            M('alerts_detected', 'Total Alerts Detected', 'count', 'sum', _sum_group('alerts_contains', 'n'),
-              ['alerts_contains'], 'sum of N over "alerts.json contains N alert(s)" (final alert list of each session)'),
+            M('alerts_detected', 'Total Alerts Detected', 'count', 'sum', _alerts_detected,
+              ['alerts_contains', 'upload_state', 'alerts_writing'],
+              'one N per alert session: "alerts.json contains N alert(s)" (its session from the "Moving <session>.STATE to UPLOAD_STATE alerts found" line right after), else the last "Writing alerts (N) to .../<session>/alerts.json"; summed'),
             M('alerts_cards', 'Total Alerts Event Cards published', 'count', 'sum', _count('eventdata_ok', unique=('key',)),
               ['eventdata_ok'], 'distinct sessions with "Upload successful for <session>.mp4" (event data upload)'),
             *[M(f'alerts_video_cam{c}', f'Total Alerts Video uploaded - Cam {c}' + (f' ({n})' if c > 3 else ''), 'count', 'sum',
@@ -1061,8 +1067,22 @@ def _values(key, group, scale=1.0):
     return lambda d: [(h.ts, float(h.g[group]) * scale) for h in d.hits(key)]
 
 
-def _sum_group(key, group):
-    return lambda d: [(h.ts, int(h.g[group])) for h in d.hits(key)]
+def _alerts_detected(d):
+    """(ts, N) per alert session, so no session is counted twice: N from "alerts.json contains N"
+    (it names no session: the UPLOAD_STATE line logged right after it does), else from the last
+    "Writing alerts (N)" of the session (outward and inward write the same list again)."""
+    ups = d.hits('upload_state')
+    up_ts = [h.ts for h in ups]
+    per, final = {}, set()
+    for h in d.hits('alerts_contains'):
+        i = bisect.bisect_left(up_ts, h.ts)
+        if i < len(ups) and ups[i].ts - h.ts <= ALERTS_PAIR_MS:
+            per[ups[i].g['key']] = (h.ts, int(h.g['n']))
+            final.add(ups[i].g['key'])
+    for h in d.hits('alerts_writing'):
+        if h.g['key'] not in final:
+            per[h.g['key']] = (h.ts, int(h.g['n']))
+    return list(per.values())
 
 
 def _last_text(*sources, fmt=None):

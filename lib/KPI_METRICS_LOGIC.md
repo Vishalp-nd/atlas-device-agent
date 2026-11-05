@@ -262,7 +262,7 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 
 | KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
 |---|---|---|---|---|---|
-| Total Alerts Detected | count | sum over boots | sum of N over "alerts.json contains N alert(s)" (final alert list of each session) | `alerts_contains` (inference) | `2026-10-28 20:37:23,630 - root - INFO - alerts.json contains 1 alert(s)  [103102600722_2026-10-28/inference.log]` |
+| Total Alerts Detected | count | sum over boots | one N per alert session: "alerts.json contains N alert(s)" (its session from the "Moving &lt;session&gt;.STATE to UPLOAD_STATE alerts found" line right after), else the last "Writing alerts (N) to .../&lt;session&gt;/alerts.json"; summed | `alerts_contains` (inference)<br>`upload_state` (inference)<br>`alerts_writing` (inference) | `2026-10-28 20:37:23,630 - root - INFO - alerts.json contains 1 alert(s)  [103102600722_2026-10-28/inference.log]`<br>`2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]`<br>`2026-11-04 05:14:36,714 - src.outwardNonRealTime - INFO - Writing alerts (1) to /home/iriscli/ND_OUTPUT/0_trip002b_part000814_12.9830_77.7513_0.0_1793769193224_y/alerts.json  [264080392_2026-11-04/inference.log] (outward and inward write the same list again: last per session kept)` |
 | Total Alerts Event Cards published | count | sum over boots | distinct sessions with "Upload successful for &lt;session&gt;.mp4" (event data upload) | `eventdata_ok` (unifieduploader) | `1793219851656: 1559795: UPL: I: 5887: 6361: Upload successful for 0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
 | Total Alerts Video uploaded - Cam 0 | count | sum over boots | distinct videos of cam 0 (Outward) with "Upload successful for video: .../0_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
 | Total Alerts Video uploaded - Cam 1 | count | sum over boots | distinct videos of cam 1 (Inward) with "Upload successful for video: .../1_&lt;session&gt;.mp4" | `video_ok` (unifieduploader) | `1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]` |
@@ -1163,13 +1163,21 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - Sample: `2026-10-28 20:37:23,630 - root - INFO - alerts.json contains 1 alert(s)  [103102600722_2026-10-28/inference.log]`
 - Used by: Total Alerts Detected
 
+#### `alerts_writing`
+
+- Service log: `inference`
+- grep text: `Writing alerts (`
+- Regex: `Writing alerts \((?P<n>\d+)\) to \S*/\d_(?P<key>trip\S+?_y)/alerts\.json`
+- Sample: `2026-11-04 05:14:36,714 - src.outwardNonRealTime - INFO - Writing alerts (1) to /home/iriscli/ND_OUTPUT/0_trip002b_part000814_12.9830_77.7513_0.0_1793769193224_y/alerts.json  [264080392_2026-11-04/inference.log] (outward and inward write the same list again: last per session kept)`
+- Used by: Total Alerts Detected
+
 #### `upload_state`
 
 - Service log: `inference`
 - grep text: `to UPLOAD_STATE`
 - Regex: `Moving \S*/\d_(?P<key>trip\S+?_y)\.STATE to UPLOAD_STATE\s+alerts found`
 - Sample: `2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]`
-- Used by: Total Unique, File Recording Start time, Inference / Vision Alert Detection / Processing
+- Used by: Total Alerts Detected, Total Unique, File Recording Start time, Inference / Vision Alert Detection / Processing
 
 #### `lla_msg_send`
 
