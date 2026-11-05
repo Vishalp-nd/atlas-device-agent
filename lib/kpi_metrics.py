@@ -985,7 +985,10 @@ class Device:
 
     def alive_before(self, ts, services=None):
         """Epoch ms of the last line logged before ts (an 'alive' point), or None."""
-        stamps = [h.ts for h in self.hits('alive') if not services or h.g['svc'] in services]
+        cache_key = ('alive', services)
+        if cache_key not in self._cache:
+            self._cache[cache_key] = [h.ts for h in self.hits('alive') if not services or h.g['svc'] in services]
+        stamps = self._cache[cache_key]
         i = bisect.bisect_left(stamps, ts)
         return stamps[i - 1] if i else None
 

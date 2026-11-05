@@ -2218,7 +2218,9 @@ def render_device_html(doc):
         out.append(f'<details id="boot-{b["index"]}" data-boot="{pos}"><summary>{_esc(label)} · '
                    f'{_summary_chips(b["summary"])}</summary><div class="body boot-body"></div></details>')
     out.append('</section>')
-    doc = dict(doc, api_names={str(k): v for k, v in api_calls.APIS.items()}, cloud_config=None, kpi_summary=None)
+    # The page script does not use the KPI values (their tables are in the HTML): left out of its data
+    doc = dict(doc, api_names={str(k): v for k, v in api_calls.APIS.items()}, cloud_config=None, kpi_summary=None,
+               boots=[{k: v for k, v in b.items() if k != 'kpi'} for b in boots])
     data = json.dumps(doc, separators=(',', ':')).replace('</', '<\\/')
     side = (f'<a class="back" href="../ota_report.html">← OTA {_esc(ota)}</a>'
             + ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in nav))
@@ -2476,9 +2478,13 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             report['cloud_config'] = cloud_config_summary(device_summaries, report['summary'], cloud is not None)
         with timed(log, 'callouts', timings, ota=ota):
             defaults = ota_config_values(ota)
-            report['callouts'] = report_callouts.build(ota, report['summary'], device_summaries, device_info, defaults)
-            report['kpi_callouts'] = report_callouts.build_kpi(ota, report.get('kpi'), device_summaries,
-                                                               device_type_for_ota(ota))
+            # API and KPI callouts wait on the LLM independently: both at once
+            with ThreadPoolExecutor(2) as callout_pool:
+                api_co = callout_pool.submit(report_callouts.build, ota, report['summary'], device_summaries,
+                                             device_info, defaults)
+                kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
+                                             device_type_for_ota(ota))
+                report['callouts'], report['kpi_callouts'] = api_co.result(), kpi_co.result()
         with timed(log, 'write_ota_report_files', timings, ota=ota):
             out_dir = report_dir / ota
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -2538,10 +2544,12 @@ def refresh_callouts(reports_dir):
                             for d, doc in docs[ota].items()}
         device_info = {d: {'otas': otas_of[d]} for d in device_summaries}
         defaults = ota_config_values(ota)
-        report['callouts'] = report_callouts.build(ota, report.get('summary') or {}, device_summaries,
-                                                   device_info, defaults)
-        report['kpi_callouts'] = report_callouts.build_kpi(ota, report.get('kpi'), device_summaries,
-                                                           device_type_for_ota(ota))
+        with ThreadPoolExecutor(2) as callout_pool:
+            api_co = callout_pool.submit(report_callouts.build, ota, report.get('summary') or {}, device_summaries,
+                                         device_info, defaults)
+            kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
+                                         device_type_for_ota(ota))
+            report['callouts'], report['kpi_callouts'] = api_co.result(), kpi_co.result()
         with open(ota_dir / 'ota_report.json', 'w') as f:
             json.dump(report, f, separators=(',', ':'))
         with open(ota_dir / 'ota_report.html', 'w') as f:
