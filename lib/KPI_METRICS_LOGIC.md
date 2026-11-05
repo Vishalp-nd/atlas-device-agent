@@ -42,7 +42,8 @@ previous shutdown reason, ...).
      the time of the last line before every silence of 20 s or more, and of the file's last
      line ("alive" points, see below).
    - High volume lines are reduced: `frame_count` (every 5 s per camera) is summed per
-     10 min and camera; `event_code` keeps the first line per uuid.
+     10 min and camera; `event_code` keeps the first line per alert (uuid and time range;
+     without a uuid, the same line again more than 60 s later is another alert).
 2. **Device** (`kpi_metrics.Device`, in `ota_report.finish_device`): the hits of all the
    device's days, its power-ons, and the report's boots.
 3. **Per boot** (`kpi_metrics.compute`): every metric produces samples `(time, value)` over
@@ -523,7 +524,7 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 
 | KPI | How it is computed | Log lines used | Sample log line |
 |---|---|---|---|
-| Unique event codes and the count against each | each analytics event once (by uuid, over inference and inference_inertial), counted per event code; table: code, unique events, devices with it, P90 of the per-device counts | `event_code` (inference/inference_inertial) | `2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log]` |
+| Unique event codes and the count against each | each alert (`is_alert=1`) once (by uuid and time range in the video, so an alert across two videos counts twice; lines without a uuid, e.g. 99.0.0, by their text, repeats within 60 s dropped), over inference and inference_inertial, counted per event code; table: code, unique events, devices with it, P90 of the per-device counts | `event_code` (inference/inference_inertial) | `2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log]` |
 
 The `is_alert=` lines list every analytics event (turns, backing, ...), not only the ones
 raised as alerts; alert counts are in the Alerts Summary table.
@@ -1237,10 +1238,10 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 #### `event_code`
 
 - Service log: `inference/inference_inertial`
-- grep text: `is_alert=`
-- Regex: `eventutil - INFO - \d+: is_alert=[01]\s+(?P<code>\d+(?:\.\d+)*) \[.*\] uuid=(?P<uuid>[0-9a-f]+)`
-- Sample: `2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log] (first line per uuid kept)`
-- Reduced in the scan: first line per `uuid` only
+- grep text: `is_alert=1`
+- Regex: `eventutil - INFO - \d+: is_alert=1\s+(?P<code>\d+(?:\.\d+)*) (?P<det>\[[^\]]*\] uuid=[0-9a-f]*)`
+- Sample: `2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log] (alerts only; first line per uuid and time range kept; some codes, e.g. 99.0.0, log an empty uuid)`
+- Reduced in the scan: first line per `det` (time range + uuid); without a uuid, again after 60 s
 - Used by: Analytics KPIs (event codes)
 
 #### `obs_req`

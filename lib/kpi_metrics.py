@@ -267,9 +267,9 @@ KPI_LOG_LINES = {
         'unifieduploader', 'Upload successful for video: ', r'Upload successful for video: \S*/(?P<cam>\d)_(?P<key>trip\S+?_y)\.mp4',
         '1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]'),
     'event_code': Line(
-        ('inference', 'inference_inertial'), 'is_alert=',
-        r'eventutil - INFO - \d+: is_alert=[01]\s+(?P<code>\d+(?:\.\d+)*) \[.*\] uuid=(?P<uuid>[0-9a-f]+)',
-        '2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log] (first line per uuid kept)'),
+        ('inference', 'inference_inertial'), 'is_alert=1',
+        r'eventutil - INFO - \d+: is_alert=1\s+(?P<code>\d+(?:\.\d+)*) (?P<det>\[[^\]]*\] uuid=[0-9a-f]*)',
+        '2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log] (alerts only; first line per uuid and time range kept; some codes, e.g. 99.0.0, log an empty uuid)'),
 
     # ── Obs zip upload / retries ─────────────────────────────────────────────────────────
     'obs_req': Line(
@@ -338,7 +338,22 @@ ALIVE_GAP_MS = 20_000
 #   bucket: {key: (bucket ms, group to sum)} -> one hit per bucket and the other groups, with
 #           the sum and n (lines); once: {key: group} -> the first line per value of the group
 BUCKET = {'frame_count': (600_000, 'frames')}
-ONCE = {'event_code': 'uuid'}
+# An alert is logged several times; one per uuid and time range in the video (an alert across
+# two videos is two). Without a uuid (99.0.0) the same text again more than ONCE_GAP_MS later
+# is another alert.
+ONCE = {'event_code': 'det'}
+ONCE_GAP_MS = 60_000
+
+
+def _first_once(key, ts, groups, last):
+    """Whether this ONCE hit is new (last: {ident: ts of its latest line}, updated)."""
+    value = dict(groups).get(ONCE[key])
+    ident = (key, value)
+    prev = last.get(ident)
+    last[ident] = ts if prev is None else max(prev, ts)
+    if prev is None:
+        return True
+    return bool(value) and value.endswith('uuid=') and abs(ts - prev) > ONCE_GAP_MS
 
 CAMS = {0: 'Outward', 1: 'Inward', 2: 'Left', 3: 'Right',
         4: 'MDVR 4', 5: 'MDVR 5', 6: 'MDVR 6', 7: 'MDVR 7', 8: 'DMS'}
@@ -861,8 +876,8 @@ def scan_day(logs_dir, iter_hits):
 
 def _reduce(hits):
     """BUCKET / ONCE keys reduced (see their definitions); hits sorted by time."""
-    out, buckets, seen = [], {}, set()
-    for key, ts, groups in hits:
+    out, buckets, seen = [], {}, {}
+    for key, ts, groups in sorted(hits, key=lambda h: h[1]):
         if key in BUCKET:
             size, total = BUCKET[key]
             g = dict(groups)
@@ -871,9 +886,7 @@ def _reduce(hits):
             b[1] += int(g[total])
             b[2] += 1
         elif key in ONCE:
-            ident = (key, dict(groups).get(ONCE[key]))
-            if ident not in seen:
-                seen.add(ident)
+            if _first_once(key, ts, groups, seen):
                 out.append((key, ts, groups))
         else:
             out.append((key, ts, groups))
@@ -897,13 +910,10 @@ class Device:
 
     def __init__(self, hits, boots, details=None):
         self.lines = defaultdict(list)
-        seen = set()
+        seen = {}
         for key, ts, groups in sorted(hits, key=lambda h: (h[1], h[0])):
-            if key in ONCE:
-                ident = (key, dict(groups).get(ONCE[key]))
-                if ident in seen:
-                    continue
-                seen.add(ident)
+            if key in ONCE and not _first_once(key, ts, groups, seen):
+                continue
             self.lines[key].append(Hit(ts, dict(groups)))
         self.power_ons = self._power_ons()
         self.boots = sorted((b for b in boots if b.get('start') is not None), key=lambda b: b['start'])
