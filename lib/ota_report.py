@@ -759,7 +759,9 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         out_dir = report_dir / ota / 'devices'
         out_dir.mkdir(parents=True, exist_ok=True)
         ini_keys = ini_keys_by_ota.get(ota)
+        kpi_summary = kpi_metrics.summarize([kpi_samples.get(b['index'], {}) for b in boot_details])
         doc = device_doc(device, ota, range_days, boot_details, ini_keys)
+        doc['kpi_summary'] = kpi_summary
         # The HTML page is written once the features are known (complete_device_reports)
         with open(out_dir / f'{device}.json', 'w') as f:
             json.dump(doc, f, separators=(',', ':'))
@@ -768,7 +770,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         summaries[ota]['config_error'] = inis[ota][1]
         summaries[ota]['drive'] = doc['drive_summary']
         summaries[ota]['api'] = doc['api_summary']
-        summaries[ota]['kpi'] = kpi_metrics.summarize([kpi_samples.get(b['index'], {}) for b in boot_details])
+        summaries[ota]['kpi'] = kpi_summary
         summaries[ota]['profiles'] = profiles.get(ota, {})
         # Days whose upload has detailed logs: only those carry the override information
         summaries[ota]['detailed_days'] = sorted(r['day'] for r in in_range if r['detailed'])
@@ -1433,7 +1435,7 @@ td.zero{color:var(--none)}
 #cloud-config h3{font-size:13.5px;margin:18px 0 0}#cloud-config code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .keybox{max-height:180px;overflow-y:auto;padding:4px 0;line-height:1.7}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
-.kpi .tbl{width:fit-content;max-width:100%}.kpi table{width:auto}.kpi td.text{max-width:420px;white-space:normal}
+.kpi .tbl{width:fit-content;max-width:100%}.kpi td.warn{background:var(--nt-bg);color:var(--nt);font-weight:600}.kpi table{width:auto}.kpi td.text{max-width:420px;white-space:normal}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
 .fail-rate{display:flex;align-items:center;gap:10px}.fail-rate span{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}.fail-rate span.zero{color:var(--none)}
@@ -1751,37 +1753,54 @@ def _kpi_fmt(value, unit):
     return f'{value:.1f}' if abs(value) >= 10 or unit in ('%', 'fps', 'h', 's') else f'{value:.2f}'
 
 
-def _kpi_cell(value, unit):
+def _kpi_cell(value, unit, warn=None):
+    """A KPI value cell; warn (outside its baseline): amber, nothing else shown."""
     if value is None:
         return '<td class="num zero">—</td>' if unit != 'text' else '<td class="zero">—</td>'
+    flag = ' warn' if warn else ''
     if unit == 'text':
-        return f'<td class="text">{_kpi_fmt(value, unit)}</td>'
-    return f'<td class="num" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
+        return f'<td class="text{flag}">{_kpi_fmt(value, unit)}</td>'
+    return f'<td class="num{flag}" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
 
 
 KPI_NO_UNIT = {'count', 'WAF', 'text'}
 
 
+def _kpi_group_sections(value_of, shown, value_head, device_type=None):
+    """One section per KPI table (lib/kpi_metrics.KPI_TABLES): a row per KPI, its name with the
+    unit, and value_of(metric), amber when outside its baseline (kpi_metrics.BASELINES) for the
+    device type. Camera rows of other product lines (MDVR, DMS) only when shown(metric) says
+    some value exists."""
+    out = []
+    for table in kpi_metrics.KPI_TABLES:
+        rows = []
+        for m in table.metrics:
+            if m.cam is not None and not shown(m):
+                continue
+            # Real units only, after the name (not for counts, WAF, text, or a name ending in %)
+            unit = f' ({m.unit})' if m.unit not in KPI_NO_UNIT and not m.name.endswith(m.unit) else ''
+            value = value_of(m)
+            warn = kpi_metrics.baseline_issue(m.id, value, device_type)
+            rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit, warn)}</tr>')
+        out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
+                   + _table(['KPI', value_head], rows) + '</section>')
+    return out
+
+
 def _kpi_sections(report, sm):
-    """One section per KPI table (lib/kpi_metrics.KPI_TABLES): a row per KPI with its overall
-    P90 over the devices (text KPIs: the most common value). Analytics KPIs: a row per code."""
+    """OTA report: each KPI with its overall P90 over the devices (text KPIs: the most common
+    value). Analytics KPIs: a row per code."""
     kpi = report.get('kpi')
     if not kpi:
         return ''
     values, columns = kpi['devices'], kpi['columns']
-    out = []
-    for table in kpi_metrics.KPI_TABLES:
-        # Camera rows of other product lines (MDVR, DMS) only when some device has them
-        metrics = [m for m in table.metrics if m.cam is None or any(m.id in v for v in values.values())]
-        rows = []
-        for m in metrics:
-            col = columns.get(m.id) or {}
-            value = col.get('common') if m.unit == 'text' else col.get('p90')
-            # Real units only, after the name (not for counts, WAF, text, or a name ending in %)
-            unit = f' ({m.unit})' if m.unit not in KPI_NO_UNIT and not m.name.endswith(m.unit) else ''
-            rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit)}</tr>')
-        out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
-                   + _table(['KPI', '#P90'], rows) + '</section>')
+
+    def value_of(m):
+        col = columns.get(m.id) or {}
+        return col.get('common') if m.unit == 'text' else col.get('p90')
+
+    out = _kpi_group_sections(value_of, lambda m: any(m.id in v for v in values.values()), '#P90',
+                              device_type_for_ota(report.get('ota_version')))
     codes = kpi.get('event_codes') or []
     rows = [f'<tr><td>{_esc(c["code"])}</td><td class="num" data-v="{c["count"]}">{c["count"]:,}</td>'
             f'<td class="num">{c["devices"]}</td>{_kpi_cell(c["p90"], "count")}</tr>' for c in codes]
@@ -1791,6 +1810,20 @@ def _kpi_sections(report, sm):
             if codes else '<p class="muted">No event codes logged.</p>')
     out.append('<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>')
     return ''.join(out)
+
+
+def _device_kpi_sections(kpi_summary, device_type=None):
+    """Device page: each KPI with the device's value over its boots on this OTA (sum / mean /
+    latest / % as the KPI says, kpi_metrics.summarize). Analytics KPIs: a row per code."""
+    metrics = (kpi_summary or {}).get('metrics') or {}
+    out = _kpi_group_sections(lambda m: (metrics.get(m.id) or [None])[0], lambda m: m.id in metrics, '#Value', device_type)
+    codes = sorted(((kpi_summary or {}).get('event_codes') or {}).items(), key=lambda kv: (-kv[1], kv[0]))
+    rows = [f'<tr><td>{_esc(code)}</td><td class="num" data-v="{n}">{n:,}</td></tr>' for code, n in codes]
+    body = (_table(['Event code', '#Unique events'], rows,
+                   foot=f'<tfoot><tr><td>Total ({len(codes)} codes)</td><td class="num">{sum(n for _, n in codes):,}</td></tr></tfoot>')
+            if codes else '<p class="muted">No event codes logged.</p>')
+    out.append('<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>')
+    return '\n'.join(out)
 
 
 def render_html(report):
@@ -2015,7 +2048,7 @@ def _drive_rows(boots):
 
 
 DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('cloud-config', 'Cloud config'), ('api', 'API calls'),
-              ('boot-summary', 'Drive Session Summary'), ('boots', 'Boots')]
+              ('kpi-alerts', 'KPI Summary'), ('boot-summary', 'Drive Session Summary'), ('boots', 'Boots')]
 
 
 def _device_cloud_config(cc, defaults=None):
@@ -2131,6 +2164,10 @@ def render_device_html(doc):
         out.append(f'<section id="api"><h2>API calls</h2>{_api_section(doc["api_summary"])}</section>')
     else:
         nav = [n for n in nav if n[0] != 'api']
+    if doc.get('kpi_summary'):
+        out.append(_device_kpi_sections(doc['kpi_summary'], device_type_for_ota(ota)))
+    else:
+        nav = [n for n in nav if n[0] != 'kpi-alerts']
 
     rows = []
     labels = [_boot_label(dict(b, start=b['start_fmt'], end=b['end'] and b['end_fmt'])) for b in boots]
@@ -2147,7 +2184,7 @@ def render_device_html(doc):
         out.append(f'<details id="boot-{b["index"]}" data-boot="{pos}"><summary>{_esc(label)} · '
                    f'{_summary_chips(b["summary"])}</summary><div class="body boot-body"></div></details>')
     out.append('</section>')
-    doc = dict(doc, api_names={str(k): v for k, v in api_calls.APIS.items()}, cloud_config=None)
+    doc = dict(doc, api_names={str(k): v for k, v in api_calls.APIS.items()}, cloud_config=None, kpi_summary=None)
     data = json.dumps(doc, separators=(',', ':')).replace('</', '<\\/')
     side = (f'<a class="back" href="../ota_report.html">← OTA {_esc(ota)}</a>'
             + ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in nav))

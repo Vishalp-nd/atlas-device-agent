@@ -624,6 +624,130 @@ def _tables():
 
 
 # ════════════════════════════════════════════════════════════════════════════════════════
+# 2b. BASELINES: what each KPI should be, from the device code / spec. A value outside the range
+#     is shown amber in the reports (only the colour; the basis is for review here).
+#     Baseline(lo, hi, basis, by_family): lo / hi in the KPI's unit (None = no bound), or
+#     expect=(value, low factor, high factor) for sizes / fps, or equals=text; by_family
+#     overrides them per device type (bagheera3, krait2, ...) or product family (krait = krait /
+#     krait2, bagheera = bagheera2-4, octo); a device type key wins over its family.
+#     Bounds marked "derived" add up several code waits / timeouts; review those first.
+#     KPIs not listed have no baseline (data connectivity, bands, ISP / AON / OBD firmware, OTA size / time,
+#     LTE outages, HQ file counts, storage hours, /root, retry counts, VOD).
+# ════════════════════════════════════════════════════════════════════════════════════════
+
+Baseline = namedtuple('Baseline', 'lo hi basis expect equals by_family')
+Baseline.__new__.__defaults__ = (None, None, None)
+
+
+def _B(lo=None, hi=None, basis='', expect=None, equals=None, by_family=None):
+    return Baseline(lo, hi, basis, expect, equals, by_family)
+
+
+SIZE_TOL = (0.75, 1.10)  # files run a bit smaller than bitrate x 60 s / 8 (outward 38.5 MB vs 45 MB)
+FPS_TOL = (0.90, 1.10)
+_SIZE_BASIS = 'spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), {} bit/s'
+_FPS_BASIS = 'spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, {} fps'
+# (bitrate HD, bitrate LD, fps) per camera; 4-7 = octo analog aux cameras
+_CAM_SPEC = {0: (6_000_000, 1_000_000, 30), 1: (2_000_000, 500_000, 15), 2: (500_000, None, 15), 3: (500_000, None, 15),
+             4: (5_000_000, 1_000_000, 15), 5: (5_000_000, 1_000_000, 15), 6: (5_000_000, 1_000_000, 15),
+             7: (5_000_000, 1_000_000, 15), 8: (8_000_000, 1_000_000, 30)}
+
+BASELINES = {
+    # Bootup, video recording & connectivity (seconds from power on)
+    'boot_power_on': _B(hi=30, basis='wrapper_service.sh:24-27 waits <= 30 s for /dev/shm/ntdi_*.done'),
+    'svc_start': _B(hi=30, basis='svc.service has no ExecStartPre; wrapper_service.sh waits <= 30 s'),
+    'wdt_pm_start': _B(hi=30, basis='power_monitor.service has no ExecStartPre; wrapper_service.sh waits <= 30 s'),
+    'system_uptime': _B(hi=32, basis='derived: wrapper <= 30 s + bagheera.service:12 ExecStartPre sleep 2'),
+    'service_uptime': _B(hi=30, basis='nd_central.cpp:14104-14112 waits <= 30 s for cam_rec_service_started'),
+    'first_frame': _B(hi=62, basis='derived: ndcentral start <= 32 s + <= 30 s wait for cam_rec (nd_central.cpp:14104-14112)'),
+    'modem_enum': _B(hi=120, basis='gps_dev.cpp SERVICE_UPTIME_THRESHOLD 120 s, port_open_timeout 30 s x MAX_LUMIA_RESET_ATTEMPTS 3; krait2 conn_mgr.sh 60 polls x 2 s'),
+    'zmq_socket': _B(hi=38.5, basis='derived: wrapper <= 30 s + cam_rec.service:12 sleep 8 + 100 ms x <= 5 tries (cam_recorder.cpp:1024-1037)'),
+    'hw_button': _B(hi=30, basis='svc.cpp:1314-1365 button thread right after config / msgq init: as svc start, <= 30 s'),
+    'keep_alive_reboot': _B(hi=160, basis='derived: power_mon start <= 30 s + 10 s start sleep + KEEPALIVE_SLEEP_DURATION 20 s x MAX_ka_retry_cnt 6 (power_monitor.h:130, .cpp:129,3651,3673,3779)'),
+    'gps_ttff_lpw': _B(hi=180, basis='spec power.misc_wakeup_duration 3 min (lowpower_wakeup_duration 6 min): the device sleeps again after it'),
+    'cyclic_reboot_uptime': _B(lo=16, hi=48.5, basis='spec power.cyclic_reboot_duration 960 min: x 3 = 48 h crank high (+ 0.5 h soak), x 1 = 16 h crank low (power_monitor.h:52,57-63)'),
+    'cyclic_crank_high': _B(hi=1830, basis='power_monitor.h:61 CYCLIC_REBOOT_SOAK_MS 1800 s (+ one 30 s check)'),
+    'shutdown_time': _B(hi=6, basis='derived: ign_check_duration 5 x 1 s (power_monitor.cpp:2885-2900,3354-3378) + 1 s to execute'),
+    # Downtime / Tegra watchdog
+    'down_cyclic': _B(hi=112, basis='derived: REBOOT_TASK_TIMEOUT 30 s + POR_REBOOT_TIME 20 s (power_monitor.h:125,133-134) + first frame <= 62 s'),
+    'down_iot': _B(hi=112, basis='derived: AwsIot reboot_after_secs 0 + REBOOT_TASK_TIMEOUT 30 s + POR_REBOOT_TIME 20 s + first frame <= 62 s'),
+    'down_cam_crash': _B(hi=42, basis='derived: krait exit(1) + bagheera.service RestartSec=10s + sleep 2 + <= 30 s cam_rec wait (nd_central.cpp:3085-3125)',
+                         by_family={'bagheera': (None, 82), 'octo': (None, 82)}),
+    'wdt_resets': _B(hi=0, basis='the watchdog fires only when a critical service misses keep-alive or svc is not up in 300 s (svc.cpp:119,151,412-434)'),
+    'wdt_reboot_time': _B(hi=125, basis='derived: svc.watchdog_timeout 90 s (BAGHEERA2) + 5 s kick + power_mon start <= 30 s (svc_internal.h:10-23, svc.cpp:125-136)',
+                          by_family={'krait': (None, 155)}),
+    # Camera crashes: any crash (0 frames or < 5 fps in a 5 s check: gst_recorder.cpp:114-116)
+    **{f'crash_cam{c}': _B(hi=0, basis='no crash expected; a crash = 0 frames or < FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check') for c in CAMS},
+    **{f'crash_cam{c}_pct': _B(hi=0, basis='no crash expected; a crash = 0 frames or < FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check') for c in CAMS},
+    # Video sizes / fps
+    **{f'hd_size_cam{c}': _B(expect=(hd * 60 / 8 / 1e6, *SIZE_TOL), basis=_SIZE_BASIS.format(hd)) for c, (hd, _, _) in _CAM_SPEC.items()},
+    **{f'ld_size_cam{c}': _B(expect=(ld * 60 / 8 / 1e6, *SIZE_TOL), basis=_SIZE_BASIS.format(ld)) for c, (_, ld, _) in _CAM_SPEC.items() if ld},
+    **{f'hd_fps_cam{c}': _B(expect=(fps, *FPS_TOL), basis=_FPS_BASIS.format(fps)) for c, (_, _, fps) in _CAM_SPEC.items()},
+    'ld_fps_cam0': _B(expect=(30, *FPS_TOL), basis=_FPS_BASIS.format(30)),
+    'ld_fps_cam1': _B(expect=(15, *FPS_TOL), basis=_FPS_BASIS.format(15)),
+    'pv_ld_cam0': _B(expect=(7.5, *SIZE_TOL), basis=_SIZE_BASIS.format(1_000_000)),
+    'pv_ld_cam1': _B(expect=(3.75, *SIZE_TOL), basis=_SIZE_BASIS.format(500_000)),
+    'pv_hd_cam0': _B(expect=(45, *SIZE_TOL), basis=_SIZE_BASIS.format(6_000_000)),
+    'pv_hd_cam1': _B(expect=(15, *SIZE_TOL), basis=_SIZE_BASIS.format(2_000_000)),
+    # Obs
+    'obs_hd_max': _B(hi=10_000, basis='uploader.cpp:479-484 OBS_FILE_LIMIT 10000'),
+    'emmc_obs': _B(hi=10_000, basis='uploader.cpp:479-484 OBS_FILE_LIMIT 10000'),
+    'obs_hd_avg': _B(hi=9_000, basis='spec compression_settings.obs_force_mx5_threshold_mb 9'),
+    'obs_gps_size': _B(hi=9_000, basis='spec compression_settings.obs_force_mx5_threshold_mb 9'),
+    # WAF
+    'waf_int': _B(hi=3.0, basis='nd_factory.cpp:2830-2853 alerts above 3.0'),
+    'waf_ext': _B(hi=3.0, basis='nd_factory.cpp:2830-2853 alerts above 3.0 (4.0 for WD external parts; the vendor is not logged)'),
+    # Bluetooth
+    'inst_scan_stop': _B(hi=121, basis='nd_bt_man.cpp:160,173 kInstallerFreshScanTimeout 120 s + 1 s tick'),
+    # Uploads / LLA
+    'ou_received': _B(hi=2, basis='derived: upload threads sleep(1) (uploader.cpp:4679) + 1 s'),
+    'rt_videolist_s': _B(hi=300, basis='circular_buffer.h:54,62 MAX_CLOUD_NOTIFY_RETRY 5, one per 60 s tick'),
+    'lla_api_trigger': _B(hi=1, basis='derived: LLA queue polled every 400 ms (uploader.cpp:5458) + hand-off'),
+    'lla_api_ok': _B(hi=40.4, basis='derived: 400 ms queue + lla_retry_limit 3 attempts x 10 s timeout + 2 x LLA_RETRY_SLEEP 5 s (uploader.cpp:108-116,630-649)'),
+    'lla_retry_s': _B(hi=30, basis='derived: 2 retries x (LLA_RETRY_SLEEP 5 s + 10 s timeout) (uploader.cpp:114-116)'),
+}
+
+
+def family(device_type):
+    """krait / bagheera / octo of a device type (krait2 -> krait, bagheera3 -> bagheera), or None."""
+    for name in ('krait', 'bagheera', 'octo'):
+        if device_type and device_type.startswith(name):
+            return name
+    return None
+
+
+def baseline_issue(metric_id, value, device_type=None):
+    """None when the value is within the KPI's baseline (or it has none), else the text of what
+    it should be and why (for the amber cell's tooltip)."""
+    b = BASELINES.get(metric_id)
+    if b is None or value is None:
+        return None
+    unit = METRICS[metric_id].unit
+    unit_text = '' if unit in ('count', 'WAF', 'text') else f' {unit}'
+    overrides = b.by_family or {}
+    override = overrides.get(device_type, overrides.get(family(device_type)))
+    if b.equals is not None or isinstance(override, str):
+        want = override if isinstance(override, str) else b.equals
+        if want is None or str(value).upper() == str(want).upper():
+            return None
+        return f'Expected {want}: {b.basis}'
+    if not isinstance(value, (int, float)):
+        return None
+    lo, hi = override if isinstance(override, tuple) else (b.lo, b.hi)
+    if b.expect:
+        want, low, high = b.expect
+        lo, hi = want * low, want * high
+        if not lo <= value <= hi:
+            return f'Expected about {want:g}{unit_text} ({lo:.3g}-{hi:.3g}): {b.basis}'
+        return None
+    if lo is not None and value < lo:
+        return f'Expected >= {lo:g}{unit_text}: {b.basis}'
+    if hi is not None and value > hi:
+        return f'Expected <= {hi:g}{unit_text}: {b.basis}'
+    return None
+
+
+# ════════════════════════════════════════════════════════════════════════════════════════
 # 3. Engine
 # ════════════════════════════════════════════════════════════════════════════════════════
 

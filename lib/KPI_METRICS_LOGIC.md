@@ -53,7 +53,9 @@ previous shutdown reason, ...).
 5. **OTA report** (`kpi_metrics.merge_summaries`, `ota_report._kpi_sections`): one table
    per KPI table, a row per KPI (its name with the unit in brackets: s, %, MB, KB, GB, fps, h;
    none for counts, WAF and text) and its overall P90 over the devices; text KPIs (versions,
-   bands) show the most common value. The device values stay in the report
+   bands) show the most common value. A value outside its baseline (see "Baselines") is amber
+   (only the colour is shown). The device pages show the
+   same tables with the device's own value (`kpi_summary` in the device JSON), checked the same way. The device values stay in the report
    JSON (`kpi.devices`) but are not shown. Analytics KPIs: a row per event code.
 
 ## Common rules
@@ -529,6 +531,102 @@ Partial (a stand-in for what the KPI asks): Device Bootup Time (Power ON), HW Bu
 Detection, Bands Enabled, LTE outages, LD FPS, Preview LQ sizes, Max HD Obs files, /root
 Storage Size, videolist retries, Tegra watchdog Time taken to Reboot. The table rows above
 say what each one measures.
+
+## Baselines
+
+What each KPI should be, from the device code and spec (`BASELINES` in `lib/kpi_metrics.py`). A
+value outside the range is amber in the OTA report (its P90) and on the device pages (the
+device's value). Ranges per product family (krait = krait / krait2, bagheera = bagheera2-4,
+octo) or device type use the OTA's product. "derived" bounds add up several waits / timeouts
+of the code: review those first. Sizes allow 0.75-1.10 x the bitrate size (files run a bit
+smaller), FPS 0.90-1.10 x.
+
+KPIs without a baseline (no amber): data connectivity, bands, ISP / AON / OBD firmware, OTA size / time, LTE
+outages, HQ file counts, storage hours, /root size, retry counts, VOD, alert / obs upload times
+other than the ones listed.
+
+| KPI | Expected | Basis |
+|---|---|---|
+| Bootup, Video Recording & Connectivity: Device Bootup Time (Power ON) | &lt;= 30 s | wrapper_service.sh:24-27 waits &lt;= 30 s for /dev/shm/ntdi_*.done |
+| Bootup, Video Recording & Connectivity: System Uptime (NDCentral) | &lt;= 32 s | derived: wrapper &lt;= 30 s + bagheera.service:12 ExecStartPre sleep 2 |
+| Bootup, Video Recording & Connectivity: Service Uptime (NDCentral) | &lt;= 30 s | nd_central.cpp:14104-14112 waits &lt;= 30 s for cam_rec_service_started |
+| Bootup, Video Recording & Connectivity: Modem Enumeration | &lt;= 120 s | gps_dev.cpp SERVICE_UPTIME_THRESHOLD 120 s, port_open_timeout 30 s x MAX_LUMIA_RESET_ATTEMPTS 3; krait2 conn_mgr.sh 60 polls x 2 s |
+| Bootup, Video Recording & Connectivity: SVC Service Start time | &lt;= 30 s | svc.service has no ExecStartPre; wrapper_service.sh waits &lt;= 30 s |
+| Bootup, Video Recording & Connectivity: ZMQ Socket Creation | &lt;= 38.5 s | derived: wrapper &lt;= 30 s + cam_rec.service:12 sleep 8 + 100 ms x &lt;= 5 tries (cam_recorder.cpp:1024-1037) |
+| Bootup, Video Recording & Connectivity: First Frame Capture from Device Power ON | &lt;= 62 s | derived: ndcentral start &lt;= 32 s + &lt;= 30 s wait for cam_rec (nd_central.cpp:14104-14112) |
+| Bootup, Video Recording & Connectivity: HW Button Detection - LED Glow for User Generated Alert | &lt;= 30 s | svc.cpp:1314-1365 button thread right after config / msgq init: as svc start, &lt;= 30 s |
+| Bootup, Video Recording & Connectivity: Keep Alive @ Reboot | &lt;= 160 s | derived: power_mon start &lt;= 30 s + 10 s start sleep + KEEPALIVE_SLEEP_DURATION 20 s x MAX_ka_retry_cnt 6 (power_monitor.h:130, .cpp:129,3651,3673,3779) |
+| Bootup, Video Recording & Connectivity: GPS TTFF - First Boot after Low Power Wakeup | &lt;= 180 s | spec power.misc_wakeup_duration 3 min (lowpower_wakeup_duration 6 min): the device sleeps again after it |
+| Bootup, Video Recording & Connectivity: Cyclic Reboot Time (max_uptime) | 16-48.5 h | spec power.cyclic_reboot_duration 960 min: x 3 = 48 h crank high (+ 0.5 h soak), x 1 = 16 h crank low (power_monitor.h:52,57-63) |
+| Bootup, Video Recording & Connectivity: Cyclic Reboot for Crank High Detection | &lt;= 1830 s | power_monitor.h:61 CYCLIC_REBOOT_SOAK_MS 1800 s (+ one 30 s check) |
+| Bootup, Video Recording & Connectivity: Device Shutdown Time | &lt;= 6 s | derived: ign_check_duration 5 x 1 s (power_monitor.cpp:2885-2900,3354-3378) + 1 s to execute |
+| Device Downtime / Data Loss: Device Cyclic Reboot | &lt;= 112 s | derived: REBOOT_TASK_TIMEOUT 30 s + POR_REBOOT_TIME 20 s (power_monitor.h:125,133-134) + first frame &lt;= 62 s |
+| Device Downtime / Data Loss: Device Reboot from AWS IoT / Cloud Command | &lt;= 112 s | derived: AwsIot reboot_after_secs 0 + REBOOT_TASK_TIMEOUT 30 s + POR_REBOOT_TIME 20 s + first frame &lt;= 62 s |
+| Device Downtime / Data Loss: Service Restart due to Camera Crash | &lt;= 42 s; bagheera: &lt;= 82 s; octo: &lt;= 82 s | derived: krait exit(1) + bagheera.service RestartSec=10s + sleep 2 + &lt;= 30 s cam_rec wait (nd_central.cpp:3085-3125) |
+| Camera Crash Stats: Outward Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Outward Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Inward Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Inward Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Left Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Left Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Right Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Right Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 4 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 4 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 5 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 5 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 6 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 6 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 7 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 7 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: DMS Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: DMS Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Video File Size Details - HD: Outward Video - File Size - HD | about 45 MB (33.8-49.5) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 6000000 bit/s |
+| Video File Size Details - HD: Inward Video - File Size - HD | about 15 MB (11.2-16.5) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 2000000 bit/s |
+| Video File Size Details - HD: Left Video - File Size - HD | about 3.75 MB (2.81-4.12) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 500000 bit/s |
+| Video File Size Details - HD: Right Video - File Size - HD | about 3.75 MB (2.81-4.12) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 500000 bit/s |
+| Video File Size Details - HD: MDVR 4 Video - File Size - HD | about 37.5 MB (28.1-41.2) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 5000000 bit/s |
+| Video File Size Details - HD: MDVR 5 Video - File Size - HD | about 37.5 MB (28.1-41.2) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 5000000 bit/s |
+| Video File Size Details - HD: MDVR 6 Video - File Size - HD | about 37.5 MB (28.1-41.2) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 5000000 bit/s |
+| Video File Size Details - HD: MDVR 7 Video - File Size - HD | about 37.5 MB (28.1-41.2) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 5000000 bit/s |
+| Video File Size Details - HD: DMS Video - File Size - HD | about 60 MB (45-66) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 8000000 bit/s |
+| Video File Size Details - HD: Outward Video - FPS - HD | about 30 fps (27-33) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 30 fps |
+| Video File Size Details - HD: Inward Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: Left Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: Right Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: MDVR 4 Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: MDVR 5 Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: MDVR 6 Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: MDVR 7 Video - FPS - HD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Video File Size Details - HD: DMS Video - FPS - HD | about 30 fps (27-33) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 30 fps |
+| Video File Size Details - LD: Outward Video - File Size - LD | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Video File Size Details - LD: Inward Video - File Size - LD | about 3.75 MB (2.81-4.12) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 500000 bit/s |
+| Video File Size Details - LD: MDVR 4 Video - File Size - LD | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Video File Size Details - LD: MDVR 5 Video - File Size - LD | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Video File Size Details - LD: MDVR 6 Video - File Size - LD | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Video File Size Details - LD: MDVR 7 Video - File Size - LD | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Video File Size Details - LD: DMS Video - File Size - LD | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Video File Size Details - LD: Outward Video - FPS - LD | about 30 fps (27-33) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 30 fps |
+| Video File Size Details - LD: Inward Video - FPS - LD | about 15 fps (13.5-16.5) | spec camera.*_nrt_fps / krait gst_recorder.cpp:86-87, 15 fps |
+| Preview LQ Videos - Video File Size Details: Outward - LD File Size (Average) | about 7.5 MB (5.62-8.25) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 1000000 bit/s |
+| Preview LQ Videos - Video File Size Details: Inward - LD File Size (Average) | about 3.75 MB (2.81-4.12) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 500000 bit/s |
+| Preview LQ Videos - Video File Size Details: Outward - HD File Size (Average) | about 45 MB (33.8-49.5) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 6000000 bit/s |
+| Preview LQ Videos - Video File Size Details: Inward - HD File Size (Average) | about 15 MB (11.2-16.5) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 2000000 bit/s |
+| Obs File Size Details: Max HD Obs files can be stored - File Count | &lt;= 10000 | uploader.cpp:479-484 OBS_FILE_LIMIT 10000 |
+| Obs File Size Details: HD Obs - Avg size of file | &lt;= 9000 KB | spec compression_settings.obs_force_mx5_threshold_mb 9 |
+| Obs File Size Details: Obs File Size (One zip with valid GPS) | &lt;= 9000 KB | spec compression_settings.obs_force_mx5_threshold_mb 9 |
+| SdCard / eMMC: Obs files in eMMC | &lt;= 10000 | uploader.cpp:479-484 OBS_FILE_LIMIT 10000 |
+| WAF - eMMC Metrics: External eMMC | &lt;= 3 | nd_factory.cpp:2830-2853 alerts above 3.0 (4.0 for WD external parts; the vendor is not logged) |
+| WAF - eMMC Metrics: Internal eMMC | &lt;= 3 | nd_factory.cpp:2830-2853 alerts above 3.0 |
+| Tegra Watchdog Timeout: Reboot Initiated | &lt;= 0 | the watchdog fires only when a critical service misses keep-alive or svc is not up in 300 s (svc.cpp:119,151,412-434) |
+| Tegra Watchdog Timeout: Power Monitor Start after reboot | &lt;= 30 s | power_monitor.service has no ExecStartPre; wrapper_service.sh waits &lt;= 30 s |
+| Tegra Watchdog Timeout: Time taken to Reboot | &lt;= 125 s; krait: &lt;= 155 s | derived: svc.watchdog_timeout 90 s (BAGHEERA2) + 5 s kick + power_mon start &lt;= 30 s (svc_internal.h:10-23, svc.cpp:125-136) |
+| Installer App - Metrics: Scan for Installer App Stops | &lt;= 121 s | nd_bt_man.cpp:160,173 kInstallerFreshScanTimeout 120 s + 1 s tick |
+| Obs Data Zip Upload - Metrics: Upload Request for Obs zip - Received | &lt;= 2 s | derived: upload threads sleep(1) (uploader.cpp:4679) + 1 s |
+| Retry Count & Duration for API / Upload Calls: videolist - Retry Duration | &lt;= 300 s | circular_buffer.h:54,62 MAX_CLOUD_NOTIFY_RETRY 5, one per 60 s tick |
+| LLA - Metrics: Uploader LLA Notification to the Cloud - API Call Triggering | &lt;= 1 s | derived: LLA queue polled every 400 ms (uploader.cpp:5458) + hand-off |
+| LLA - Metrics: Uploader LLA Notification to the Cloud - API Call Successful | &lt;= 40.4 s | derived: 400 ms queue + lla_retry_limit 3 attempts x 10 s timeout + 2 x LLA_RETRY_SLEEP 5 s (uploader.cpp:108-116,630-649) |
+| LLA - Metrics: LLA retry duration | &lt;= 30 s | derived: 2 retries x (LLA_RETRY_SLEEP 5 s + 10 s timeout) (uploader.cpp:114-116) |
 
 ## Assumptions to review
 
