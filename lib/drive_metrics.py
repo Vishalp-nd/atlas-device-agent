@@ -332,6 +332,42 @@ def _power_mon_span(events, start, hi, logs_start=None):
     return max(0, lasts[-1][0] - begin) // 60000
 
 
+def partial_drive(events, start, hi, udid, minutes, logs_start=None):
+    """Drive fields for a boot without a udid_node record: from its first power monitor start
+    (else the boot start, else its first power_mon line) to its last power_mon line; the
+    minutes are the boot's estimated drive minutes."""
+    ends = [ts for ts, _ in _between(events.run_ends_sorted, start, hi, key=lambda x: x[0])]
+    starts = _between(events.pm_starts_sorted, start, hi, key=None)
+    if starts:
+        # A power monitor run can end after the next boot was detected (as for its minutes):
+        # the last line before the power monitor's next start
+        all_starts = events.pm_starts_sorted
+        i = bisect.bisect_right(all_starts, starts[-1])
+        nxt = all_starts[i] if i < len(all_starts) else float('inf')
+        ends += [ts for ts, _ in _between(events.run_ends_sorted, starts[-1], nxt - 1, key=lambda x: x[0])]
+    if not ends:
+        return None
+    firsts = _between(events.pm_firsts_sorted, start, hi, key=None)
+    begin = starts[0] if starts else start if start is not None else firsts[0] if firsts else None
+    if begin is None:
+        return None
+    if start is None and logs_start is not None:
+        begin = max(begin, logs_start)
+    end = max(ends)
+    drive = drive_window_metrics(events, {'udid': udid, 'drive_start': begin, 'drive_end': max(begin, end),
+                                          'rtc_jump_from': end, 'rtc_jump_to': end})
+    drive.update(duration_min=minutes, repeated_udid=False, partial=True)
+    return drive
+
+
+def drive_end(events, start, end, rec=None):
+    """When the boot's drive ended: the udid_node drive_end, else its last power_mon line, else None."""
+    if rec:
+        return rec['drive_end']
+    lasts = _between(events.run_ends_sorted, start, (end - 1) if end is not None else None, key=lambda x: x[0])
+    return lasts[-1][0] if lasts else None
+
+
 def boot_metrics(events, start, end, rec=None, logs_start=None):
     """UDID and drive/power-monitor numbers for the boot [start, end).
 
@@ -374,6 +410,10 @@ def boot_metrics(events, start, end, rec=None, logs_start=None):
             span = _power_mon_span(events, start, hi, logs_start)
             if span:
                 drive_minutes, minutes_source = span, 'power_mon'
+    if not drive and drive_minutes:
+        # No udid_node record (the drive was still going at the end of the logs, or the record
+        # was not uploaded): a partial drive from the power monitor, with the same fields
+        drive = partial_drive(events, start, hi, udid, drive_minutes, logs_start)
     max_lpw = max((c for _, c, _ in lpw), default=None)
     shutdowns = _between(events.shutdowns_sorted, start, hi, key=lambda x: x[0])
     cranks = _between(events.cranks_sorted, start, hi, key=lambda x: x[0])

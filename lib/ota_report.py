@@ -170,17 +170,30 @@ def next_day(day):
     return (datetime.strptime(day, '%Y-%m-%d').date() + timedelta(days=1)).isoformat()
 
 
-def read_days(device, start, end):
-    """Days to read for [start, end]: device_days plus, if downloaded, the day after end.
+def previous_day(day):
+    """The day before a YYYY-MM-DD day."""
+    return (datetime.strptime(day, '%Y-%m-%d').date() - timedelta(days=1)).isoformat()
 
-    The s3 day folders follow the upload, not the log time: the last archive of a day (written
-    at shutdown) is often uploaded, and so filed, the next day, and a drive's udid_node record
-    is only written early in the *next* boot. The day after the range completes its last boots;
-    boots starting on it are dropped again in finish_device (range_end_ms).
+
+def read_days(device, start, end):
+    """Days to read for [start, end]: device_days plus, if downloaded, the day before start and
+    the day after end.
+
+    The day before: a drive that started before midnight and went on into the start date is
+    kept whole (finish_device keeps a boot whose drive ends on or after the start date).
+    The day after: the s3 day folders follow the upload, not the log time: the last archive of
+    a day (written at shutdown) is often uploaded, and so filed, the next day, and a drive's
+    udid_node record is only written early in the *next* boot. It completes the range's last
+    boots; boots starting on it are dropped again in finish_device (range_end_ms).
+    Neither counts as a day of the device.
     """
     days = device_days(device, start, end)
-    after = next_day(end)
-    if days and log_archive.has_logs(LOG_BASE_DIR / str(device) / after):
+    if not days:
+        return days
+    before, after = previous_day(start), next_day(end)
+    if log_archive.has_logs(LOG_BASE_DIR / str(device) / before):
+        days.insert(0, before)
+    if log_archive.has_logs(LOG_BASE_DIR / str(device) / after):
         days.append(after)
     return days
 
@@ -594,9 +607,10 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
     for every OTA the device has boots on (only those in otas, if given); the HTML page
     follows once the features are known (complete_device_reports).
 
-    day_results may include the day after end (read_days): it only completes the boots that
-    started in the range (end time, udid_node record); boots starting on it are dropped and
-    it is not counted as a day of the device.
+    day_results may include the day before start and the day after end (read_days): a boot is
+    kept when its drive ends on or after the start date (a drive across midnight is kept whole)
+    and it starts before the day after end (that day only completes the range's last boots:
+    end time, udid_node record). Neither day counts as a day of the device.
 
     Returns (device, {ota: summary}, timings, info), timings being one entry per step
     (see run_logging.timed), info {'days', 'detailed_days', 'otas'} for the report summary.
@@ -605,7 +619,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
     report_dir = Path(report_dir or REPORT_BASE_DIR)
     day_results = sorted(day_results, key=lambda r: r['day'])
     days = [r['day'] for r in day_results]
-    in_range = [r for r in day_results if not end or r['day'] <= str(end)]
+    in_range = [r for r in day_results if (not end or r['day'] <= str(end)) and (not start or r['day'] >= str(start))]
     range_days = [r['day'] for r in in_range]
     timings = [t for r in day_results for t in r['timings']]
     device_start = time.perf_counter()
@@ -635,18 +649,25 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
             events.finish()
             evidence.finish()
             udid_records = drive_metrics.assign_udids(events, boots)
-        # Only boots that started in the range: not boot 0 (already running when the logs begin,
-        # i.e. started before them; a day's folder also holds the end of the day before), nor
-        # boots starting on the day after the range (read only to end the last boot in it)
+        # Boots whose drive ends on or after the start date: those that started in the range,
+        # and those that started before it (on the day before, or before the logs) and drove
+        # on into it. The drive's end is its udid_node drive_end, else its last power_mon line.
+        # Not the boots starting on the day after the range (read only to end the last boot in it)
         first, cut = run_start_ms(start), range_end_ms(end)
         if first is not None:
-            boots = [b for b in boots if b['start'] is not None and b['start'] >= first]
+            def in_range_boot(b):
+                if b['start'] is not None and b['start'] >= first:
+                    return True
+                ended = drive_metrics.drive_end(events, b['start'], b['end'], udid_records.get(b['index']))
+                return ended is not None and ended >= first
+            boots = [b for b in boots if in_range_boot(b)]
         if cut is not None:
             boots = [b for b in boots if b['start'] is None or b['start'] < cut]
         found_otas = sorted({b['ota'] for b in boots if b['ota']})
         info['otas'] = found_otas
         log.info('%s: %d boot(s) over %d day(s)%s, OTA %s', device, sum(b['start'] is not None for b in boots), len(range_days),
-                 ' (+ the next day to complete the last boot)' if len(days) > len(range_days) else '', found_otas)
+                 f' (+ {len(days) - len(range_days)} day(s) around the range for the drives across it)'
+                 if len(days) > len(range_days) else '', found_otas)
         with timed(log, 'load_hits', timings, level=logging.DEBUG, device=device):
             hits = load_hits([r['spool'] for r in day_results], services, starts)
     finally:
@@ -673,7 +694,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
             continue
         detail = dict(boot, start_fmt=_fmt_ts(boot['start']), end_fmt=_fmt_ts(boot['end']))
         detail.update(drive_metrics.boot_metrics(events, boot['start'], boot['end'], udid_records.get(boot['index']),
-                                                  logs_start=run_start_ms(start)))
+                                                  logs_start=run_start_ms(days[0])))
         detail['window'] = boot_window(boot, span, detail['drive'])
         detail['label'] = boot_name(detail)
         detail['api_calls'] = api_calls.boot_calls(calls_by_api, boot['start'], boot['end'])
@@ -1197,12 +1218,12 @@ def _fmt_minutes(ms):
 
 
 def _drive_overview(d):
-    """KPI tiles + shutdown reasons from a drive_metrics.summarize()/merge_summaries() dict."""
+    """KPI tiles from a drive_metrics.summarize()/merge_summaries() dict."""
     if not d:
         return ''
     na = lambda v: '—' if v is None else v
     tiles = [
-        ('Drives (UDID)', d['drives']), ('Drive time', _fmt_minutes(d['drive_minutes'] * 60000) or '0 min'),
+        ('Drives', d['drives']), ('Drive time', _fmt_minutes(d['drive_minutes'] * 60000) or '0 min'),
         ('Drives < 6 min', d['drives_short']), ('Drives 6–15 min', d['drives_medium']),
         ('Drives with low power wakeup', d['drives_with_low_power_wakeup']),
         ('Max low power wakeup', na(d['max_low_power_wakeup'])),
@@ -1211,14 +1232,8 @@ def _drive_overview(d):
         ('Power monitor starts', d['service_starts']), ('Crank-ons', d['crank_ons']),
         ('Runs < 350 s', d['runs_short']), ('Runs 7–16 min (improper shutdown)', d['runs_improper']),
     ]
-    out = ['<div class="tiles">' + ''.join(_tile(v, k) for k, v in tiles) + '</div>']
-    if d['previous_shutdown_reasons']:
-        out.append('<details><summary>Previous shutdown reasons</summary><div class="body"><table>'
-                   '<tr><th>Reason</th><th class="num">Boots</th></tr>')
-        out += [f'<tr><td><code>{_esc(r)}</code></td><td class="num">{n}</td></tr>'
-                for r, n in d['previous_shutdown_reasons'].items()]
-        out.append('</table></div></details>')
-    return '\n'.join(out)
+    # The previous shutdown reason of each boot is a column of the drive table below
+    return '<div class="tiles">' + ''.join(_tile(v, k) for k, v in tiles) + '</div>'
 
 
 def _condition_text(cond):
@@ -1283,11 +1298,6 @@ def _plain_list(title, devices):
 
 def _pct(n, total):
     return f'{100 * n / total:.0f}%' if total else '—'
-
-
-FEATURES_NOTE = ('Enabled: the feature was on in at least one boot on this OTA, from the value each key it needs had '
-                 'in that boot (the value the service logged at startup, else the OTA default in bagheera_config.ini / nd_config.ini). '
-                 'Features whose keys are not in this OTA\'s config are not listed.')
 
 
 def _device_features_table(features, counts):
@@ -2106,7 +2116,6 @@ def render_device_html(doc):
         for b in boots:
             for i, st in enumerate(b.get('features') or []):
                 counts[i][feature_status.STATUSES[st]] += 1
-        out.append(f'<p class="muted">{_esc(FEATURES_NOTE)}</p>')
         out.append(_device_features_table(features, counts))
     else:
         out.append('<p class="muted">No features evaluated</p>')
