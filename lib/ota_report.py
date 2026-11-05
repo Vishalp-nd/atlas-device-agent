@@ -988,6 +988,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features, cloud=N
                                     for sec, key, exp in f['conditions']]} for f in features]
     totals = [Counter() for _ in features]
     devices_on = [0] * len(features)
+    feature_keys = {key for f in features for _, key, _ in f['conditions']}
     for device, summary in device_summaries.items():
         path = report_dir / ota / 'devices' / f'{device}.json'
         with open(path) as f:
@@ -999,6 +1000,9 @@ def complete_device_reports(ota, device_summaries, report_dir, features, cloud=N
         for b in doc['boots']:
             profile = summary['profiles'].get(b['index'])
             values = b.get('override_values')
+            # Feature keys whose "No value present for key X in override dictionary" line the boot
+            # logged (not overridden: the default applies), for the device page's Config Applied
+            b['logged_keys'] = sorted(feature_keys & set().union(*profile.values())) if profile else []
             exclude_overridden_keys(b, doc['config_keys'], feature_status.boot_overrides(profile, ref) if profile else set())
             key_fails.update(tuple(doc['config_keys'][i]) for i in b['config'].get('failed_keys', ()))
             if detailed_startup(profile):
@@ -1302,21 +1306,47 @@ def _pct(n, total):
     return f'{100 * n / total:.0f}%' if total else '—'
 
 
-def _device_features_table(features, counts):
+def _applied_text(cond, boot):
+    """The value a boot applied for one condition key: read from its logs by the LLM, or the
+    default when the boot logged the key as not overridden (both "key found in log"), else
+    the default, assumed."""
+    section, key, _, default = cond
+    found = ((boot or {}).get('override_values') or {}).get(f'{section}.{key}')
+    if found is not None:
+        value, how = found.get('value'), 'key found in log'
+    else:
+        value, how = default, 'key found in log' if key in ((boot or {}).get('logged_keys') or ()) else 'assumed default'
+    shown = '—' if value is None else (json.dumps(value) if not isinstance(value, str) else value)
+    return f'<code>{_esc(section)}.{_esc(key)} = {_esc(shown)}</code> <span class="muted">({how})</span>'
+
+
+def _key_list(conditions, text):
+    """The condition lines of a feature (first 4, all of them behind a toggle when more)."""
+    if len(conditions) <= 4:
+        return '<br>'.join(text(c) for c in conditions)
+    return (f'<details><summary class="muted">{len(conditions)} keys</summary><div class="body">'
+            + '<br>'.join(text(c) for c in conditions) + '</div></details>')
+
+
+def _device_features_table(features, counts, boots=()):
     """Device page: Enabled (ON in some boot) / Disabled per feature, leaving out features that were
-    NA in every boot (not part of this OTA), the same rule as the OTA's Feature Set Summary."""
+    NA in every boot (not part of this OTA), the same rule as the OTA's Feature Set Summary.
+    Config Applied: each needed key's value in the latest boot where the feature was on (else the
+    latest boot with features evaluated), in the order of Needs."""
     rows = []
+    evaluated = [b for b in boots if b.get('features')]
     shown = [i for i in range(len(features)) if any(n for st, n in counts[i].items() if st != 'NA')]
     for i in sorted(shown, key=lambda i: (not counts[i].get('ON'), features[i]['name'].lower())):
         f = features[i]
-        needs = '<br>'.join(_condition_text(c) for c in f['conditions'][:4])
-        if len(f['conditions']) > 4:
-            needs = (f'<details><summary class="muted">{len(f["conditions"])} keys</summary><div class="body">'
-                     + '<br>'.join(_condition_text(c) for c in f['conditions']) + '</div></details>')
+        on = [b for b in evaluated if i < len(b['features']) and feature_status.STATUSES[b['features'][i]] == 'ON']
+        boot = (on or evaluated or [None])[-1]
+        applied = _key_list(f['conditions'], lambda c: _applied_text(c, boot))
+        needs = _key_list(f['conditions'], _condition_text)
         status = ('<span class="chip on">Enabled</span>' if counts[i].get('ON')
                   else '<span class="chip off">Disabled</span>')
-        rows.append(f'<tr><td>{_esc(f["name"])}</td><td>{status}</td><td class="wrap">{needs}</td></tr>')
-    return _table(['Feature', 'Enabled/Disabled', 'Needs'], rows)
+        rows.append(f'<tr><td>{_esc(f["name"])}</td><td>{status}</td><td class="wrap">{applied}</td>'
+                    f'<td class="wrap">{needs}</td></tr>')
+    return _table(['Feature', 'Enabled/Disabled', 'Config Applied', 'Needs'], rows)
 
 
 DEVICE_STYLE = """
@@ -2153,7 +2183,7 @@ def render_device_html(doc):
         for b in boots:
             for i, st in enumerate(b.get('features') or []):
                 counts[i][feature_status.STATUSES[st]] += 1
-        out.append(_device_features_table(features, counts))
+        out.append(_device_features_table(features, counts, boots))
     else:
         out.append('<p class="muted">No features evaluated</p>')
     out.append('</section>')
