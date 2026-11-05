@@ -828,7 +828,10 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
                     'duration_s': round(time.perf_counter() - eval_start, 3)})
     with timed(log, 'kpi', timings, level=logging.DEBUG, device=device):
         reported = {d['index']: d for details in detail_by_ota.values() for d in details}
-        kpi_samples = kpi_metrics.compute(kpi_metrics.Device(kpi_hits, all_boots, reported), reported)
+        # No time_sync boot at all: the KPIs of the date range go to the one boot (Log not available)
+        fallback = ((0, run_start_ms(start), range_end_ms(end))
+                    if 0 in reported and not any(b['start'] is not None for b in all_boots) else None)
+        kpi_samples = kpi_metrics.compute(kpi_metrics.Device(kpi_hits, all_boots, reported, fallback), reported)
         for index, detail in reported.items():
             detail['kpi'] = kpi_metrics.boot_values(kpi_samples.get(index, {}))
         del kpi_hits

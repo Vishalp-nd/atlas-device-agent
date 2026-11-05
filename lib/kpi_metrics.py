@@ -914,7 +914,7 @@ class Device:
     measured in; boot_of() places any time in a report boot.
     """
 
-    def __init__(self, hits, boots, details=None):
+    def __init__(self, hits, boots, details=None, fallback=None):
         self.lines = defaultdict(list)
         seen = {}
         for key, ts, groups in sorted(hits, key=lambda h: (h[1], h[0])):
@@ -936,6 +936,12 @@ class Device:
             eff = self.boot_anchor.get(b['index'], b['start'])
             self._starts.append(max(eff, self._starts[-1] + 1) if self._starts else eff)
         self.start_of = {b['index']: s for b, s in zip(self.boots, self._starts)}
+        # No boot with a start (no time_sync boot in the logs): every time in [lo, hi) goes to
+        # the one boot there is (fallback = (its index, lo, hi), the date range)
+        self.fallback = fallback if not self.boots else None
+        if self.fallback:
+            index, lo, _ = self.fallback
+            self.start_of[index] = lo if lo is not None else float('-inf')
         self.details = details or {}
         self._cache = {}
 
@@ -960,6 +966,9 @@ class Device:
 
     def boot_of(self, ts):
         """Index of the report boot ts falls in, or None (before the first boot)."""
+        if self.fallback:
+            index, lo, hi = self.fallback
+            return index if (lo is None or ts >= lo) and (hi is None or ts < hi) else None
         i = bisect.bisect_right(self._starts, ts) - 1
         if i < 0:
             return None
@@ -1570,6 +1579,10 @@ METRICS = {m.id: m for t in KPI_TABLES for m in t.metrics}
 
 # ── per boot / device / OTA ──────────────────────────────────────────────────────────────
 
+# The Bootup, Video Recording & Connectivity KPIs: times from power-on / a reboot
+STARTUP_METRICS = {m.id for t in KPI_TABLES if t.id == 'kpi-boot' for m in t.metrics}
+
+
 def compute(device, boot_indexes):
     """{boot index: {metric id: [values]}, '_codes': {code: unique events}} for the given
     boots (the reported ones) from a Device; every sample goes to the boot its time is in."""
@@ -1578,6 +1591,9 @@ def compute(device, boot_indexes):
     detailed = device.detailed_boots() & wanted
     for metric in METRICS.values():
         if not metric.fn or (metric.cam is not None and metric.cam not in device.cams()):
+            continue
+        # A boot that started before the logs (Device.fallback) has no startup to time
+        if device.fallback and metric.id in STARTUP_METRICS:
             continue
         if metric.agg == 'sum':
             # 0 where the logs could show the line (not empty)
