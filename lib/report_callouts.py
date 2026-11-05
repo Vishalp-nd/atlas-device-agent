@@ -1,5 +1,11 @@
 """
-Callouts for an OTA report, shown above the Feature Set Summary.
+Callouts for an OTA report: "Callouts-API Summary" (below the API Call Summary) and
+"Callouts-KPI Metrics" (after the KPI Summary).
+
+KPI callouts (build_kpi): only the KPIs that missed their baseline (lib/kpi_metrics.BASELINES,
+the amber cells): the OTA P90 and every device value outside the range, one LLM call per KPI
+table run like the API ones, the model reviewing them as a senior QA engineer (bullets: how
+far off, across all devices or a few, devices with more issues, trends).
 
 The rule checks (API_RULES below) run here over the report's per-device drive time, API call
 counts and enabled features, so every number is exact. The LLM (the Azure OpenAI deployment
@@ -20,13 +26,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import api_calls
+import kpi_metrics
 import override_llm
 
 log = logging.getLogger('report_callouts')
 
 CACHE_DIR = Path(os.environ.get('REPORT_CALLOUTS_CACHE',
                                 override_llm.REPO_ROOT / 'OUTPUT' / 'llm_cache' / 'report_callouts'))
-PROMPT_VERSION = 'v3'
+PROMPT_VERSION = 'v4'
 LLM_PARALLEL = int(os.environ.get('REPORT_CALLOUTS_PARALLEL', '6'))
 LEVELS = ('critical', 'warning', 'info')
 # Level of each finding kind
@@ -63,7 +70,13 @@ How the findings were worked out (drive_min = the device's drive minutes on this
   drive_min > {GAP_LIMIT_MIN}) or gap_over_limit (longest gap between calls > {GAP_LIMIT_MIN} min).
 - Can Diagnostics: not checked (no call line in the logs)."""
 
-SYSTEM_PROMPT = """You write callouts for an OTA (firmware) test report of telematics devices, for one API.
+QA_ROLE = """You are a senior QA engineer reviewing an OTA (firmware) test of telematics devices: you look at
+where the devices deviate from what is expected, judge how serious it is, whether it is seen across all devices
+or only on a few, which devices stand out, and what trend it points to, and you write the callouts the team
+should act on."""
+
+SYSTEM_PROMPT = QA_ROLE + """
+You write the callouts for one API of the OTA report.
 The rule checks have already been done: you get the API's findings grouped by kind, each with every affected
 device and its numbers, plus context. Only use the given numbers; never recompute, invent devices or add problems.
 For each kind write one callout: how many of the devices on the OTA are affected and how bad it is (range or
@@ -81,7 +94,34 @@ Context:
 Findings for {api}:
 {findings}"""
 
+KPI_SYSTEM_PROMPT = QA_ROLE + """
+You write the callouts for one KPI table of the OTA report. You only get the KPIs of that table that missed their
+baseline: for each, the expected value / range, the OTA's P90 over the devices (p90_outside: whether the P90
+itself is outside) and every device whose value is outside, with its value (devices_with_value: how many devices
+have the KPI at all). The context gives the devices on the OTA and, per device, how many KPIs it missed in all
+tables. Only use the given numbers; never recompute, invent devices or values, or add problems.
+Write at most 6 callouts, most important first, each one or two plain, specific sentences: what deviates and by
+how much, how widespread it is, the devices that stand out (worst values, or missing many KPIs), and any trend
+across the table's KPIs (e.g. every boot step late, one camera only). Judge how widespread it is from
+outside_count of devices_with_value ("all 3 devices", "2 of 5 devices"), not from the P90 alone: with few devices
+the P90 follows the worst one. Mention a device's overall number of missed KPIs at most once, where it matters. Level: critical (seen across most devices, or a hard failure such as crashes / watchdog resets),
+warning (a few devices or a small deviation), info (borderline).
+Answer with JSON only: {{"callouts": [{{"level": "critical|warning|info", "text": "<callout>",
+"devices": ["<ids of the devices the callout is about, from the input>"]}}]}}"""
+
+KPI_HUMAN_PROMPT = """OTA {ota} ({device_type}), KPI table: {table}
+
+Context:
+{context}
+
+KPIs outside their baseline:
+{rows}"""
+
+# KPI units not shown after the name (as in the report)
+NO_UNIT = {'count', 'WAF', 'text'}
+
 _chain = None
+_kpi_chain = None
 _chain_lock = threading.Lock()
 
 
@@ -92,26 +132,35 @@ def enabled():
     return all(os.environ.get(k, '').strip() for k in ('AZURE_OAI', 'OAI_ENDPOINT', 'OAI_MODEL'))
 
 
-def _get_chain():
-    global _chain
+def _llm():
+    from langchain_openai import AzureChatOpenAI
+
+    override_llm._load_env()
+    return AzureChatOpenAI(
+        azure_deployment=os.environ['OAI_MODEL'].strip(),
+        azure_endpoint=os.environ['OAI_ENDPOINT'].strip(),
+        api_key=os.environ['AZURE_OAI'].strip(),
+        api_version=os.environ.get('OAI_API_VERSION', '2024-08-01-preview').strip(),
+        max_retries=int(os.environ.get('OVERRIDE_LLM_RETRIES', '6')),
+        timeout=float(os.environ.get('REPORT_CALLOUTS_TIMEOUT', '180')),
+    )
+
+
+def _get_chain(kpi=False):
+    """The API callouts chain, or the KPI callouts one (same model, retries and timeout)."""
+    global _chain, _kpi_chain
     with _chain_lock:
-        if _chain is None:
+        if (_kpi_chain if kpi else _chain) is None:
             from langchain_core.output_parsers import JsonOutputParser
             from langchain_core.prompts import ChatPromptTemplate
-            from langchain_openai import AzureChatOpenAI
 
-            override_llm._load_env()
-            llm = AzureChatOpenAI(
-                azure_deployment=os.environ['OAI_MODEL'].strip(),
-                azure_endpoint=os.environ['OAI_ENDPOINT'].strip(),
-                api_key=os.environ['AZURE_OAI'].strip(),
-                api_version=os.environ.get('OAI_API_VERSION', '2024-08-01-preview').strip(),
-                max_retries=int(os.environ.get('OVERRIDE_LLM_RETRIES', '6')),
-                timeout=float(os.environ.get('REPORT_CALLOUTS_TIMEOUT', '180')),
-            )
-            prompt = ChatPromptTemplate.from_messages([('system', SYSTEM_PROMPT), ('human', HUMAN_PROMPT)])
-            _chain = prompt | llm | JsonOutputParser()
-    return _chain
+            system, human = (KPI_SYSTEM_PROMPT, KPI_HUMAN_PROMPT) if kpi else (SYSTEM_PROMPT, HUMAN_PROMPT)
+            chain = ChatPromptTemplate.from_messages([('system', system), ('human', human)]) | _llm() | JsonOutputParser()
+            if kpi:
+                _kpi_chain = chain
+            else:
+                _chain = chain
+    return _kpi_chain if kpi else _chain
 
 
 def _number(value):
@@ -193,10 +242,11 @@ def callout_data(summary, device_summaries, device_info, defaults):
     }
 
 
-def _cached_invoke(variables):
+def _cached_invoke(variables, kpi=False):
     """(answer, source) for one prompt, from the disk cache or the LLM."""
     model = os.environ.get('OAI_MODEL', '').strip()
-    digest = hashlib.sha256(json.dumps([PROMPT_VERSION, model, SYSTEM_PROMPT, variables],
+    system = KPI_SYSTEM_PROMPT if kpi else SYSTEM_PROMPT
+    digest = hashlib.sha256(json.dumps([PROMPT_VERSION, model, system, variables],
                                        sort_keys=True).encode()).hexdigest()
     cache_path = CACHE_DIR / digest[:2] / f'{digest}.json'
     if cache_path.exists():
@@ -204,7 +254,7 @@ def _cached_invoke(variables):
             return json.loads(cache_path.read_text()), 'cache'
         except ValueError:
             pass
-    raw = _get_chain().invoke(variables)
+    raw = _get_chain(kpi).invoke(variables)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = cache_path.with_suffix(f'.{os.getpid()}.{threading.get_ident()}.tmp')
     tmp.write_text(json.dumps(raw))
@@ -267,4 +317,129 @@ def build(ota, summary, device_summaries, device_info, defaults):
         'cached': sum(1 for _, src, _ in results if src == 'cache'),
         'error': (None if use_llm else 'LLM not configured (REPORT_CALLOUTS / Azure credentials): plain texts shown')
                  if not errors else f'LLM call failed for some APIs ({", ".join(errors)}): plain texts shown',
+    }
+
+
+# ── KPI callouts ─────────────────────────────────────────────────────────────────────────
+
+def _deviation(metric_id, value, device_type):
+    """How far a value is outside its baseline, relative (for ordering the devices)."""
+    b = kpi_metrics.BASELINES.get(metric_id)
+    if b is None or not isinstance(value, (int, float)):
+        return 0
+    if b.expect:
+        return abs(value - b.expect[0]) / (b.expect[0] or 1)
+    override = (b.by_family or {}).get(device_type, (b.by_family or {}).get(kpi_metrics.family(device_type)))
+    lo, hi = override if isinstance(override, tuple) else (b.lo, b.hi)
+    if hi is not None and value > hi:
+        return (value - hi) / (abs(hi) or 1)
+    if lo is not None and value < lo:
+        return (lo - value) / (abs(lo) or 1)
+    return 0
+
+
+def kpi_callout_data(report_kpi, device_summaries, device_type):
+    """Only the amber rows: {'context': ..., 'tables': {table: [row]}}; a row is a KPI outside its
+    baseline at the OTA P90 or on some device: expected, p90, p90_outside, devices_with_value
+    and every device outside it with its value (furthest off first)."""
+    columns = (report_kpi or {}).get('columns') or {}
+    values = {d: ((s or {}).get('kpi') or {}).get('metrics') or {} for d, s in device_summaries.items()}
+    tables, missed = {}, {}
+    for table in kpi_metrics.KPI_TABLES:
+        rows = []
+        for m in table.metrics:
+            if m.id not in kpi_metrics.BASELINES:
+                continue
+            col = columns.get(m.id) or {}
+            p90 = col.get('common') if m.unit == 'text' else col.get('p90')
+            p90_out = kpi_metrics.baseline_issue(m.id, p90, device_type) is not None
+            devices = [(d, v[m.id][0]) for d, v in values.items()
+                       if m.id in v and kpi_metrics.baseline_issue(m.id, v[m.id][0], device_type)]
+            if not p90_out and not devices:
+                continue
+            for d, _ in devices:
+                missed[d] = missed.get(d, 0) + 1
+            devices.sort(key=lambda dv: -_deviation(m.id, dv[1], device_type))
+            unit = '' if m.unit in NO_UNIT else f' ({m.unit})'
+            rows.append({'kpi': m.name + unit, 'expected': kpi_metrics.baseline_text(m.id, device_type),
+                         'p90': _round(p90), 'p90_outside': p90_out,
+                         'devices_with_value': sum(1 for v in values.values() if m.id in v),
+                         'outside_count': len(devices),
+                         'devices_outside': [{'device': d, 'value': _round(v)} for d, v in devices]})
+        if rows:
+            tables[table.title] = rows
+    return {'context': {'devices_on_ota': len(device_summaries),
+                        'kpis_missed_per_device': dict(sorted(missed.items(), key=lambda kv: -kv[1]))},
+            'tables': tables}
+
+
+def _round(v):
+    return round(v, 2) if isinstance(v, float) else v
+
+
+def _kpi_table_callouts(ota, device_type, table, rows, context):
+    """Callouts for one KPI table: the model's bullets (devices kept only if they are in the
+    input). A failed call gives a plain bullet per KPI."""
+    variables = {'ota': ota, 'device_type': device_type or 'unknown product', 'table': table,
+                 'context': json.dumps(context, separators=(',', ':')),
+                 'rows': json.dumps(rows, separators=(',', ':'))}
+    known = {x['device'] for r in rows for x in r['devices_outside']}
+    callouts, source, error = [], None, None
+    try:
+        raw, source = _cached_invoke(variables, kpi=True)
+        for item in ((raw.get('callouts') if isinstance(raw, dict) else None) or [])[:6]:
+            text = str((item or {}).get('text', '')).strip() if isinstance(item, dict) else ''
+            if not text:
+                continue
+            level = item.get('level') if item.get('level') in LEVELS else 'warning'
+            devices = [d for d in dict.fromkeys(str(x) for x in item.get('devices') or []) if d in known]
+            callouts.append({'level': level, 'api': table, 'kind': 'kpi', 'text': text[:800], 'devices': devices})
+    except Exception as exc:
+        log.exception('%s: KPI callouts LLM call for %s failed: %s', ota, table, exc)
+        error = f'{type(exc).__name__}'
+    if not callouts:
+        callouts = _plain_kpi_callouts(table, rows, context, error)
+    return callouts, source, error
+
+
+def _plain_kpi_callouts(table, rows, context, error=None):
+    out = []
+    for r in rows:
+        n = len(r['devices_outside'])
+        text = (f'{r["kpi"]}: {n} of {r["devices_with_value"]} devices outside {r["expected"]}'
+                + (f', P90 {r["p90"]}' if r['p90_outside'] else '') + (' (LLM text unavailable)' if error else ''))
+        out.append({'level': 'critical' if r['p90_outside'] else 'warning', 'api': table, 'kind': 'kpi',
+                    'text': text, 'devices': [x['device'] for x in r['devices_outside']]})
+    return out
+
+
+def build_kpi(ota, report_kpi, device_summaries, device_type):
+    """{'callouts': [{'level', 'api' (the KPI table), 'kind', 'text', 'devices'}], 'llm_calls', 'cached',
+    'error'}: the KPI callouts, from the amber rows only. One call per KPI table with amber rows,
+    in parallel, as the API callouts."""
+    if not report_kpi:
+        return {'callouts': [], 'llm_calls': 0, 'cached': 0, 'error': 'No KPI data on this OTA'}
+    data = kpi_callout_data(report_kpi, device_summaries, device_type)
+    context, tables = data['context'], data['tables']
+    if not tables:
+        return {'callouts': [{'level': 'info', 'api': 'General', 'kind': 'ok', 'devices': [],
+                              'text': 'All KPIs are within their baselines.'}],
+                'llm_calls': 0, 'cached': 0, 'error': None}
+    use_llm = enabled()
+    if use_llm:
+        with ThreadPoolExecutor(min(LLM_PARALLEL, len(tables))) as pool:
+            results = list(pool.map(lambda kv: _kpi_table_callouts(ota, device_type, kv[0], kv[1], context),
+                                    tables.items()))
+    else:
+        results = [(_plain_kpi_callouts(t, rows, context), None, None) for t, rows in tables.items()]
+    callouts = [c for cs, _, _ in results for c in cs]
+    order = [t.title for t in kpi_metrics.KPI_TABLES]
+    callouts.sort(key=lambda c: (LEVELS.index(c['level']), order.index(c['api']) if c['api'] in order else 99))
+    errors = sorted({e for _, _, e in results if e})
+    return {
+        'callouts': callouts,
+        'llm_calls': sum(1 for _, src, _ in results if src == 'llm'),
+        'cached': sum(1 for _, src, _ in results if src == 'cache'),
+        'error': (None if use_llm else 'LLM not configured (REPORT_CALLOUTS / Azure credentials): plain texts shown')
+                 if not errors else f'LLM call failed for some KPI tables ({", ".join(errors)}): plain texts shown',
     }

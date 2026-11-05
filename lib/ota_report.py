@@ -1412,14 +1412,14 @@ font-variant-numeric:tabular-nums;user-select:all}
 .callouts li:last-child{border-bottom:0}.callouts b{margin-right:6px}.callouts details{margin-top:4px;font-size:12.5px}.callouts summary{cursor:pointer;color:var(--muted)}
 .callouts .devs{display:flex;flex-wrap:wrap;gap:4px 10px;padding:6px 0 0 14px}
 @property --co-angle{syntax:'<angle>';inherits:false;initial-value:0deg}
-#callouts{border:2px solid transparent;background:linear-gradient(var(--card),var(--card)) padding-box,
+.callouts-box{border:2px solid transparent;background:linear-gradient(var(--card),var(--card)) padding-box,
 conic-gradient(from var(--co-angle),#1a73e8,#0b0f19,#4285f4,#8ab4f8,#0b0f19,#1a73e8) border-box;
 animation:co-spin 4s linear infinite,co-glow 3s ease-in-out infinite}
 @keyframes co-spin{to{--co-angle:360deg}}
 @keyframes co-glow{0%,100%{box-shadow:0 0 0 rgba(66,133,244,0)}50%{box-shadow:0 0 18px rgba(66,133,244,.35)}}
-#callouts .sparkle{display:inline-block;animation:co-twinkle 2.4s ease-in-out infinite}
+.callouts-box .sparkle{display:inline-block;animation:co-twinkle 2.4s ease-in-out infinite}
 @keyframes co-twinkle{0%,100%{transform:scale(1) rotate(0);opacity:1}50%{transform:scale(1.18) rotate(12deg);opacity:.75}}
-@media (prefers-reduced-motion:reduce){#callouts,#callouts .sparkle{animation:none}}.note{font-size:12px;margin:12px 0 0}
+@media (prefers-reduced-motion:reduce){.callouts-box,.callouts-box .sparkle{animation:none}}.note{font-size:12px;margin:12px 0 0}
 .c-pass{background:var(--pass)}.c-fail{background:var(--fail)}.c-nt{background:var(--nt)}.c-none{background:var(--none)}.c-acc{background:var(--accent)}
 .tbl{border:1px solid var(--line);border-radius:10px;overflow:auto;margin-top:16px;max-height:430px}
 table{border-collapse:collapse;width:100%;font-size:13px}
@@ -1512,8 +1512,8 @@ document.querySelectorAll('section[id]').forEach(s => spy.observe(s));
 """
 
 NAV = [('devices', 'Device Summary'), ('logs', 'Log Upload Summary'), ('drive', 'Drive Summary'),
-       ('feature-sets', 'Feature Set Summary'), ('cloud-config', 'Cloud Config Check'), ('api', 'API Call Summary'), ('callouts', 'Callouts'), ('features', 'Feature Level Summary'),
-       ('kpi-alerts', 'KPI Summary')]
+       ('feature-sets', 'Feature Set Summary'), ('cloud-config', 'Cloud Config Check'), ('api', 'API Call Summary'), ('callouts', 'Callouts-API Summary'), ('features', 'Feature Level Summary'),
+       ('kpi-alerts', 'KPI Summary'), ('kpi-callouts', 'Callouts-KPI Metrics')]
 
 
 def _n(v):
@@ -1590,10 +1590,11 @@ def _drive_section(sm):
 CALLOUT_DOTS = {'critical': 'c-fail', 'warning': 'c-nt', 'info': 'c-acc'}
 
 
-def _callouts_section(report):
-    """Bullet callouts from report_callouts: rule checks over the API calls, drive time and enabled
-    features, worded by the LLM; each lists all its devices."""
-    co = report.get('callouts')
+def _callouts_section(report, key='callouts', section_id='callouts', title='Callouts-API Summary'):
+    """Bullet callouts from report_callouts, worded by the LLM, each with its devices: the API ones
+    (rule checks over the API calls, drive time and enabled features) or, with key='kpi_callouts',
+    the KPI ones (the KPIs outside their baselines)."""
+    co = report.get(key)
     if co is None:
         return ''
     items = []
@@ -1606,7 +1607,8 @@ def _callouts_section(report):
     body = f'<ul class="callouts">{"".join(items)}</ul>' if items else ''
     if co.get('error'):
         body += f'<p class="muted">{_esc(co["error"])}</p>'
-    return f'<section id="callouts"><h2><span class="sparkle" aria-hidden="true">✨</span> Callouts</h2>{body}</section>'
+    return (f'<section id="{section_id}" class="callouts-box"><h2><span class="sparkle" aria-hidden="true">✨</span> '
+            f'{_esc(title)}</h2>{body}</section>')
 
 
 def _feature_sets_section(sm):
@@ -1829,7 +1831,8 @@ def _device_kpi_sections(kpi_summary, device_type=None):
 def render_html(report):
     ota, sm = report['ota_version'], report.get('summary') or {}
     cloud_on = bool((report.get('cloud_config') or {}).get('enabled'))
-    shown = {'cloud-config': cloud_on, 'kpi-alerts': bool(sm and report.get('kpi'))}
+    shown = {'cloud-config': cloud_on, 'kpi-alerts': bool(sm and report.get('kpi')),
+             'kpi-callouts': bool(sm and report.get('kpi_callouts'))}
     nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV if shown.get(i, True))
     body = [f'<div class="top"><h1>{_esc(ota)}</h1><span>{_esc(report["generated_at"])}</span></div>']
     if sm:
@@ -1838,6 +1841,7 @@ def render_html(report):
     body.append(_feature_level_section(report))
     if sm:
         body.append(_kpi_sections(report, sm))
+        body.append(_callouts_section(report, 'kpi_callouts', 'kpi-callouts', 'Callouts-KPI Metrics'))
     return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body), f'<script>{REPORT_JS}</script>')
 
 
@@ -2443,6 +2447,8 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
         with timed(log, 'callouts', timings, ota=ota):
             defaults = ota_config_values(ota)
             report['callouts'] = report_callouts.build(ota, report['summary'], device_summaries, device_info, defaults)
+            report['kpi_callouts'] = report_callouts.build_kpi(ota, report.get('kpi'), device_summaries,
+                                                               device_type_for_ota(ota))
         with timed(log, 'write_ota_report_files', timings, ota=ota):
             out_dir = report_dir / ota
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -2497,12 +2503,15 @@ def refresh_callouts(reports_dir):
     for ota_dir in ota_dirs:
         ota = ota_dir.name
         report = json.loads((ota_dir / 'ota_report.json').read_text())
-        device_summaries = {d: {'api': doc.get('api_summary'), 'feature_set': _latest_feature_set(doc)}
+        device_summaries = {d: {'api': doc.get('api_summary'), 'feature_set': _latest_feature_set(doc),
+                                'kpi': doc.get('kpi_summary')}
                             for d, doc in docs[ota].items()}
         device_info = {d: {'otas': otas_of[d]} for d in device_summaries}
         defaults = ota_config_values(ota)
         report['callouts'] = report_callouts.build(ota, report.get('summary') or {}, device_summaries,
                                                    device_info, defaults)
+        report['kpi_callouts'] = report_callouts.build_kpi(ota, report.get('kpi'), device_summaries,
+                                                           device_type_for_ota(ota))
         with open(ota_dir / 'ota_report.json', 'w') as f:
             json.dump(report, f, separators=(',', ':'))
         with open(ota_dir / 'ota_report.html', 'w') as f:

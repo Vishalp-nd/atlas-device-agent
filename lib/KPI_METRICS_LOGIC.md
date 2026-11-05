@@ -55,7 +55,14 @@ previous shutdown reason, ...).
    none for counts, WAF and text) and its overall P90 over the devices; text KPIs (versions,
    bands) show the most common value. A value outside its baseline (see "Baselines") is amber
    (only the colour is shown). The device pages show the
-   same tables with the device's own value (`kpi_summary` in the device JSON), checked the same way. The device values stay in the report
+   same tables with the device's own value (`kpi_summary` in the device JSON), checked the same way.
+6. **Callouts-KPI Metrics** (`report_callouts.build_kpi`, OTA report only, after the KPI Summary):
+   only the amber rows go to the LLM (the deployment the API callouts use): per KPI table, each
+   KPI outside its baseline with the expected range, the OTA P90 and every device whose value is
+   outside, plus how many KPIs each device missed overall. One call per KPI table with amber
+   rows, run in parallel and cached like the API callouts. The model reviews them as a senior QA
+   engineer and answers in bullets: how far off, on how many devices, devices that stand out,
+   trends. Without the LLM each amber KPI gets a plain bullet. The device values stay in the report
    JSON (`kpi.devices`) but are not shown. Analytics KPIs: a row per event code.
 
 ## Common rules

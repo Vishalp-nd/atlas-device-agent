@@ -716,6 +716,27 @@ def family(device_type):
     return None
 
 
+
+def baseline_text(metric_id, device_type=None):
+    """The KPI's expected value / range as text ('<= 30 s', 'about 45 MB (33.8-49.5)'), or None."""
+    b = BASELINES.get(metric_id)
+    if b is None:
+        return None
+    unit = METRICS[metric_id].unit
+    u = '' if unit in ('count', 'WAF', 'text') else f' {unit}'
+    overrides = b.by_family or {}
+    override = overrides.get(device_type, overrides.get(family(device_type)))
+    if isinstance(override, str) or b.equals is not None:
+        want = override if isinstance(override, str) else b.equals
+        return f'= {want}' if want is not None else None
+    if b.expect:
+        want, low, high = b.expect
+        return f'about {want:g}{u} ({want * low:.3g}-{want * high:.3g})'
+    lo, hi = override if isinstance(override, tuple) else (b.lo, b.hi)
+    if lo is not None and hi is not None:
+        return f'{lo:g}-{hi:g}{u}'
+    return f'<= {hi:g}{u}' if hi is not None else f'>= {lo:g}{u}' if lo is not None else None
+
 def baseline_issue(metric_id, value, device_type=None):
     """None when the value is within the KPI's baseline (or it has none), else the text of what
     it should be and why (for the amber cell's tooltip)."""
