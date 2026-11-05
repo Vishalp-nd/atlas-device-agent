@@ -1556,6 +1556,9 @@ def _drive_section(sm):
     minutes, boots = sm['drive_minutes_by_device'], sm.get('boots_by_device', {})
     low_power, total = sm['devices_low_power'], sm['drive_minutes_total']
     by_time = [d for d, _ in sorted(minutes.items(), key=lambda kv: -kv[1])]
+    # The other devices on this OTA (no boot flagged low power), most drive time first
+    flagged = set(low_power)
+    no_low_power = [d for d in by_time if d not in flagged]
     rows = [f'<tr><td>{_dev_link(d)}</td><td class="num{" zero" if not minutes[d] else ""}">{minutes[d]:,}</td>'
             f'<td class="num" data-v="{minutes[d] / 60:.2f}">{minutes[d] / 60:,.1f}</td>'
             f'<td class="num">{boots.get(d, "")}</td></tr>' for d in by_time]
@@ -1565,7 +1568,8 @@ def _drive_section(sm):
             + _tile(len(sm['devices_under_6h']), 'Devices running < 6 h', devices=sm['devices_under_6h'])
             + _tile(len(sm['devices_over_6h']), 'Devices running > 6 h', devices=sm['devices_over_6h'])
             + _tile(len(sm['devices_over_24h']), 'Devices running > 24 h', devices=sm['devices_over_24h'])
-            + _tile(len(low_power), 'Low power mode count', devices=low_power)
+            + _tile(len(low_power), 'Devices with low power boots', devices=low_power)
+            + _tile(len(no_low_power), 'Devices with no low power boots', devices=no_low_power)
             + '</div>'
             + _table(['Device', '#Drive min', '#Hours', '#Boots on this OTA'], rows)
             + '</section>')
