@@ -133,6 +133,13 @@ KPI_LOG_LINES = {
     'ota_size': Line(
         ('otacheck', 'updater'), 'OTA package size in bytes', r'OTA package size in bytes = (?P<bytes>\d+)',
         '2026-10-27 12:54:55,365 - __main__ - INFO - OTA package size in bytes = 45930165, OTA required size in KB = 491643.201171875, space left in device in KB = 10765052  [log_prod/6603014391/2026-10-27/otacheck]'),
+    # The OTA a downloaded package installs: logged just before its size line
+    'ota_target_check': Line(
+        'otacheck', 'version_check_version: ', r'version_check_version: (?P<version>\S+) current_version:',
+        '2026-11-05 07:24:58,761 - __main__ - INFO -  version_check_version: 89.3.36.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition current_version: 89.3.35.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition upgradingVersion: 89.3.35.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition  [264080392_2026-11-05/otacheck.log]'),
+    'ota_target_upgrade': Line(
+        'updater', 'Upgrade Version =', r'Upgrade Version =(?P<version>\S+) and state',
+        '2026-11-05 07:29:23,398 - __main__ - INFO - Environment ND_DEVICE_REL_PATH = /home/ubuntu/.nddevice and Upgrade Version =89.3.36.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition and state UPDATE_AVAILABLE  [264080392_2026-11-05/updater.log]'),
     'sm_update_time': Line(
         'service_mon', 'updateTime: ', r'updateEngine : \d{13} : 210003 : -?\d+ : (?P<version>\S+) \| updateTime: (?P<s>[\d.]+)',
         '1793107036850: 1710: SM: E: 9632: 9632: Service error: updateEngine : 1793107036849 : 210003 : -1 : 4.6.17.rc.1 | updateTime: 71.914 : 3867089  [log_prod/6603014391/2026-10-27/service_mon]', True),
@@ -341,6 +348,8 @@ ONCE = {'event_code': 'det'}
 ONCE_GAP_MS = 60_000
 # "alerts.json contains N" and its session's UPLOAD_STATE line, logged right after it
 ALERTS_PAIR_MS = 2_000
+# An OTA package size line names no version: the target line logged at most this long before it does
+OTA_TARGET_MS = 5 * 60_000
 
 
 def _first_once(key, ts, groups, last):
@@ -433,8 +442,11 @@ def _tables():
         ], 'Seconds from power on (kernel start: epoch minus the system uptime the boot logs) unless said otherwise; detailed logs only.'),
 
         Table('kpi-ota', 'OTA & Firmware Details', [
-            M('ota_size', 'OTA Package Size', 'MB', 'last', _values('ota_size', 'bytes', 1 / 1e6),
-              ['ota_size'], '"OTA package size in bytes = N" (otacheck / updater)'),
+            M('ota_size', 'OTA Package Size', 'MB', 'last', _ota_package_size,
+              ['ota_size', 'ota_target_check', 'ota_target_upgrade'],
+              '"OTA package size in bytes = N" (otacheck / updater), credited to the OTA the package installs: '
+              'the version of the "version_check_version: V" / "Upgrade Version =V" line just before it, in the '
+              'first boot on V after the download (left out when V never boots in the logs)'),
             M('ota_update_time', 'OTA Update time', 's', 'last', _first_value(('sm_update_time', 's', 1), ('updater_update_time', 's', 1), every=True),
               ['sm_update_time', 'updater_update_time'], 'updateEngine "updateTime: N" (install only, not the download)'),
             M('aon_version', 'AON Firmware Version', 'text', 'last', _last_text(('aon_sm', 'ver'), ('aon_apm', 'ver'), fmt=lambda v: v.upper().replace('0X', '0x')),
@@ -1059,6 +1071,27 @@ def _first_value(*sources, boot_filter=None, every=False):
 
 def _values(key, group, scale=1.0):
     return lambda d: [(h.ts, float(h.g[group]) * scale) for h in d.hits(key)]
+
+
+def _ota_package_size(d):
+    """(ts, MB) of each downloaded OTA package, credited to the OTA it installs, not the one
+    running while it downloads: V = the version of the target line (otacheck "version_check_version:
+    V", updater "Upgrade Version =V") at most OTA_TARGET_MS before the size line; ts = the start
+    of the device's first boot on V after the line, so the size lands in V's report. Left out when
+    no target line names V or V never boots in the logs (an upgrade not installed / after the logs)."""
+    targets = d.hits('ota_target_check', 'ota_target_upgrade')
+    t_ts = [h.ts for h in targets]
+    out = []
+    for h in d.hits('ota_size'):
+        i = bisect.bisect_right(t_ts, h.ts) - 1
+        if i < 0 or h.ts - t_ts[i] > OTA_TARGET_MS:
+            continue
+        version = targets[i].g['version']
+        start = next((d.start_of[b['index']] for b in d.boots
+                      if b.get('ota') == version and d.start_of[b['index']] > h.ts), None)
+        if start is not None:
+            out.append((start, float(h.g['bytes']) / 1e6))
+    return out
 
 
 def _alerts_detected(d):

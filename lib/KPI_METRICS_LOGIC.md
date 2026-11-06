@@ -301,7 +301,7 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 
 | KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
 |---|---|---|---|---|---|
-| OTA Package Size | MB | latest value | "OTA package size in bytes = N" (otacheck / updater) | `ota_size` (otacheck/updater) | `2026-10-27 12:54:55,365 - __main__ - INFO - OTA package size in bytes = 45930165, OTA required size in KB = 491643.201171875, space left in device in KB = 10765052  [log_prod/6603014391/2026-10-27/otacheck]` |
+| OTA Package Size | MB | latest value | "OTA package size in bytes = N" (otacheck / updater), credited to the OTA the package installs: the version of the "version_check_version: V" / "Upgrade Version =V" line just before it, in the first boot on V after the download (left out when V never boots in the logs) | `ota_size` (otacheck/updater)<br>`ota_target_check` (otacheck)<br>`ota_target_upgrade` (updater) | `2026-10-27 12:54:55,365 - __main__ - INFO - OTA package size in bytes = 45930165, OTA required size in KB = 491643.201171875, space left in device in KB = 10765052  [log_prod/6603014391/2026-10-27/otacheck]`<br>`2026-11-05 07:24:58,761 - __main__ - INFO -  version_check_version: 89.3.36.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition current_version: 89.3.35.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition upgradingVersion: 89.3.35.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition  [264080392_2026-11-05/otacheck.log]`<br>`2026-11-05 07:29:23,398 - __main__ - INFO - Environment ND_DEVICE_REL_PATH = /home/ubuntu/.nddevice and Upgrade Version =89.3.36.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition and state UPDATE_AVAILABLE  [264080392_2026-11-05/updater.log]` |
 | OTA Update time | s | latest value | updateEngine "updateTime: N" (install only, not the download) | `sm_update_time` (service_mon)<br>`updater_update_time` (updater) | `1793107036850: 1710: SM: E: 9632: 9632: Service error: updateEngine : 1793107036849 : 210003 : -1 : 4.6.17.rc.1 \| updateTime: 71.914 : 3867089  [log_prod/6603014391/2026-10-27/service_mon]`<br>`2026-10-27 13:17:16,849 - __main__ - INFO - OTA updateTime: 71.914 sec  [log_prod/6603014391/2026-10-27/updater]` |
 | AON Firmware Version | text | latest value | "AON Ver: 0x.." (service_mon 41015) or apm "get_aon_application_version returns"; bagheera only | `aon_sm` (service_mon)<br>`aon_apm` (apm) | `1792452409825: 4439: SM: E: 5823: 5823: Service error: APM : 1792452409825 : 41015 : 27 : AON Ver: 0x1B : 27742  [103182502300_2026-10-20/service_mon_c.log]`<br>`1793148920591: 9093: DEVB3: I: 5929: 5929: get_aon_application_version returns : 0x1b  [103102600722_2026-10-28/apm.log]` |
 | ISP Firmware Version | text | latest value | NOT_FOUND: no ISP firmware version in any uploaded log | — | — |
@@ -639,7 +639,7 @@ taken to mean, and how values in a line are read. Check these first.
 
 | Log line(s) | Seen on | Risk |
 |---|---|---|
-| `ota_size`, `sm_update_time`, `updater_update_time`, `updater_start`, `updater_stop` | one OTA: 6603014391 (krait2, 4.6.16.rc.6 -> 4.6.17.rc.1) | wording may differ on bagheera / other builds |
+| `ota_size`, `ota_target_check`, `ota_target_upgrade`, `sm_update_time`, `updater_update_time`, `updater_start`, `updater_stop` | one OTA: 6603014391 (krait2, 4.6.16.rc.6 -> 4.6.17.rc.1) | wording may differ on bagheera / other builds |
 | `pass_high`, `soak_done`, `uptime_long`, `sm_cyclic` | one completed cyclic reboot device: 6603078588 (krait2) | on other krait2 devices the reboot is cancelled after "Soak done" |
 | `iot_reboot` | one event: 264080392 (krait EU) | |
 | `wakeup_reason` with `TEGRA_BCCPLEX_WATCHDOG` | two events: 103102600722, 103352600193 (bagheera3) | krait may log the watchdog reset differently |
@@ -903,6 +903,22 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - Regex: `OTA package size in bytes = (?P<bytes>\d+)`
 - Sample: `2026-10-27 12:54:55,365 - __main__ - INFO - OTA package size in bytes = 45930165, OTA required size in KB = 491643.201171875, space left in device in KB = 10765052  [log_prod/6603014391/2026-10-27/otacheck]`
 - Used by: OTA Package Size
+
+#### `ota_target_check`
+
+- Service log: `otacheck`
+- grep text: `version_check_version: `
+- Regex: `version_check_version: (?P<version>\S+) current_version:`
+- Sample: `2026-11-05 07:24:58,761 - __main__ - INFO -  version_check_version: 89.3.36.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition current_version: 89.3.35.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition upgradingVersion: 89.3.35.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition  [264080392_2026-11-05/otacheck.log]`
+- Used by: OTA Package Size (the OTA the package installs)
+
+#### `ota_target_upgrade`
+
+- Service log: `updater`
+- grep text: `Upgrade Version =`
+- Regex: `Upgrade Version =(?P<version>\S+) and state`
+- Sample: `2026-11-05 07:29:23,398 - __main__ - INFO - Environment ND_DEVICE_REL_PATH = /home/ubuntu/.nddevice and Upgrade Version =89.3.36.sp.2.6.16.rc.6.global.rc.1_EUVAS_ignition and state UPDATE_AVAILABLE  [264080392_2026-11-05/updater.log]`
+- Used by: OTA Package Size (the OTA the package installs)
 
 #### `sm_update_time`
 
