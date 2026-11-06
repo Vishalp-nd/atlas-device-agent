@@ -902,26 +902,32 @@ def _utc(ms):
 def write_alert_sessions_csv(path, rows):
     """Alert sessions CSV (kpi_metrics.alert_session_rows + device / boot_start): one row per
     alert session with its final event codes, what was uploaded and its Alert Upload Time
-    seconds. Camera columns of MDVR / DMS cameras only when some session has a value."""
+    seconds, then one count column per event code (most alerts first, as the Analytics KPIs):
+    the Alerts column sums to Total Alerts Detected and each code column to its Analytics KPIs
+    row. Camera columns of MDVR / DMS cameras only when some session has a value."""
     cams = sorted({c for r in rows for c in r['videos']} | {c for c in kpi_metrics.CAMS if c <= 3}
                   | {c for r in rows for c in kpi_metrics.CAMS
                      if r.get(f'au_vod_req_cam{c}') is not None or r.get(f'au_video_ok_cam{c}') is not None})
     steps = [mid for mid, _ in kpi_metrics.ALERT_CSV_STEPS
              if not (mid[-4:-1] == 'cam' and int(mid[-1]) not in cams)]
+    totals = Counter(c for r in rows for c in r['codes'])
+    codes = sorted(totals, key=lambda c: (-totals[c], c))
     outcome = {'UPLOAD': 'Uploaded', 'DELETE': 'Not uploaded (DELETE_STATE)'}
     head = (['Device ID', 'Boot start', 'Session', 'Recording start (UTC)', 'Processed (UTC)', 'Event codes',
              'Alerts', 'Outcome', 'Event Data API calls', 'Event card published', 'Videos uploaded (cams)']
-            + [f'{kpi_metrics.METRICS[mid].name} (s)' for mid in steps])
+            + [f'{kpi_metrics.METRICS[mid].name} (s)' for mid in steps] + [f'Alerts {c}' for c in codes])
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(head)
         for r in sorted(rows, key=lambda r: (r['device'], r['rec'] or r['processed'] or 0)):
             state = outcome.get(r['state']) or ('Uploaded (inference log not uploaded yet)' if r['card'] else '')
+            n = Counter(r['codes'])
+            listed = ' '.join(f'{c} ({n[c]})' if n[c] > 1 else c for c in sorted(n, key=lambda c: (-n[c], c)))
             w.writerow([r['device'], r['boot_start'], r['session'], _utc(r['rec']), _utc(r['processed']),
-                        ' '.join(r['codes']), len(r['codes']) if r['processed'] else '', state, r['eventdata_calls'],
+                        listed, len(r['codes']), state, r['eventdata_calls'],
                         'yes' if r['card'] else 'no', ' '.join(map(str, r['videos']))]
-                       + ['' if r.get(mid) is None else r[mid] for mid in steps])
-
+                       + ['' if r.get(mid) is None else r[mid] for mid in steps]
+                       + [n[c] or '' for c in codes])
 
 def device_doc(device, ota, days, boot_details, ini_keys):
     """Per-device JSON. Boots refer to "tests" and "config_keys" by index; step
