@@ -54,15 +54,6 @@ STYLE = """
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .a{--tag:#6ea2ff}:root:not([data-theme="light"]) .b{--tag:#c77ee6}}
 :root[data-theme="dark"] .a{--tag:#6ea2ff}:root[data-theme="dark"] .b{--tag:#c77ee6}
 th.a .who,th.b .who{display:block;color:var(--tag);font-weight:700;white-space:normal;word-break:break-all;max-width:200px}
-.side details.nav-group>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin:2px 0;
-border-radius:8px;color:var(--muted);font-weight:500;cursor:pointer;user-select:none}
-.side details.nav-group>summary::-webkit-details-marker{display:none}
-.side details.nav-group>summary::after{content:"▸";font-size:11px;transition:transform .15s}
-.side details.nav-group[open]>summary::after{transform:rotate(90deg)}
-.side details.nav-group>summary:hover{background:var(--hover);color:var(--fg)}
-.side details.nav-group:has(a.active)>summary{color:var(--accent)}
-.side details.nav-group .sub{margin-left:10px;padding-left:8px;border-left:1px solid var(--line)}
-.side details.nav-group .sub a{padding:5px 10px;font-size:13px}
 .group-head{margin:30px 0 14px;scroll-margin-top:20px}.group-head h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em}
 .group-head .legend-ab{margin:0}
 td.up{color:var(--fail);font-weight:600}td.down{color:var(--pass);font-weight:600}td.chg{font-weight:600}

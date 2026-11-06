@@ -1585,6 +1585,16 @@ td.zero{color:var(--none)}
 #cloud-config h3{font-size:13.5px;margin:18px 0 0}#cloud-config code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .keybox{max-height:180px;overflow-y:auto;padding:4px 0;line-height:1.7}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
+.side details.nav-group>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin:2px 0;
+border-radius:8px;color:var(--muted);font-weight:500;cursor:pointer;user-select:none}
+.side details.nav-group>summary::-webkit-details-marker{display:none}
+.side details.nav-group>summary::after{content:"";width:6px;height:6px;margin-right:4px;border-right:1.5px solid currentColor;
+border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+.side details.nav-group[open]>summary::after{transform:rotate(45deg)}
+.side details.nav-group>summary:hover{background:var(--hover);color:var(--fg)}
+.side details.nav-group:has(a.active)>summary{color:var(--accent)}
+.side details.nav-group .sub{margin-left:10px;padding-left:8px;border-left:1px solid var(--line)}
+.side details.nav-group .sub a{padding:5px 10px;font-size:13px}
 .kpi-row{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:20px}
 .kpi-row>section{flex:1 1 300px;margin-bottom:0;min-width:0;padding:20px 18px}
 .kpi-row th,.kpi-row td{padding:8px 10px}.kpi-row td:first-child{text-wrap:pretty}
@@ -1673,7 +1683,7 @@ document.querySelectorAll('section[id]').forEach(s => spy.observe(s));
 
 NAV = [('devices', 'Device Summary'), ('logs', 'Log Upload Summary'), ('drive', 'Drive Summary'),
        ('feature-sets', 'Feature Set Summary'), ('cloud-config', 'Cloud Config Check'), ('api', 'API Call Summary'), ('callouts', 'Callouts-API Summary'), ('features', 'Feature Level Summary'),
-       ('kpi-alerts', 'KPI Summary'), ('kpi-callouts', 'Callouts-KPI Metrics')]
+       ('kpi-alerts', 'KPI Metrics'), ('kpi-callouts', 'Callouts-KPI Metrics')]
 
 
 def _n(v):
@@ -1737,9 +1747,9 @@ def _drive_section(sm):
     return ('<section id="drive"><h2>Drive Summary</h2><div class="tiles">'
             + _tile(sm['devices_on_ota'], 'Active devices', devices=by_time)
             + _tile(f'{total / 60:,.1f} h', 'Total drive time')
-            + _tile(len(sm['devices_under_6h']), 'Devices running < 6 h', devices=sm['devices_under_6h'])
-            + _tile(len(sm['devices_over_6h']), 'Devices running > 6 h', devices=sm['devices_over_6h'])
-            + _tile(len(sm['devices_over_24h']), 'Devices running > 24 h', devices=sm['devices_over_24h'])
+            + _tile(len(sm.get('devices_under_6h') or []), 'Devices running < 6 h', devices=sm.get('devices_under_6h') or [])
+            + _tile(len(sm.get('devices_over_6h') or []), 'Devices running > 6 h', devices=sm.get('devices_over_6h') or [])
+            + _tile(len(sm.get('devices_over_24h') or []), 'Devices running > 24 h', devices=sm.get('devices_over_24h') or [])
             + _tile(len(low_power), 'Devices with low power boots', devices=low_power)
             + _tile(len(no_low_power), 'Devices with no low power boots', devices=no_low_power)
             + '</div>'
@@ -1807,7 +1817,9 @@ def _cloud_config_section(report):
     if not (cc and cc.get('enabled')):
         return ''
     head = '<section id="cloud-config"><h2>Cloud Config Check</h2>'
-    active, verdicts, devices = cc['active'], cc['verdicts'], cc['devices']
+    active, devices = cc['active'], cc['devices']
+    # Older reports lack some verdict lists
+    verdicts = defaultdict(list, cc['verdicts'])
     tiles = (_tile(len(active), 'Active devices', devices=active)
              + _tile(len(verdicts['PASS']), 'Pass (same as cloud)', _pct(len(verdicts['PASS']), len(active)), 'c-pass', devices=verdicts['PASS'])
              + _tile(len(verdicts['FAIL']), 'Fail (different)', _pct(len(verdicts['FAIL']), len(active)), 'c-fail', devices=verdicts['FAIL'])
@@ -1955,6 +1967,22 @@ DOWNLOAD_ICON = ('<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" str
 ALERT_ROW = ('kpi-alerts', 'kpi-alert-upload', 'kpi-codes')
 
 
+def _nav_links(entries):
+    """Left navigation links; the KPI entry ('kpi-alerts') is a KPI Metrics group that expands
+    into every KPI table heading, in page order (the alert tables first, then the rest)."""
+    titles = {t.id: t.title for t in kpi_metrics.KPI_TABLES}
+    titles['kpi-codes'] = 'Analytics KPIs'
+    order = list(ALERT_ROW) + [t.id for t in kpi_metrics.KPI_TABLES if t.id not in ALERT_ROW]
+    out = []
+    for i, t in entries:
+        if i != 'kpi-alerts':
+            out.append(f'<a href="#{i}">{_esc(t)}</a>')
+            continue
+        out.append(f'<details class="nav-group"><summary>{_esc(t)}</summary><div class="sub">'
+                   + ''.join(f'<a href="#{k}">{_esc(titles[k])}</a>' for k in order) + '</div></details>')
+    return ''.join(out)
+
+
 def _kpi_layout(sections, codes_section, csv_href=None, csv_sessions=0):
     """The KPI sections in order, the Analytics KPIs next to the alert tables: Alerts Summary,
     Alert Upload Time and Analytics KPIs side by side, with the alert sessions CSV download on
@@ -2015,7 +2043,7 @@ def render_html(report):
     cloud_on = bool((report.get('cloud_config') or {}).get('enabled'))
     shown = {'cloud-config': cloud_on, 'kpi-alerts': bool(sm and report.get('kpi')),
              'kpi-callouts': bool(sm and report.get('kpi_callouts'))}
-    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV if shown.get(i, True))
+    nav = _nav_links([(i, t) for i, t in NAV if shown.get(i, True)])
     body = [f'<div class="top"><h1>{_esc(ota)}</h1><span>{_esc(report["generated_at"])}</span></div>']
     if sm:
         body += [_devices_section(sm), _logs_section(sm), _drive_section(sm), _feature_sets_section(sm),
@@ -2221,7 +2249,7 @@ def _drive_rows(boots):
         reasons = ', '.join(power.get('previous_shutdown_reasons', {}))
         sessions = f'{d["sessions_created"]} / {d["sessions_available"]}' if d else ''
         rows.append(
-            f'<tr><td><a href="#boot-{b["index"]}">{_esc(b["label"])}</a></td>'
+            f'<tr><td><a href="#boot-{b["index"]}">{_esc(b.get("label") or b.get("start") or "")}</a></td>'
             f'<td>{_esc(_fmt_ts(d.get("drive_start"))[:19])}</td><td>{_esc(_fmt_ts(d.get("drive_end"))[:19])}</td>'
             f'<td class="num">{_esc(d.get("duration_min", ""))}</td><td class="num">{_esc(d.get("low_power_wakeup", ""))}</td>'
             f'<td class="num">{sessions}</td>'
@@ -2234,7 +2262,7 @@ def _drive_rows(boots):
 
 
 DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('cloud-config', 'Cloud config'), ('api', 'API calls'),
-              ('kpi-alerts', 'KPI Summary'), ('boot-summary', 'Drive Session Summary'), ('boots', 'Boots')]
+              ('kpi-alerts', 'KPI Metrics'), ('boot-summary', 'Drive Session Summary'), ('boots', 'Boots')]
 
 
 def _device_cloud_config(cc, defaults=None):
@@ -2376,7 +2404,7 @@ def render_device_html(doc):
                boots=[{k: v for k, v in b.items() if k != 'kpi'} for b in boots])
     data = json.dumps(doc, separators=(',', ':')).replace('</', '<\\/')
     side = (f'<a class="back" href="../ota_report.html">← OTA {_esc(ota)}</a>'
-            + ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in nav))
+            + _nav_links(nav))
     js = f'<script type="application/json" id="data">{data}</script><script>{REPORT_JS}{DEVICE_JS}</script>'
     return _shell(f'{device} {ota}', 'Device', device, side, '\n'.join(out), js, DEVICE_STYLE)
 
@@ -2719,15 +2747,22 @@ def refresh_callouts(reports_dir):
 def rerender(reports_dir):
     """Rewrite the HTML of finished reports (ota_report.html, devices/*.html) from their JSON;
     nothing is read from the logs and no LLM is called."""
+    def rewrite(html_path, render, source):
+        # Rendered before the file is opened: a report this code cannot read keeps its page
+        try:
+            html = render(json.loads(source.read_text()))
+        except Exception as exc:
+            log.warning('%s: not rewritten (%s: %s)', html_path, type(exc).__name__, exc)
+            return False
+        html_path.write_text(html)
+        return True
+
     for ota_dir in sorted(p.parent for p in Path(reports_dir).glob('*/ota_report.json')):
-        report = json.loads((ota_dir / 'ota_report.json').read_text())
-        with open(ota_dir / 'ota_report.html', 'w') as f:
-            f.write(render_html(report))
+        ok = rewrite(ota_dir / 'ota_report.html', render_html, ota_dir / 'ota_report.json')
         pages = sorted((ota_dir / 'devices').glob('*.json'))
-        for p in pages:
-            with open(p.with_suffix('.html'), 'w') as f:
-                f.write(render_device_html(json.loads(p.read_text())))
-        log.info('%s: OTA page and %d device page(s) rewritten', ota_dir.name, len(pages))
+        done = sum(rewrite(p.with_suffix('.html'), render_device_html, p) for p in pages)
+        log.info('%s: OTA page %s, %d of %d device page(s) rewritten', ota_dir.name,
+                 'rewritten' if ok else 'kept', done, len(pages))
 
 
 def main():
