@@ -1611,6 +1611,7 @@ a.dl{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight
 border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--card);white-space:nowrap}
 a.dl:hover{background:var(--accent-bg);border-color:var(--accent);text-decoration:none}
 a.dl svg{width:14px;height:14px;flex:none}
+td[data-exp]{cursor:help;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
 .kpi .tbl{width:fit-content;max-width:100%}.kpi td.warn{background:var(--nt-bg);color:var(--nt);font-weight:600}.kpi table{width:auto}.kpi td.text{max-width:420px;white-space:normal}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
@@ -1933,14 +1934,16 @@ def _kpi_fmt(value, unit):
     return f'{value:.1f}' if abs(value) >= 10 or unit in ('%', 'fps', 'h', 's') else f'{value:.2f}'
 
 
-def _kpi_cell(value, unit, warn=None):
-    """A KPI value cell; warn (outside its baseline): amber, nothing else shown."""
+def _kpi_cell(value, unit, warn=None, expected=None):
+    """A KPI value cell; warn (outside its baseline): amber. expected (the KPI's baseline text,
+    kpi_metrics.baseline_text) is shown on hover, empty cells included."""
+    tip = f' title="Expected: {_esc(expected)}" data-exp' if expected else ''
     if value is None:
-        return '<td class="num zero">—</td>' if unit != 'text' else '<td class="zero">—</td>'
+        return f'<td class="num zero"{tip}>—</td>' if unit != 'text' else f'<td class="zero"{tip}>—</td>'
     flag = ' warn' if warn else ''
     if unit == 'text':
-        return f'<td class="text{flag}">{_kpi_fmt(value, unit)}</td>'
-    return f'<td class="num{flag}" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
+        return f'<td class="text{flag}"{tip}>{_kpi_fmt(value, unit)}</td>'
+    return f'<td class="num{flag}" data-v="{value}"{tip}>{_kpi_fmt(value, unit)}</td>'
 
 
 KPI_NO_UNIT = {'count', 'WAF', 'text'}
@@ -1961,7 +1964,8 @@ def _kpi_group_sections(value_of, shown, value_head, device_type=None):
             unit = f' ({m.unit})' if m.unit not in KPI_NO_UNIT and not m.name.endswith(m.unit) else ''
             value = value_of(m)
             warn = kpi_metrics.baseline_issue(m.id, value, device_type)
-            rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit, warn)}</tr>')
+            expected = kpi_metrics.baseline_text(m.id, device_type)
+            rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit, warn, expected)}</tr>')
         out.append((table.id, f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
                               + _table(['KPI', value_head], rows) + '</section>'))
     return out

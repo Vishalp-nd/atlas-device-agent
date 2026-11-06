@@ -340,7 +340,6 @@ in the inference one, so only inference is read.
 | Analytics Service Start time | s | mean of all samples | power-on anchor to "######## Starting Analytics Service" | `analytics_start` (analytics) | `1793148910904: 200: AS: I: 5911: 5911: ######## Starting Analytics Service ######  [103102600722_2026-10-28/analytics.log]` |
 | ZMQ Socket Creation | s | mean of all samples | power-on anchor to cam_rec "SUCCESS IN CREATE zmq_socket" (bagheera; krait has no cam_rec) | `zmq_socket` (cam_rec) | `1793148925369: 7991: CAM_REC: I: 6440: 6440: SUCCESS IN CREATE zmq_socket  [103102600722_2026-10-28/cam_rec.log]` |
 | First Frame Capture from Device Power ON | s | mean of all samples | power-on anchor to "first frame for cam num 0 registered@" | `first_frame` (ndcentral) | `1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]` |
-| HW Button Detection - LED Glow for User Generated Alert | s | mean of all samples | PARTIAL: power-on anchor to svc "Button event thread created successfully" (button ready, incl. service uptime) | `button_ready` (svc) | `1793684837920: 1156: SVC: I: 3673: 3673: Button event thread created successfully  [264080392_2026-11-03/svc.log]` |
 | Connection Manager - Data Connectivity time | s | mean of all samples | power-on anchor to "LTE Data Session started successfully" | `lte_session` (conn_mgr) | `1793148969342: 6563: CONN_MGR_SESSION: I: 8001: 8001: LTE Data Session started successfully  [103102600722_2026-10-28/conn_mgr.log]` |
 | Keep Alive @ Reboot | s | mean of all samples | power-on anchor to the first power_mon keep alive "reached_cloud 1" | `ka_reached` (power_mon) | `1793148973182: 61191: PWR: I: 6010: 6802: response_string :{"response":true,"msg":"upload-logs"}: reached_cloud 1  [103102600722_2026-10-28/power_mon.log]` |
 | GPS TTFF - First Boot after Low Power Wakeup | s | mean of all samples | "GPS First Fix time: N sec" (system uptime at fix) in boots whose previous_shutdown_reason is a LOWPOWER one | `gps_ttff` (gps)<br>`prev_shutdown` (power_mon) | `1793155724563: 15871: GPSD: I: 5879: 6019: GPS First Fix time: 37 sec  [103102600722_2026-10-28/gps.log]`<br>`1793155718957: 9032: PWR: I: 5880: 5880: POWER_MONITOR_ctx->previous_shutdown_reason DBSTATE_SHUTDOWN_MISC_LOWPOWER:SHUTDOWN  [103102600722_2026-10-28/power_mon.log]` |
@@ -571,7 +570,6 @@ other than the ones listed.
 | Bootup, Video Recording & Connectivity: SVC Service Start time | &lt;= 30 s | svc.service has no ExecStartPre; wrapper_service.sh waits &lt;= 30 s |
 | Bootup, Video Recording & Connectivity: ZMQ Socket Creation | &lt;= 38.5 s | derived: wrapper &lt;= 30 s + cam_rec.service:12 sleep 8 + 100 ms x &lt;= 5 tries (cam_recorder.cpp:1024-1037) |
 | Bootup, Video Recording & Connectivity: First Frame Capture from Device Power ON | &lt;= 62 s | derived: ndcentral start &lt;= 32 s + &lt;= 30 s wait for cam_rec (nd_central.cpp:14104-14112) |
-| Bootup, Video Recording & Connectivity: HW Button Detection - LED Glow for User Generated Alert | &lt;= 30 s | svc.cpp:1314-1365 button thread right after config / msgq init: as svc start, &lt;= 30 s |
 | Bootup, Video Recording & Connectivity: Keep Alive @ Reboot | &lt;= 160 s | derived: power_mon start &lt;= 30 s + 10 s start sleep + KEEPALIVE_SLEEP_DURATION 20 s x MAX_ka_retry_cnt 6 (power_monitor.h:130, .cpp:129,3651,3673,3779) |
 | Bootup, Video Recording & Connectivity: GPS TTFF - First Boot after Low Power Wakeup | &lt;= 180 s | spec power.misc_wakeup_duration 3 min (lowpower_wakeup_duration 6 min): the device sleeps again after it |
 | Bootup, Video Recording & Connectivity: Cyclic Reboot Time (max_uptime) | 16-48.5 h | spec power.cyclic_reboot_duration 960 min: x 3 = 48 h crank high (+ 0.5 h soak), x 1 = 16 h crank low (power_monitor.h:52,57-63) |
@@ -673,7 +671,6 @@ taken to mean, and how values in a line are read. Check these first.
 | Device Bootup Time (Reboot Log) - left LED green | power-on to the first `@Reboot Entering` |
 | System Uptime / Service Uptime - right LED red | ndcentral `System Uptime` at its start / first `serviceUpTime` |
 | Modem Enumeration | `GPS Port Enumerate Time` (the modem's GPS tty) |
-| HW Button Detection - LED glow | power-on to `Button event thread created successfully` (button ready), not a press -> LED time |
 | Keep Alive @ Reboot | power-on to the first power_mon keep alive `reached_cloud 1` |
 | GPS TTFF after low power wakeup / cyclic / crank | boot classified by previous shutdown reason (`LOWPOWER`, `CYCLIC`) or wakeup reason (`IGNITION`, `CRANK`) |
 | Cyclic Reboot for Crank High Detection | last `Uptime Check Pass HIGH` -> `Soak done` (the soak); "crank high" = this line is an interpretation |
@@ -806,14 +803,6 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - Regex: `first frame for cam num 0 registered@ (?P<epoch>\d{13})`
 - Sample: `1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]`
 - Used by: First Frame Capture from Device Power ON, During OTA Update, Device Cyclic Reboot, Device Reboot from AWS IoT / Cloud Command, Device Abrupt Power Cycle (Without Supercap), Device Abrupt Power Cycle (With Supercap), Device Reboot time after Abrupt Power Cycle (till video recording start)
-
-#### `button_ready`
-
-- Service log: `svc`
-- grep text: `Button event thread created successfully`
-- Regex: `Button event thread created successfully`
-- Sample: `1793684837920: 1156: SVC: I: 3673: 3673: Button event thread created successfully  [264080392_2026-11-03/svc.log]`
-- Used by: HW Button Detection - LED Glow for User Generated Alert
 
 #### `lte_session`
 

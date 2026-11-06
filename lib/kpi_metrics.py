@@ -88,9 +88,6 @@ KPI_LOG_LINES = {
     'first_frame': Line(
         'ndcentral', 'first frame for cam num 0', r'first frame for cam num 0 registered@ (?P<epoch>\d{13})',
         '1793148927351: 15820: NDC: I: 6110: 6920: first frame for cam num 0 registered@ 1793148927351  [103102600722_2026-10-28/ndcentral.log]'),
-    'button_ready': Line(
-        'svc', 'Button event thread created successfully', r'Button event thread created successfully',
-        '1793684837920: 1156: SVC: I: 3673: 3673: Button event thread created successfully  [264080392_2026-11-03/svc.log]'),
     'lte_session': Line(
         'conn_mgr', 'LTE Data Session started successfully', r'CONN_MGR_SESSION: I: \d+: \d+: LTE Data Session started successfully',
         '1793148969342: 6563: CONN_MGR_SESSION: I: 8001: 8001: LTE Data Session started successfully  [103102600722_2026-10-28/conn_mgr.log]'),
@@ -429,8 +426,6 @@ def _tables():
               ['zmq_socket'], 'power-on anchor to cam_rec "SUCCESS IN CREATE zmq_socket" (bagheera; krait has no cam_rec)'),
             M('first_frame', 'First Frame Capture from Device Power ON', 's', 'mean', _first_since_boot('first_frame', 'epoch'),
               ['first_frame'], 'power-on anchor to "first frame for cam num 0 registered@"'),
-            M('hw_button', 'HW Button Detection - LED Glow for User Generated Alert', 's', 'mean', _first_since_boot('button_ready'),
-              ['button_ready'], 'PARTIAL: power-on anchor to svc "Button event thread created successfully" (button ready, incl. service uptime)'),
             M('data_connectivity', 'Connection Manager - Data Connectivity time', 's', 'mean', _first_since_boot('lte_session'),
               ['lte_session'], 'power-on anchor to "LTE Data Session started successfully"'),
             M('keep_alive_reboot', 'Keep Alive @ Reboot', 's', 'mean', _first_since_boot('ka_reached'),
@@ -670,7 +665,6 @@ BASELINES = {
     'first_frame': _B(hi=62, basis='derived: ndcentral start <= 32 s + <= 30 s wait for cam_rec (nd_central.cpp:14104-14112)'),
     'modem_enum': _B(hi=120, basis='gps_dev.cpp SERVICE_UPTIME_THRESHOLD 120 s, port_open_timeout 30 s x MAX_LUMIA_RESET_ATTEMPTS 3; krait2 conn_mgr.sh 60 polls x 2 s'),
     'zmq_socket': _B(hi=38.5, basis='derived: wrapper <= 30 s + cam_rec.service:12 sleep 8 + 100 ms x <= 5 tries (cam_recorder.cpp:1024-1037)'),
-    'hw_button': _B(hi=30, basis='svc.cpp:1314-1365 button thread right after config / msgq init: as svc start, <= 30 s'),
     'keep_alive_reboot': _B(hi=160, basis='derived: power_mon start <= 30 s + 10 s start sleep + KEEPALIVE_SLEEP_DURATION 20 s x MAX_ka_retry_cnt 6 (power_monitor.h:130, .cpp:129,3651,3673,3779)'),
     'gps_ttff_lpw': _B(hi=180, basis='spec power.misc_wakeup_duration 3 min (lowpower_wakeup_duration 6 min): the device sleeps again after it'),
     'cyclic_reboot_uptime': _B(lo=16, hi=48.5, basis='spec power.cyclic_reboot_duration 960 min: x 3 = 48 h crank high (+ 0.5 h soak), x 1 = 16 h crank low (power_monitor.h:52,57-63)'),

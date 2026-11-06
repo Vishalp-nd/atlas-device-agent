@@ -30,7 +30,7 @@ from pathlib import Path
 import api_calls
 import kpi_metrics
 import report_callouts
-from ota_report import (CALLOUT_DOTS, KPI_NO_UNIT, REPORT_JS, REPORT_STYLE, _esc, _kpi_fmt, _shell, _table, _tile,
+from ota_report import (CALLOUT_DOTS, KPI_NO_UNIT, REPORT_JS, REPORT_STYLE, _esc, _kpi_cell, _kpi_fmt, _shell, _table, _tile,
                         device_type_for_ota)
 
 log = logging.getLogger('compare_report')
@@ -193,8 +193,9 @@ def _feature_sets_section(A, B, labels):
     diff = [n for n in names if a.get(n) != b.get(n)]
     cell = lambda v: ('<td class="n-pass">Enabled</td>' if v else '<td class="zero">Disabled</td>' if v is False
                       else '<td class="zero">—</td>')
+    # Enabled first: on both sides, then on one side only, then on neither
     rows = [f'<tr><td>{_esc(n)}</td>{cell(a.get(n))}{cell(b.get(n))}</tr>'
-            for n in sorted(names, key=lambda n: (n not in diff, n.lower()))]
+            for n in sorted(names, key=lambda n: (-(bool(a.get(n)) + bool(b.get(n))), n.lower()))]
     return ('<section id="feature-sets"><h2>Feature Set Summary</h2><div class="tiles">'
             + _tile(sum(a.values()), f'{labels[0]}: features enabled') + _tile(sum(b.values()), f'{labels[1]}: features enabled')
             + _tile(len(diff), 'Features that differ', dot='c-nt' if diff else None)
@@ -328,20 +329,13 @@ def _kpi_rows(A, B):
                          ('most common' if m.unit == 'text' else 'P90'),
                          'a_p90': pa, 'b_p90': pb, 'a_norm': na, 'b_norm': nb,
                          'a': na if normalised else pa, 'b': nb if normalised else pb,
+                         'a_expected': kpi_metrics.baseline_text(m.id, A['device_type']),
+                         'b_expected': kpi_metrics.baseline_text(m.id, B['device_type']),
                          'a_warn': kpi_metrics.baseline_issue(m.id, pa, A['device_type']),
                          'b_warn': kpi_metrics.baseline_issue(m.id, pb, B['device_type'])})
         if rows:
             tables[table.title] = (table.id, basis, rows)
     return tables
-
-
-def _kpi_cell(value, unit, warn=None):
-    if value is None:
-        return '<td class="num zero">—</td>'
-    flag = ' warn' if warn else ''
-    if unit == 'text':
-        return f'<td class="text{flag}">{_kpi_fmt(value, unit)}</td>'
-    return f'<td class="num{flag}" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
 
 
 def _kpi_sections(tables, labels, codes_html=''):
@@ -361,8 +355,8 @@ def _kpi_sections(tables, labels, codes_html=''):
                 norm = (f'<td class="num">{_fmt(r["a_norm"], unit)}</td><td class="num">{_fmt(r["b_norm"], unit)}</td>'
                         if r['a_norm'] is not None or r['b_norm'] is not None
                         else '<td class="num zero"></td><td class="num zero"></td>')
-            body.append(f'<tr><td>{_esc(r["name"])}</td>{_kpi_cell(r["a_p90"], m.unit, r["a_warn"])}'
-                        f'{_kpi_cell(r["b_p90"], m.unit, r["b_warn"])}{norm}{chg}</tr>')
+            body.append(f'<tr><td>{_esc(r["name"])}</td>{_kpi_cell(r["a_p90"], m.unit, r["a_warn"], r["a_expected"])}'
+                        f'{_kpi_cell(r["b_p90"], m.unit, r["b_warn"], r["b_expected"])}{norm}{chg}</tr>')
         head = ['<th>KPI</th>', _ab(labels, 'P90')]
         if basis:
             head.append(_ab(labels, BASIS_HEAD[basis]))
