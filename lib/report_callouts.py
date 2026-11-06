@@ -130,7 +130,8 @@ matters most), how large, and the likely area (a service, a camera, connectivity
 linking rows that move together (e.g. more crashes and fewer videos uploaded, slower boot and later first frame).
 Ignore changes under 10% unless they cross a baseline or go to / from zero. Only use the given numbers; never
 invent values or causes that the rows do not support. At most {max_callouts} callouts, most important first, each
-one or two plain, specific sentences naming A and B by their labels. Level: critical (B regressed past a baseline
+one or two plain, specific sentences naming the two sides by their labels (the device ID or OTA
+version given), never as "A" or "B". Level: critical (B regressed past a baseline
 or by a large margin), warning (a smaller regression or a notable change), info (an improvement or a neutral
 difference worth knowing).
 Answer with JSON only: {{"callouts": [{{"level": "critical|warning|info", "topic": "<the API or KPI table the
@@ -494,11 +495,11 @@ def _compare_group(labels, section, group, rows, context, max_callouts):
         log.exception('comparison callouts LLM call for %s failed: %s', group, exc)
         error = f'{type(exc).__name__}'
     if not callouts:
-        callouts = _plain_compare_callouts(group, rows, error)
+        callouts = _plain_compare_callouts(labels, group, rows, error)
     return callouts, source, error
 
 
-def _plain_compare_callouts(group, rows, error=None):
+def _plain_compare_callouts(labels, group, rows, error=None):
     out = []
     for r in rows[:8]:
         name = r.get('kpi') or r.get('api') or r.get('code') or r.get('row') or '?'
@@ -506,7 +507,7 @@ def _plain_compare_callouts(group, rows, error=None):
         key = next((k[2:] for k in r if k.startswith('a_') and f'b_{k[2:]}' in r and k[2:] not in ('outside',)), None)
         a, b = (r.get('a'), r.get('b')) if 'a' in r else (r.get(f'a_{key}'), r.get(f'b_{key}')) if key else (None, None)
         basis = f' {key.replace("_", " ")}' if key and 'a' not in r else f' ({r["basis"]})' if r.get('basis') else ''
-        text = (f'{name}{basis}: A {a} vs B {b}' + (f' ({change:+.0f}%)' if isinstance(change, (int, float)) else '')
+        text = (f'{name}{basis}: {labels[0]} {a} vs {labels[1]} {b}' + (f' ({change:+.0f}%)' if isinstance(change, (int, float)) else '')
                 + (' (LLM text unavailable)' if error else ''))
         out.append({'level': 'warning' if r.get('b_outside') and not r.get('a_outside') else 'info',
                     'api': r.get('table') or group, 'kind': 'compare', 'text': text, 'devices': []})
@@ -528,7 +529,7 @@ def build_compare(labels, section, groups, context, max_callouts=8):
             results = list(pool.map(lambda kv: _compare_group(labels, section, kv[0], kv[1], context, max_callouts),
                                     groups.items()))
     else:
-        results = [(_plain_compare_callouts(g, rows), None, None) for g, rows in groups.items()]
+        results = [(_plain_compare_callouts(labels, g, rows), None, None) for g, rows in groups.items()]
     order = list(groups)
     callouts = [c for cs, _, _ in results for c in cs]
     callouts.sort(key=lambda c: (LEVELS.index(c['level']), order.index(c['api']) if c['api'] in order else 99))

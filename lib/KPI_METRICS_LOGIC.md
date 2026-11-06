@@ -437,14 +437,6 @@ no-fix position `91.0000_181.0000`). FPS = frames summed per 10 min / (lines x 5
 | Power Monitor Start after reboot | s | mean of all samples | power-on anchor to "#####STARTING POWER MONITOR#####" in the watchdog boot | `pm_start` (power_mon) | `1793239003547: 695: PWR: E: 5973: 5973: #####STARTING POWER MONITOR#####  [log_prod/103102600722/2026-10-29/power_mon]` |
 | Time taken to Reboot | s | mean of all samples | PARTIAL: last ndcentral/power_mon/svc line of the hung boot to the power monitor start | `pm_start` (power_mon) | `1793239003547: 695: PWR: E: 5973: 5973: #####STARTING POWER MONITOR#####  [log_prod/103102600722/2026-10-29/power_mon]` |
 
-### Installer App - Metrics
-
-| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
-|---|---|---|---|---|---|
-| Ignition ON Detected | s | mean of all samples | power-on anchor to btfv "IGNITION ON received" | `bt_ignition_on` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]` |
-| Scan for Installer App Starts | s | mean of all samples | IGNITION ON to "Inside: RegisterInstallerAppFilter" | `bt_ignition_on` (btfv)<br>`installer_scan_start` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793264889280: 3771: BTMAN: I: 4169: 4169: Inside: RegisterInstallerAppFilter  [105322600008_2026-10-29/btfv.log]` |
-| Scan for Installer App Stops | s | mean of all samples | IGNITION ON to "InstallerApp timeout cb triggered" | `bt_ignition_on` (btfv)<br>`installer_scan_stop` (btfv) | `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`<br>`1793684964356: 127492: BTMAN: I: 3747: 4022: InstallerApp timeout cb triggered  [264080392_2026-11-03/btfv.log]` |
-
 ### Driveri App & BT Beacon - Metrics
 
 | KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
@@ -631,7 +623,6 @@ other than the ones listed.
 | Tegra Watchdog Timeout: Reboot Initiated | &lt;= 0 | the watchdog fires only when a critical service misses keep-alive or svc is not up in 300 s (svc.cpp:119,151,412-434) |
 | Tegra Watchdog Timeout: Power Monitor Start after reboot | &lt;= 30 s | power_monitor.service has no ExecStartPre; wrapper_service.sh waits &lt;= 30 s |
 | Tegra Watchdog Timeout: Time taken to Reboot | &lt;= 125 s; krait: &lt;= 155 s | derived: svc.watchdog_timeout 90 s (BAGHEERA2) + 5 s kick + power_mon start &lt;= 30 s (svc_internal.h:10-23, svc.cpp:125-136) |
-| Installer App - Metrics: Scan for Installer App Stops | &lt;= 121 s | nd_bt_man.cpp:160,173 kInstallerFreshScanTimeout 120 s + 1 s tick |
 | Obs Data Zip Upload - Metrics: Upload Request for Obs zip - Received | &lt;= 2 s | derived: upload threads sleep(1) (uploader.cpp:4679) + 1 s |
 | Retry Count & Duration for API / Upload Calls: videolist - Retry Duration | &lt;= 300 s | circular_buffer.h:54,62 MAX_CLOUD_NOTIFY_RETRY 5, one per 60 s tick |
 | LLA - Metrics: Uploader LLA Notification to the Cloud - API Call Triggering | &lt;= 1 s | derived: LLA queue polled every 400 ms (uploader.cpp:5458) + hand-off |
@@ -657,7 +648,6 @@ taken to mean, and how values in a line are read. Check these first.
 | camera 8 (DMS) lines | 103402300078, 103212503854 | |
 | cameras 4-7 (MDVR) lines | krait2 placeholders (4, 5); 6603062324 / 6603045897 file lines; numbering 4-7 / Octo 4, 5, 6 as given, not tested on Octo logs | MDVR FPS lines not seen |
 | `frame_count` in cam_streamer, `waf` on octo NVMe (`waf is`) | from the source code, not seen in the logs | the line tag (`CAMn:`) of cam_streamer is assumed |
-| `installer_scan_start` / `installer_scan_stop` | 9.6.16, EU krait, some bagheera3 boots | not on every build |
 | `eventdata_fail`, `obs_fail`, `vod_exhausted`, `health_post_failed` | a few lines each | |
 
 ### What a KPI is taken to mean
@@ -1113,23 +1103,7 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - grep text: `IGNITION ON received`
 - Regex: `BTMAN: I: \d+: \d+: (?:\[GEN\] )?IGNITION ON received`
 - Sample: `1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]`
-- Used by: Ignition ON Detected, Scan for Installer App Starts, Scan for Installer App Stops, Ignition ON Detected, Advertising Started, Scan for DriveriApp / BT Beacon Starts, Scan for DriveriApp / BT Beacon Stops
-
-#### `installer_scan_start`
-
-- Service log: `btfv`
-- grep text: `RegisterInstallerAppFilter`
-- Regex: `Inside: RegisterInstallerAppFilter`
-- Sample: `1793264889280: 3771: BTMAN: I: 4169: 4169: Inside: RegisterInstallerAppFilter  [105322600008_2026-10-29/btfv.log]`
-- Used by: Scan for Installer App Starts
-
-#### `installer_scan_stop`
-
-- Service log: `btfv`
-- grep text: `InstallerApp timeout cb triggered` or `ClearInstallerAppFilter`
-- Regex: `InstallerApp timeout cb triggered|Inside: ClearInstallerAppFilter`
-- Sample: `1793684964356: 127492: BTMAN: I: 3747: 4022: InstallerApp timeout cb triggered  [264080392_2026-11-03/btfv.log]`
-- Used by: Scan for Installer App Stops
+- Used by: Ignition ON Detected, Advertising Started, Scan for DriveriApp / BT Beacon Starts, Scan for DriveriApp / BT Beacon Stops
 
 #### `driver_adv_start`
 

@@ -1,5 +1,7 @@
 """
 Comparison report: two OTA reports (lib/ota_report.py ota_report.json) side by side, A and B.
+The page names each side by its label (the device ID or OTA version the comparison was asked
+for), never "A" / "B".
 
     python lib/compare_report.py <A ota_report.json> <B ota_report.json> <out dir> [--label-a X --label-b Y]
 
@@ -38,17 +40,31 @@ MIN_CHANGE_PCT = 10
 # Analytics codes passed to the callouts (largest normalised changes)
 MAX_CODE_ROWS = 25
 
+# Left navigation; KPI Metrics is a group that expands into its tables (filled in render_html)
 NAV = [('overview', 'Overview'), ('drive', 'Drive Summary'), ('feature-sets', 'Feature Set Summary'),
        ('api', 'API Call Summary'), ('callouts', 'Callouts-API Summary'), ('features', 'Feature Level Summary'),
-       ('kpi', 'KPI Summary'), ('kpi-codes', 'Analytics KPIs'), ('kpi-callouts', 'Callouts-KPI Metrics')]
+       ('kpi', 'KPI Metrics'), ('kpi-callouts', 'Callouts-KPI Metrics')]
 
 STYLE = """
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
 .side-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0}
-.side-card .tag{display:inline-block;font-weight:700;font-size:12px;border-radius:6px;padding:1px 8px;margin-right:8px;color:#fff}
-.side-card b{font-size:15px;word-break:break-all}.side-card p{margin:6px 0 0;color:var(--muted);font-size:12.5px}
-.tag.a,th.a{--tag:#2f6fde}.tag.b,th.b{--tag:#a447c9}.tag.a,.tag.b{background:var(--tag)}
-th.a,th.b{color:var(--tag)}
+.side-card{border-left:4px solid var(--tag)}
+.side-card b{font-size:15px;word-break:break-all;color:var(--tag)}.side-card p{margin:6px 0 0;color:var(--muted);font-size:12.5px}
+.a{--tag:#2f6fde}.b{--tag:#a447c9}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .a{--tag:#6ea2ff}:root:not([data-theme="light"]) .b{--tag:#c77ee6}}
+:root[data-theme="dark"] .a{--tag:#6ea2ff}:root[data-theme="dark"] .b{--tag:#c77ee6}
+th.a .who,th.b .who{display:block;color:var(--tag);font-weight:700;white-space:normal;word-break:break-all;max-width:200px}
+.side details.nav-group>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin:2px 0;
+border-radius:8px;color:var(--muted);font-weight:500;cursor:pointer;user-select:none}
+.side details.nav-group>summary::-webkit-details-marker{display:none}
+.side details.nav-group>summary::after{content:"▸";font-size:11px;transition:transform .15s}
+.side details.nav-group[open]>summary::after{transform:rotate(90deg)}
+.side details.nav-group>summary:hover{background:var(--hover);color:var(--fg)}
+.side details.nav-group:has(a.active)>summary{color:var(--accent)}
+.side details.nav-group .sub{margin-left:10px;padding-left:8px;border-left:1px solid var(--line)}
+.side details.nav-group .sub a{padding:5px 10px;font-size:13px}
+.group-head{margin:30px 0 14px;scroll-margin-top:20px}.group-head h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em}
+.group-head .legend-ab{margin:0}
 td.up{color:var(--fail);font-weight:600}td.down{color:var(--pass);font-weight:600}td.chg{font-weight:600}
 td.same{color:var(--none)}.kpi td.warn{background:var(--nt-bg);color:var(--nt);font-weight:600}
 .legend-ab{color:var(--muted);font-size:12.5px;margin:0 0 12px}
@@ -118,12 +134,15 @@ def _chg_cell(a, b, higher_is_worse=None):
     return f'<td class="num {cls}" data-v="{0 if c == float("inf") else round(c, 1)}">{text}</td>'
 
 
-def _ab_head(first, *cols):
-    """Header cells: first, then for each column name an A and a B cell (and the change)."""
-    out = [f'<th>{_esc(first)}</th>']
-    for c in cols:
-        out.append(f'<th class="num a">A {_esc(c)}</th><th class="num b">B {_esc(c)}</th>')
-    return out
+def _th(labels, side, col='', cls='num'):
+    """A header cell of one side: its label (device ID / OTA) on top, then the column name."""
+    k = 'ab'[side]
+    return f'<th class="{cls} {k}"><span class="who">{_esc(labels[side])}</span>{_esc(col)}</th>'
+
+
+def _ab(labels, col):
+    """The two sides' header cells of one column."""
+    return _th(labels, 0, col) + _th(labels, 1, col)
 
 
 def _sortable(head_cells, rows, foot=''):
@@ -165,18 +184,18 @@ def _overview_rows(A, B):
     return [(k, a[k][0], b[k][0], a[k][1], worse.get(k), k not in raw) for k in a]
 
 
-def _overview_section(rows):
+def _overview_section(rows, labels):
     body = []
     for label, a, b, unit, worse, _ in rows:
         body.append(f'<tr><td>{_esc(label)}</td><td class="num">{_fmt(a, unit)}</td><td class="num">{_fmt(b, unit)}</td>'
                     f'{_chg_cell(a, b, worse)}</tr>')
-    head = _ab_head('Metric', '') + ['<th class="num">Change</th>']
+    head = ['<th>Metric</th>', _ab(labels, ''), '<th class="num">Change</th>']
     return ('<section id="drive"><h2>Drive Summary</h2>'
             '<p class="legend-ab">Raw counts first; the rest is per device, per drive hour or a share, so the two sides compare directly.</p>'
             + _sortable(head, body) + '</section>')
 
 
-def _feature_sets_section(A, B):
+def _feature_sets_section(A, B, labels):
     on = lambda S: {f['name']: bool(f['devices_on']) for f in (S['sm'].get('feature_coverage') or [])}
     a, b = on(A), on(B)
     names = sorted(set(a) | set(b), key=str.lower)
@@ -186,9 +205,9 @@ def _feature_sets_section(A, B):
     rows = [f'<tr><td>{_esc(n)}</td>{cell(a.get(n))}{cell(b.get(n))}</tr>'
             for n in sorted(names, key=lambda n: (n not in diff, n.lower()))]
     return ('<section id="feature-sets"><h2>Feature Set Summary</h2><div class="tiles">'
-            + _tile(sum(a.values()), 'A: features enabled') + _tile(sum(b.values()), 'B: features enabled')
+            + _tile(sum(a.values()), f'{labels[0]}: features enabled') + _tile(sum(b.values()), f'{labels[1]}: features enabled')
             + _tile(len(diff), 'Features that differ', dot='c-nt' if diff else None)
-            + '</div>' + (_sortable(['<th>Feature Name</th>', '<th class="a">A</th>', '<th class="b">B</th>'], rows) if rows else '')
+            + '</div>' + (_sortable(['<th>Feature Name</th>', _th(labels, 0, cls=''), _th(labels, 1, cls='')], rows) if rows else '')
             + '</section>'), diff, a, b
 
 
@@ -214,7 +233,7 @@ def _api_rows(A, B):
     return out
 
 
-def _api_section(rows):
+def _api_section(rows, labels):
     body = []
     for api, name, kind, a, b in rows:
         body.append(f'<tr><td>{api}</td><td>{_esc(name)}</td><td>{_esc(kind)}</td>'
@@ -223,10 +242,8 @@ def _api_section(rows):
                     f'{_chg_cell(a["per_h"], b["per_h"])}'
                     f'<td class="num">{_fmt(a["boots_pct"], "%")}</td><td class="num">{_fmt(b["boots_pct"], "%")}</td>'
                     f'<td class="num">{_fmt(a["avg_gap_min"])}</td><td class="num">{_fmt(b["avg_gap_min"])}</td></tr>')
-    head = (['<th>ID</th>', '<th>API</th>', '<th>Type</th>', '<th class="num a">A #Calls</th>', '<th class="num b">B #Calls</th>',
-             '<th class="num a">A Calls / drive h</th>', '<th class="num b">B Calls / drive h</th>', '<th class="num">Change</th>',
-             '<th class="num a">A Boots with calls</th>', '<th class="num b">B Boots with calls</th>',
-             '<th class="num a">A Avg gap (min)</th>', '<th class="num b">B Avg gap (min)</th>'])
+    head = ['<th>ID</th>', '<th>API</th>', '<th>Type</th>', _ab(labels, '#Calls'), _ab(labels, 'Calls / drive h'),
+            '<th class="num">Change</th>', _ab(labels, 'Boots with calls'), _ab(labels, 'Avg gap (min)')]
     return ('<section id="api"><h2>API Call Summary</h2><p class="legend-ab">Compared per drive hour; '
             'boots with calls as a share of each side\'s boots.</p>' + _sortable(head, body) + '</section>')
 
@@ -243,7 +260,7 @@ def _feature_rates(report):
     return out
 
 
-def _features_section(A, B):
+def _features_section(A, B, labels):
     a, b = _feature_rates(A['report']), _feature_rates(B['report'])
     names = sorted(set(a) | set(b), key=lambda n: (-abs((b.get(n, {}).get('fail_pct') or 0) - (a.get(n, {}).get('fail_pct') or 0)), n.lower()))
     rows = []
@@ -256,12 +273,10 @@ def _features_section(A, B):
                     f'<td class="num">{_fmt(x.get("boot_fail_pct"), "%")}</td><td class="num">{_fmt(y.get("boot_fail_pct"), "%")}</td></tr>')
     tot = lambda r: (sum(v['fail_tcs'] for v in r.values()), sum(v['tcs'] for v in r.values()))
     (fa, ta), (fb, tb) = tot(a), tot(b)
-    head = ['<th>Feature Name</th>', '<th class="num a">A #Testcases</th>', '<th class="num b">B #Testcases</th>',
-            '<th class="num a">A #Failing</th>', '<th class="num b">B #Failing</th>',
-            '<th class="num a">A Failure %</th>', '<th class="num b">B Failure %</th>', '<th class="num">Change</th>',
-            '<th class="num a">A Failed boots %</th>', '<th class="num b">B Failed boots %</th>']
-    tiles = ('<div class="tiles">' + _tile(f'{_pct(fa, ta) or 0:.1f}%', 'A: test cases failing') +
-             _tile(f'{_pct(fb, tb) or 0:.1f}%', 'B: test cases failing') + '</div>')
+    head = ['<th>Feature Name</th>', _ab(labels, '#Testcases'), _ab(labels, '#Failing'), _ab(labels, 'Failure %'),
+            '<th class="num">Change</th>', _ab(labels, 'Failed boots %')]
+    tiles = ('<div class="tiles">' + _tile(f'{_pct(fa, ta) or 0:.1f}%', f'{labels[0]}: test cases failing') +
+             _tile(f'{_pct(fb, tb) or 0:.1f}%', f'{labels[1]}: test cases failing') + '</div>')
     return ('<section id="features"><h2>Feature Level Summary</h2>' + tiles + _sortable(head, rows) + '</section>'), a, b
 
 
@@ -338,7 +353,7 @@ def _kpi_cell(value, unit, warn=None):
     return f'<td class="num{flag}" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
 
 
-def _kpi_sections(tables):
+def _kpi_sections(tables, labels):
     out = []
     for title, (tid, basis, rows) in tables.items():
         body = []
@@ -356,18 +371,20 @@ def _kpi_sections(tables):
                         else '<td class="num zero"></td><td class="num zero"></td>')
             body.append(f'<tr><td>{_esc(r["name"])}</td>{_kpi_cell(r["a_p90"], m.unit, r["a_warn"])}'
                         f'{_kpi_cell(r["b_p90"], m.unit, r["b_warn"])}{norm}{chg}</tr>')
-        head = ['<th>KPI</th>', '<th class="num a">A P90</th>', '<th class="num b">B P90</th>']
+        head = ['<th>KPI</th>', _ab(labels, 'P90')]
         if basis:
-            head += [f'<th class="num a">A {BASIS_HEAD[basis]}</th>', f'<th class="num b">B {BASIS_HEAD[basis]}</th>']
+            head.append(_ab(labels, BASIS_HEAD[basis]))
         head.append('<th class="num">Change</th>')
-        sid = 'kpi' if not out else tid
-        out.append(f'<section id="{sid}" class="kpi"><h2>{_esc(title)}</h2>' + _sortable(head, body) + '</section>')
-    if out:
-        out.insert(0, '<p class="legend-ab" style="margin-top:4px">KPI Summary: per boot = counts over the boots of '
-                      'all devices, times averaged over all boots; per drive h = counts per drive hour; other KPIs '
-                      'are compared by their P90 over the devices. Change uses the per boot / per drive h value '
-                      'when there is one. Amber: outside the baseline.</p>')
+        out.append(f'<section id="{tid}" class="kpi"><h2>{_esc(title)}</h2>' + _sortable(head, body) + '</section>')
     return ''.join(out)
+
+
+def _kpi_head():
+    """The KPI Metrics heading over all the KPI tables and the Analytics KPIs."""
+    return ('<div class="group-head" id="kpi"><h2>KPI Metrics</h2><p class="legend-ab">Per boot = counts over the '
+            'boots of all devices, times averaged over all boots; per drive h = counts per drive hour; other KPIs '
+            'are compared by their P90 over the devices. Change uses the per boot / per drive h value when there '
+            'is one. Amber: outside the baseline.</p></div>')
 
 
 def _code_rows(A, B):
@@ -380,12 +397,11 @@ def _code_rows(A, B):
     return rows
 
 
-def _codes_section(rows):
+def _codes_section(rows, labels):
     body = [f'<tr><td>{_esc(r["code"])}</td><td class="num">{r["a_count"]:,}</td><td class="num">{r["b_count"]:,}</td>'
             f'<td class="num">{_fmt(r["a"])}</td><td class="num">{_fmt(r["b"])}</td>{_chg_cell(r["a"], r["b"])}</tr>'
             for r in rows]
-    head = ['<th>Event code</th>', '<th class="num a">A #Alerts</th>', '<th class="num b">B #Alerts</th>',
-            '<th class="num a">A per drive h</th>', '<th class="num b">B per drive h</th>', '<th class="num">Change</th>']
+    head = ['<th>Event code</th>', _ab(labels, '#Alerts'), _ab(labels, 'per drive h'), '<th class="num">Change</th>']
     inner = _sortable(head, body) if rows else '<p class="muted">No alerts on either side.</p>'
     return f'<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>{inner}</section>'
 
@@ -479,9 +495,9 @@ def build(report_a, report_b, labels, out_dir, sides=None):
     A, B = _side(report_a), _side(report_b)
     sides = sides or [{}, {}]
     overview = _overview_rows(A, B)
-    fs_html, features_diff, _, _ = _feature_sets_section(A, B)
+    fs_html, features_diff, _, _ = _feature_sets_section(A, B, labels)
     api_rows = _api_rows(A, B)
-    feat_html, rates_a, rates_b = _features_section(A, B)
+    feat_html, rates_a, rates_b = _features_section(A, B, labels)
     kpi_tables = _kpi_rows(A, B)
     codes = _code_rows(A, B)
     context = _context(A, B, overview, rates_a, rates_b, features_diff)
@@ -507,25 +523,41 @@ def build(report_a, report_b, labels, out_dir, sides=None):
     return doc
 
 
-def _side_card(tag, label, side, S):
+def _side_card(k, label, side, S, ota):
     link = f' · <a href="{_esc(side["href"])}" target="_blank" rel="noopener">Open report ↗</a>' if side.get('href') else ''
-    return (f'<div class="side-card"><span class="tag {tag.lower()}">{tag}</span><b>{_esc(label)}</b>'
+    ota_line = f'<p>OTA {_esc(ota)}</p>' if ota and ota not in label else ''
+    return (f'<div class="side-card {k}"><b>{_esc(label)}</b>{ota_line}'
             f'<p>{_esc(side.get("sub", ""))}{link}</p>'
             f'<p>{S["devices"]} device{"" if S["devices"] == 1 else "s"} · {S["boots"]} boots · '
             f'{S["hours"]:,.1f} h driven{" · " + _esc(S["device_type"]) if S["device_type"] else ""}</p></div>')
 
 
+def _nav(kpi_tables, codes):
+    """Left navigation; KPI Metrics expands into its table headings."""
+    out = []
+    for i, t in NAV:
+        if i != 'kpi':
+            out.append(f'<a href="#{i}">{_esc(t)}</a>')
+            continue
+        subs = [(tid, title) for title, (tid, _, _) in kpi_tables.items()] + [('kpi-codes', 'Analytics KPIs')]
+        out.append(f'<details class="nav-group"><summary>{_esc(t)}</summary><div class="sub">'
+                   + ''.join(f'<a href="#{sid}">{_esc(title)}</a>' for sid, title in subs) + '</div></details>')
+    return ''.join(out)
+
+
 def render_html(doc, A, B, overview, fs_html, api_rows, feat_html, kpi_tables, codes):
-    la, lb = doc['labels']
-    nav = ''.join(f'<a href="#{i}">{_esc(t)}</a>' for i, t in NAV)
+    labels = doc['labels']
+    la, lb = labels
+    otas = doc.get('ota_versions') or [None, None]
     body = [f'<div class="top"><h1>{_esc(la)} vs {_esc(lb)}</h1><span>{_esc(doc["generated_at"])}</span></div>',
             '<section id="overview" style="padding:0;border:0;background:none"><div class="sides">'
-            + _side_card('A', la, doc['sides'][0], A) + _side_card('B', lb, doc['sides'][1], B) + '</div></section>',
-            _overview_section(overview), fs_html, _api_section(api_rows),
+            + _side_card('a', la, doc['sides'][0], A, otas[0]) + _side_card('b', lb, doc['sides'][1], B, otas[1])
+            + '</div></section>',
+            _overview_section(overview, labels), fs_html, _api_section(api_rows, labels),
             _callouts_html(doc['callouts'], 'callouts', 'Callouts-API Summary'),
-            feat_html, _kpi_sections(kpi_tables), _codes_section(codes),
+            feat_html, _kpi_head(), _kpi_sections(kpi_tables, labels), _codes_section(codes, labels),
             _callouts_html(doc['kpi_callouts'], 'kpi-callouts', 'Callouts-KPI Metrics')]
-    return _shell(f'{la} vs {lb}', 'Comparison report', f'{la} vs {lb}', nav, ''.join(body),
+    return _shell(f'{la} vs {lb}', 'Comparison report', f'{la} vs {lb}', _nav(kpi_tables, codes), ''.join(body),
                   f'<script>{REPORT_JS}</script>', STYLE)
 
 

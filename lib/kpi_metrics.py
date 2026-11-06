@@ -213,17 +213,10 @@ KPI_LOG_LINES = {
         'diagnostic', 'Waf is ', r'\b[Ww]af is (?P<waf>[\d.]+)',
         '1793148955065: 41525: WAF_U: I: 6005: 7835: Waf is 1.747442  [103102600722_2026-10-28/diagnostic.log] (1st of a cycle = internal eMMC, 2nd = external; the octo NVMe path logs lower case "waf is")'),
 
-    # ── Installer app / Driveri app (btfv = nd_bt_man) ───────────────────────────────────
+    # ── Driveri app (btfv = nd_bt_man) ─────────────────────────────────────────────────
     'bt_ignition_on': Line(
         'btfv', 'IGNITION ON received', r'BTMAN: I: \d+: \d+: (?:\[GEN\] )?IGNITION ON received',
         '1793684844100: 7236: BTMAN: I: 3747: 3747: IGNITION ON received  [264080392_2026-11-03/btfv.log]'),
-    'installer_scan_start': Line(
-        'btfv', 'RegisterInstallerAppFilter', r'Inside: RegisterInstallerAppFilter',
-        '1793264889280: 3771: BTMAN: I: 4169: 4169: Inside: RegisterInstallerAppFilter  [105322600008_2026-10-29/btfv.log]'),
-    'installer_scan_stop': Line(
-        'btfv', ('InstallerApp timeout cb triggered', 'ClearInstallerAppFilter'),
-        r'InstallerApp timeout cb triggered|Inside: ClearInstallerAppFilter',
-        '1793684964356: 127492: BTMAN: I: 3747: 4022: InstallerApp timeout cb triggered  [264080392_2026-11-03/btfv.log]'),
     'driver_adv_start': Line(
         'btfv', 'Starting Driver Login Advertisement', r'Starting Driver Login Advertisement',
         '1793684844137: 7273: BTMAN: I: 3747: 3747: Starting Driver Login Advertisement  [264080392_2026-11-03/btfv.log]'),
@@ -555,12 +548,6 @@ def _tables():
               ['pm_start'], 'PARTIAL: last ndcentral/power_mon/svc line of the hung boot to the power monitor start'),
         ], ''),
 
-        Table('kpi-installer', 'Installer App - Metrics', [
-            M('inst_ign', 'Ignition ON Detected', 's', 'mean', _first_since_boot('bt_ignition_on'), ['bt_ignition_on'], 'power-on anchor to btfv "IGNITION ON received"'),
-            M('inst_scan_start', 'Scan for Installer App Starts', 's', 'mean', _after_ignition('installer_scan_start'), ['bt_ignition_on', 'installer_scan_start'], 'IGNITION ON to "Inside: RegisterInstallerAppFilter"'),
-            M('inst_scan_stop', 'Scan for Installer App Stops', 's', 'mean', _after_ignition('installer_scan_stop'), ['bt_ignition_on', 'installer_scan_stop'], 'IGNITION ON to "InstallerApp timeout cb triggered"'),
-        ], 'Seconds after btfv ignition on; only builds with the installer scan (9.x, EU) log it.'),
-
         Table('kpi-driveri', 'Driveri App & BT Beacon - Metrics', [
             M('dl_ign', 'Ignition ON Detected', 's', 'mean', _first_since_boot('bt_ignition_on'), ['bt_ignition_on'], 'power-on anchor to btfv "IGNITION ON received"'),
             M('dl_adv', 'Advertising Started', 's', 'mean', _after_ignition('driver_adv_start'), ['bt_ignition_on', 'driver_adv_start'], 'IGNITION ON to "Starting Driver Login Advertisement"'),
@@ -718,8 +705,6 @@ BASELINES = {
     # WAF
     'waf_int': _B(hi=3.0, basis='nd_factory.cpp:2830-2853 alerts above 3.0'),
     'waf_ext': _B(hi=3.0, basis='nd_factory.cpp:2830-2853 alerts above 3.0 (4.0 for WD external parts; the vendor is not logged)'),
-    # Bluetooth
-    'inst_scan_stop': _B(hi=121, basis='nd_bt_man.cpp:160,173 kInstallerFreshScanTimeout 120 s + 1 s tick'),
     # Uploads / LLA
     'ou_received': _B(hi=2, basis='derived: upload threads sleep(1) (uploader.cpp:4679) + 1 s'),
     'rt_videolist_s': _B(hi=300, basis='circular_buffer.h:54,62 MAX_CLOUD_NOTIFY_RETRY 5, one per 60 s tick'),

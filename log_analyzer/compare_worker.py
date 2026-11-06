@@ -82,12 +82,14 @@ def pick_report(item: dict, kind: str) -> tuple[dict, dict]:
 
 
 def _labels(kind: str, items: list[dict], rows: list[dict]) -> list[str]:
+    """What the report calls each side: the device ID or OTA version the comparison was asked for
+    (the report shows a device's OTA on its side card)."""
     if kind == "devices":
-        labels = [f"{it['target']} · {row['ota_version']}" for it, row in zip(items, rows)]
+        labels = [str(it["target"]) for it in items]
     else:
         labels = [row["ota_version"] for row in rows]
     if labels[0] == labels[1]:
-        # Same OTA on both sides: tell them apart by environment, else by run
+        # Same device / OTA on both sides: tell them apart by environment, else by run
         envs = [it.get("environment") for it in items]
         extra = ([ENVIRONMENTS[e]["label"] for e in envs] if envs[0] != envs[1]
                  else [f"run #{it['run_id']}" for it in items])
