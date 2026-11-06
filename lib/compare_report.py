@@ -353,7 +353,8 @@ def _kpi_cell(value, unit, warn=None):
     return f'<td class="num{flag}" data-v="{value}">{_kpi_fmt(value, unit)}</td>'
 
 
-def _kpi_sections(tables, labels):
+def _kpi_sections(tables, labels, codes_html=''):
+    """The KPI table sections, the Analytics KPIs (codes_html) right after the alert tables."""
     out = []
     for title, (tid, basis, rows) in tables.items():
         body = []
@@ -376,7 +377,10 @@ def _kpi_sections(tables, labels):
             head.append(_ab(labels, BASIS_HEAD[basis]))
         head.append('<th class="num">Change</th>')
         out.append(f'<section id="{tid}" class="kpi"><h2>{_esc(title)}</h2>' + _sortable(head, body) + '</section>')
-    return ''.join(out)
+        if tid == 'kpi-alert-upload':
+            out.append(codes_html)
+            codes_html = ''
+    return ''.join(out) + codes_html
 
 
 def _kpi_head():
@@ -539,7 +543,13 @@ def _nav(kpi_tables, codes):
         if i != 'kpi':
             out.append(f'<a href="#{i}">{_esc(t)}</a>')
             continue
-        subs = [(tid, title) for title, (tid, _, _) in kpi_tables.items()] + [('kpi-codes', 'Analytics KPIs')]
+        subs = []
+        for title, (tid, _, _) in kpi_tables.items():
+            subs.append((tid, title))
+            if tid == 'kpi-alert-upload':
+                subs.append(('kpi-codes', 'Analytics KPIs'))
+        if ('kpi-codes', 'Analytics KPIs') not in subs:
+            subs.append(('kpi-codes', 'Analytics KPIs'))
         out.append(f'<details class="nav-group"><summary>{_esc(t)}</summary><div class="sub">'
                    + ''.join(f'<a href="#{sid}">{_esc(title)}</a>' for sid, title in subs) + '</div></details>')
     return ''.join(out)
@@ -555,7 +565,7 @@ def render_html(doc, A, B, overview, fs_html, api_rows, feat_html, kpi_tables, c
             + '</div></section>',
             _overview_section(overview, labels), fs_html, _api_section(api_rows, labels),
             _callouts_html(doc['callouts'], 'callouts', 'Callouts-API Summary'),
-            feat_html, _kpi_head(), _kpi_sections(kpi_tables, labels), _codes_section(codes, labels),
+            feat_html, _kpi_head(), _kpi_sections(kpi_tables, labels, _codes_section(codes, labels)),
             _callouts_html(doc['kpi_callouts'], 'kpi-callouts', 'Callouts-KPI Metrics')]
     return _shell(f'{la} vs {lb}', 'Comparison report', f'{la} vs {lb}', _nav(kpi_tables, codes), ''.join(body),
                   f'<script>{REPORT_JS}</script>', STYLE)

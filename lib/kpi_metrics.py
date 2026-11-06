@@ -235,12 +235,14 @@ KPI_LOG_LINES = {
         '1793684874335: 37471: BTMAN: I: 3747: 4022: DriverLogin legacy scan complete cb triggered  [264080392_2026-11-03/btfv.log]'),
 
     # ── Alerts (session key = video name without the leading camera digit) ─────────────
-    'alerts_contains': Line(
-        'inference', 'alerts.json contains', r'(?<!i)alerts\.json contains (?P<n>\d+) alert\(s\)',
-        '2026-10-28 20:37:23,630 - root - INFO - alerts.json contains 1 alert(s)  [103102600722_2026-10-28/inference.log]'),
-    'alerts_writing': Line(
-        'inference', 'Writing alerts (', r'Writing alerts \((?P<n>\d+)\) to \S*/\d_(?P<key>trip\S+?_y)/alerts\.json',
-        '2026-11-04 05:14:36,714 - src.outwardNonRealTime - INFO - Writing alerts (1) to /home/iriscli/ND_OUTPUT/0_trip002b_part000814_12.9830_77.7513_0.0_1793769193224_y/alerts.json  [264080392_2026-11-04/inference.log] (outward and inward write the same list again: last per session kept)'),
+    # The session's final alert list (after "Removing event_code:X from alerts_data"); the vision
+    # inference logs it once per session, right before moving the session's .STATE file
+    'commn_set': Line(
+        'inference', 'commn_set', r'commn_set .*? event_codes \[(?P<codes>[^\]]*)\]',
+        "2026-11-05 11:22:11,659 - root - INFO - commn_set set() event_codes ['101.0.1.5', '101.0.1.2', '101.0.1.7']  [105322600008_2026-11-05/inference.log] (empty list: no alert; inference_inertial logs its own line too, already in this one)"),
+    'delete_state': Line(
+        'inference', 'to DELETE_STATE', r'Moving \S*/\d_(?P<key>trip\S+?_y)\.STATE to DELETE_STATE',
+        '2026-11-05 09:16:10,713 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip0011_part00067f_12.9881_77.7317_0.0_1793870066250_y.STATE to DELETE_STATE no alerts found, exit code 0  [105322600008_2026-11-05/inference.log]'),
     'upload_state': Line(
         'inference', 'to UPLOAD_STATE', r'Moving \S*/\d_(?P<key>trip\S+?_y)\.STATE to UPLOAD_STATE\s+alerts found',
         '2026-10-28 20:37:23,649 - root - INFO - Moving /home/iriscli/ND_INPUT/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.STATE to UPLOAD_STATE   alerts found, exit code 0  [103102600722_2026-10-28/inference.log]'),
@@ -269,10 +271,6 @@ KPI_LOG_LINES = {
     'video_ok': Line(
         'unifieduploader', 'Upload successful for video: ', r'Upload successful for video: \S*/(?P<cam>\d)_(?P<key>trip\S+?_y)\.mp4',
         '1793219883071: 1591210: UPL: I: 5887: 6362: Upload successful for video: /media/data/nd_sdcard/0_trip1bf3_part00f3cb_34.0137_-118.0565_0.0_1793219747843_y.mp4  [103102600722_2026-10-28/unifieduploader.log]'),
-    'event_code': Line(
-        ('inference', 'inference_inertial'), 'is_alert=1',
-        r'eventutil - INFO - \d+: is_alert=1\s+(?P<code>\d+(?:\.\d+)*) (?P<det>\[[^\]]*\] uuid=[0-9a-f]*)',
-        '2026-10-28 20:37:21,324 - src.eventutil - INFO - 9: is_alert=1  101.1.3.1 [ 38.1s to  41.5s] uuid=d80f856542d846418a8ad4988a276fc1  [103102600722_2026-10-28/inference.log] (alerts only; first line per uuid and time range kept; some codes, e.g. 99.0.0, log an empty uuid)'),
 
     # ── Obs zip upload / retries ─────────────────────────────────────────────────────────
     'obs_req': Line(
@@ -339,28 +337,13 @@ ALIVE_GAP_MS = 20_000
 
 # Lines that come in large numbers: reduced in the day scan
 #   bucket: {key: (bucket ms, group to sum)} -> one hit per bucket and the other groups, with
-#           the sum and n (lines); once: {key: group} -> the first line per value of the group
+#           the sum and n (lines)
 BUCKET = {'frame_count': (600_000, 'frames')}
-# An alert is logged several times; one per uuid and time range in the video (an alert across
-# two videos is two). Without a uuid (99.0.0) the same text again more than ONCE_GAP_MS later
-# is another alert.
-ONCE = {'event_code': 'det'}
-ONCE_GAP_MS = 60_000
-# "alerts.json contains N" and its session's UPLOAD_STATE line, logged right after it
-ALERTS_PAIR_MS = 2_000
+# A commn_set line names no session: the UPLOAD_STATE / DELETE_STATE line logged right after it does
+COMMN_PAIR_MS = 2_000
 # An OTA package size line names no version: the target line logged at most this long before it does
 OTA_TARGET_MS = 5 * 60_000
 
-
-def _first_once(key, ts, groups, last):
-    """Whether this ONCE hit is new (last: {ident: ts of its latest line}, updated)."""
-    value = dict(groups).get(ONCE[key])
-    ident = (key, value)
-    prev = last.get(ident)
-    last[ident] = ts if prev is None else max(prev, ts)
-    if prev is None:
-        return True
-    return bool(value) and value.endswith('uuid=') and abs(ts - prev) > ONCE_GAP_MS
 
 CAMS = {0: 'Outward', 1: 'Inward', 2: 'Left', 3: 'Right',
         4: 'MDVR 4', 5: 'MDVR 5', 6: 'MDVR 6', 7: 'MDVR 7', 8: 'DMS'}
@@ -388,18 +371,43 @@ def _tables():
     cam_names = sorted(CAMS.items())
     return [
         Table('kpi-alerts', 'Alerts Summary', [
-            M('alerts_detected', 'Total Alerts Detected', 'count', 'sum', _alerts_detected,
-              ['alerts_contains', 'upload_state', 'alerts_writing'],
-              'one N per alert session: "alerts.json contains N alert(s)" (its session from the "Moving <session>.STATE to UPLOAD_STATE alerts found" line right after), else the last "Writing alerts (N) to .../<session>/alerts.json"; summed'),
+            M('alerts_detected', 'Total Alerts Detected', 'count', 'sum', _commn_alerts(),
+              ['commn_set'], 'event codes in the session\'s final alert list, inference "commn_set ... event_codes [...]" (one line per session); summed'),
+            M('alerts_uploaded', 'Alerts Uploaded', 'count', 'sum', _commn_alerts('UPLOAD'),
+              ['commn_set', 'upload_state'], 'alerts of the sessions moved to UPLOAD_STATE ("alerts found") right after their commn_set line'),
+            M('alerts_not_uploaded', 'Alerts Not Uploaded (DELETE_STATE)', 'count', 'sum', _commn_alerts('DELETE'),
+              ['commn_set', 'delete_state'], 'alerts of the sessions the device moved to DELETE_STATE ("no alerts found") right after their commn_set line: no event data upload'),
+            M('alerts_unique', 'Total Unique', 'count', 'sum', _count('upload_state', unique=('key',)),
+              ['upload_state'], 'distinct alert sessions moved to UPLOAD_STATE ("alerts found")'),
+            M('alerts_ed_calls', 'Event Data API calls', 'count', 'sum', _count('eventdata_call'),
+              ['eventdata_call'], '"Calling service: .../upload/eventdata" (one per alert session; retries add more)'),
             M('alerts_cards', 'Total Alerts Event Cards published', 'count', 'sum', _count('eventdata_ok', unique=('key',)),
               ['eventdata_ok'], 'distinct sessions with "Upload successful for <session>.mp4" (event data upload)'),
             *[M(f'alerts_video_cam{c}', f'Total Alerts Video uploaded - Cam {c}' + (f' ({n})' if c > 3 else ''), 'count', 'sum',
-                _count('video_ok', unique=('cam', 'key'), where=lambda g, c=c: g['cam'] == str(c)),
-                ['video_ok'], f'distinct videos of cam {c} ({n}) with "Upload successful for video: .../{c}_<session>.mp4"', cam=c)
+                _alert_videos(c), ['video_ok', 'commn_set', 'eventdata_ok'],
+                f'distinct cam {c} ({n}) videos of alert sessions (non-empty commn_set, or an event card) with "Upload successful for video: .../{c}_<session>.mp4"', cam=c)
               for c, n in cam_names],
-            M('alerts_unique', 'Total Unique', 'count', 'sum', _count('upload_state', unique=('key',)),
-              ['upload_state'], 'distinct alert sessions moved to UPLOAD_STATE ("alerts found")'),
         ], 'Counts over the boots of each device.'),
+
+        Table('kpi-alert-upload', 'Alert Upload Time - Metrics', [
+            M('au_rec_start', 'File Recording Start time', 's', 'mean', _alert_step('rec'), ['upload_state', 'lla_msg_send', 'ialerts_found'],
+              'recording start of the alert file (epoch in its name) to the alert detection'),
+            M('au_inertial', 'Inertial Alert Detection', 's', 'mean', _alert_step('inertial'), ['ialerts_found'],
+              'PARTIAL: recording start to inference_inertial "ialerts.json found at .../<session>/" (non-empty)'),
+            M('au_vision', 'Inference / Vision Alert Detection / Processing', 's', 'mean', _alert_step('vision'), ['lla_msg_send', 'upload_state'],
+              'recording start to the earliest of the analytics "msg_send" (real time) and inference UPLOAD_STATE'),
+            M('au_api_trigger', 'Alert Notification to the Cloud - API Call Triggering', 's', 'mean', _alert_step('api_call'), ['eventdata_summary', 'eventdata_call'],
+              'detection to the first /upload/eventdata call of the session (session: the "Summary file size" line before it on the same thread)'),
+            M('au_api_ok', 'Alert Notification to the Cloud - API Call Successful', 's', 'mean', _alert_step('api_ok'), ['eventdata_ok'],
+              'detection to "Upload successful for <session>.mp4"'),
+            *[M(f'au_vod_req_cam{c}', f'Upload Video Request Received from Cloud - {n}', 's', 'mean', _alert_step('vod_req', c), ['vod_req'],
+                f'detection to the first "VOD req received ... video: .../{c}_<session>.mp4"', cam=c) for c, n in cam_names],
+            *[M(f'au_video_ok_cam{c}', f'Upload Video Successful - {n}', 's', 'mean', _alert_step('video_ok', c), ['video_ok'],
+                f'detection to "Upload successful for video: .../{c}_<session>.mp4"', cam=c) for c, n in cam_names],
+            M('au_total', 'Total Time Taken for upload (from alert detection)', 's', 'mean', _alert_step('total'), ['video_ok'],
+              'detection to the last camera\'s video upload success of the session'),
+        ], 'Seconds per alert session (non-empty commn_set, or an event card), averaged. Detection = earliest of '
+           'real-time msg_send, inertial ialerts.json and the inference commn_set / UPLOAD_STATE. "Alert Notification" is the event data upload (every alert has one); the LLA call is in the LLA table.'),
 
         Table('kpi-boot', 'Bootup, Video Recording & Connectivity', [
             M('boot_power_on', 'Device Bootup Time (Power ON)', 's', 'mean', _boot_start_since_power_on,
@@ -566,26 +574,6 @@ def _tables():
             M('dl_scan_start', 'Scan for DriveriApp / BT Beacon Starts', 's', 'mean', _after_ignition('driver_scan_start'), ['bt_ignition_on', 'driver_scan_start'], 'IGNITION ON to "Inside: RegisterDriverLoginLegacyFilter"'),
             M('dl_scan_stop', 'Scan for DriveriApp / BT Beacon Stops', 's', 'mean', _after_ignition('driver_scan_stop'), ['bt_ignition_on', 'driver_scan_stop'], 'IGNITION ON to the first "DriverLogin legacy scan complete cb triggered"'),
         ], 'Seconds after btfv ignition on; only when no driver is logged in.'),
-
-        Table('kpi-alert-upload', 'Alert Upload Time - Metrics', [
-            M('au_rec_start', 'File Recording Start time', 's', 'mean', _alert_step('rec'), ['upload_state', 'lla_msg_send', 'ialerts_found'],
-              'recording start of the alert file (epoch in its name) to the alert detection'),
-            M('au_inertial', 'Inertial Alert Detection', 's', 'mean', _alert_step('inertial'), ['ialerts_found'],
-              'PARTIAL: recording start to inference_inertial "ialerts.json found at .../<session>/" (non-empty)'),
-            M('au_vision', 'Inference / Vision Alert Detection / Processing', 's', 'mean', _alert_step('vision'), ['lla_msg_send', 'upload_state'],
-              'recording start to the earliest of the analytics "msg_send" (real time) and inference UPLOAD_STATE'),
-            M('au_api_trigger', 'Alert Notification to the Cloud - API Call Triggering', 's', 'mean', _alert_step('api_call'), ['eventdata_summary', 'eventdata_call'],
-              'detection to the first /upload/eventdata call of the session (session: the "Summary file size" line before it on the same thread)'),
-            M('au_api_ok', 'Alert Notification to the Cloud - API Call Successful', 's', 'mean', _alert_step('api_ok'), ['eventdata_ok'],
-              'detection to "Upload successful for <session>.mp4"'),
-            *[M(f'au_vod_req_cam{c}', f'Upload Video Request Received from Cloud - {n}', 's', 'mean', _alert_step('vod_req', c), ['vod_req'],
-                f'detection to the first "VOD req received ... video: .../{c}_<session>.mp4"', cam=c) for c, n in cam_names],
-            *[M(f'au_video_ok_cam{c}', f'Upload Video Successful - {n}', 's', 'mean', _alert_step('video_ok', c), ['video_ok'],
-                f'detection to "Upload successful for video: .../{c}_<session>.mp4"', cam=c) for c, n in cam_names],
-            M('au_total', 'Total Time Taken for upload (from alert detection)', 's', 'mean', _alert_step('total'), ['video_ok'],
-              'detection to the last camera\'s video upload success of the session'),
-        ], 'Seconds per alert session, averaged. Detection = earliest of real-time msg_send, inertial ialerts.json and '
-           'inference UPLOAD_STATE. "Alert Notification" is the event data upload (every alert has one); the LLA call is in the LLA table.'),
 
         Table('kpi-obs-upload', 'Obs Data Zip Upload - Metrics', [
             M('ou_received', 'Upload Request for Obs zip - Received', 's', 'mean', _obs_step('received'), ['obs_req'],
@@ -878,8 +866,8 @@ def scan_day(logs_dir, iter_hits):
 
 
 def _reduce(hits):
-    """BUCKET / ONCE keys reduced (see their definitions); hits sorted by time."""
-    out, buckets, seen = [], {}, {}
+    """BUCKET keys reduced (see BUCKET); hits sorted by time."""
+    out, buckets = [], {}
     for key, ts, groups in sorted(hits, key=lambda h: h[1]):
         if key in BUCKET:
             size, total = BUCKET[key]
@@ -888,9 +876,6 @@ def _reduce(hits):
             b = buckets.setdefault((key, ts // size, rest), [ts, 0, 0])
             b[1] += int(g[total])
             b[2] += 1
-        elif key in ONCE:
-            if _first_once(key, ts, groups, seen):
-                out.append((key, ts, groups))
         else:
             out.append((key, ts, groups))
     for (key, _, rest), (ts, total, n) in buckets.items():
@@ -913,10 +898,7 @@ class Device:
 
     def __init__(self, hits, boots, details=None, fallback=None):
         self.lines = defaultdict(list)
-        seen = {}
         for key, ts, groups in sorted(hits, key=lambda h: (h[1], h[0])):
-            if key in ONCE and not _first_once(key, ts, groups, seen):
-                continue
             self.lines[key].append(Hit(ts, dict(groups)))
         self.power_ons = self._power_ons()
         self.boots = sorted((b for b in boots if b.get('start') is not None), key=lambda b: b['start'])
@@ -1094,22 +1076,49 @@ def _ota_package_size(d):
     return out
 
 
-def _alerts_detected(d):
-    """(ts, N) per alert session, so no session is counted twice: N from "alerts.json contains N"
-    (it names no session: the UPLOAD_STATE line logged right after it does), else from the last
-    "Writing alerts (N)" of the session (outward and inward write the same list again)."""
-    ups = d.hits('upload_state')
-    up_ts = [h.ts for h in ups]
-    per, final = {}, set()
-    for h in d.hits('alerts_contains'):
-        i = bisect.bisect_left(up_ts, h.ts)
-        if i < len(ups) and ups[i].ts - h.ts <= ALERTS_PAIR_MS:
-            per[ups[i].g['key']] = (h.ts, int(h.g['n']))
-            final.add(ups[i].g['key'])
-    for h in d.hits('alerts_writing'):
-        if h.g['key'] not in final:
-            per[h.g['key']] = (h.ts, int(h.g['n']))
-    return list(per.values())
+def _commn_sessions(d):
+    """[{'ts', 'codes', 'key', 'state'}] per inference "commn_set" line: the session's final alert
+    codes; key / state ('UPLOAD' / 'DELETE') from the .STATE move logged right after it (None
+    when not found)."""
+    if 'commn' in d._cache:
+        return d._cache['commn']
+    moves = sorted([(h.ts, h.g['key'], 'UPLOAD') for h in d.hits('upload_state')]
+                   + [(h.ts, h.g['key'], 'DELETE') for h in d.hits('delete_state')])
+    move_ts = [m[0] for m in moves]
+    out = []
+    for h in d.hits('commn_set'):
+        i = bisect.bisect_left(move_ts, h.ts)
+        key, state = (moves[i][1], moves[i][2]) if i < len(moves) and moves[i][0] - h.ts <= COMMN_PAIR_MS else (None, None)
+        out.append({'ts': h.ts, 'codes': re.findall(r"'([^']*)'", h.g['codes']), 'key': key, 'state': state})
+    d._cache['commn'] = out
+    return out
+
+
+def _alert_keys(d):
+    """Alert sessions: a non-empty commn_set list, or an event card (its inference log may not be
+    uploaded yet)."""
+    if 'alert_keys' not in d._cache:
+        d._cache['alert_keys'] = ({s['key'] for s in _commn_sessions(d) if s['codes'] and s['key']}
+                                  | {h.g['key'] for h in d.hits('eventdata_ok')})
+    return d._cache['alert_keys']
+
+
+def _commn_alerts(state=None):
+    """(ts, number of alerts) per session with alerts (of the given outcome)."""
+    return lambda d: [(s['ts'], len(s['codes'])) for s in _commn_sessions(d)
+                      if s['codes'] and (state is None or s['state'] == state)]
+
+
+def _alert_videos(cam):
+    """1 per distinct uploaded video of the camera of an alert session."""
+    def fn(d):
+        keys, out, seen = _alert_keys(d), [], set()
+        for h in d.hits('video_ok'):
+            if h.g['cam'] == str(cam) and h.g['key'] in keys and h.g['key'] not in seen:
+                seen.add(h.g['key'])
+                out.append((h.ts, 1))
+        return out
+    return fn
 
 
 def _last_text(*sources, fmt=None):
@@ -1426,7 +1435,8 @@ def _rec_epoch(key):
 
 def _alert_sessions(d):
     """{session key: {'det', 'rec', 'inertial', 'vision', 'api_call', 'api_ok', ('vod_req', cam),
-    ('video_ok', cam)}} epoch ms of each step of an alert session."""
+    ('video_ok', cam)}} epoch ms of each step of an alert session (_alert_keys) with a detection
+    time (real-time msg_send, inference commn_set / UPLOAD_STATE, inertial ialerts.json)."""
     if 'alerts' in d._cache:
         return d._cache['alerts']
     s = defaultdict(dict)
@@ -1439,10 +1449,14 @@ def _alert_sessions(d):
         first(h.g['key'], 'rt', h.ts)
     for h in d.hits('upload_state'):
         first(h.g['key'], 'nrt', h.ts)
+    for sess in _commn_sessions(d):
+        if sess['codes'] and sess['key']:
+            first(sess['key'], 'nrt', sess['ts'])
     for h in d.hits('ialerts_found'):
         if int(h.g['size']) > 31:  # 31 bytes = empty alert list
             first(h.g['key'], 'inertial', h.ts)
-    sessions = {k: v for k, v in s.items() if v}
+    keys = _alert_keys(d)
+    sessions = {k: v for k, v in s.items() if v and k in keys}
     # eventdata calls carry no session: it is the last "Summary file size" on the same thread
     last_summary = {}
     for h in d.hits('eventdata_summary', 'eventdata_call'):
@@ -1470,28 +1484,66 @@ def _alert_sessions(d):
     return sessions
 
 
-def _alert_step(step, cam=None):
-    def fn(d):
-        out = []
-        for steps in _alert_sessions(d).values():
-            det, rec = steps['det'], steps['rec']
-            if step == 'rec':
-                if rec:
-                    out.append((det, (det - rec) / 1000))
-            elif step in ('inertial', 'vision'):
-                if rec and step in steps:
-                    out.append((steps[step], (steps[step] - rec) / 1000))
-            elif step == 'total':
-                done = [t for k, t in steps.items() if isinstance(k, tuple) and k[0] == 'video_ok']
-                if done and max(done) >= det:
-                    out.append((max(done), (max(done) - det) / 1000))
-            else:
-                t = steps.get((step, cam) if cam is not None else step)
-                if t is not None and t >= det:
-                    out.append((t, (t - det) / 1000))
-        return out
-    return fn
+# Alert Upload Time KPIs given per session in the alert sessions CSV (alert_session_rows)
+ALERT_CSV_STEPS = [('au_rec_start', 'rec'), ('au_inertial', 'inertial'), ('au_vision', 'vision'),
+                   ('au_api_trigger', 'api_call'), ('au_api_ok', 'api_ok'),
+                   *[(f'au_vod_req_cam{c}', ('vod_req', c)) for c in CAMS],
+                   *[(f'au_video_ok_cam{c}', ('video_ok', c)) for c in CAMS], ('au_total', 'total')]
 
+
+def _session_step(steps, step):
+    """(ts, seconds) of one Alert Upload Time step of one alert session, or None; ts places the
+    sample in its boot."""
+    det, rec = steps['det'], steps['rec']
+    if step == 'rec':
+        return (det, (det - rec) / 1000) if rec else None
+    if step in ('inertial', 'vision'):
+        return (steps[step], (steps[step] - rec) / 1000) if rec and step in steps else None
+    if step == 'total':
+        done = [t for k, t in steps.items() if isinstance(k, tuple) and k[0] == 'video_ok']
+        return (max(done), (max(done) - det) / 1000) if done and max(done) >= det else None
+    t = steps.get(step)
+    return (t, (t - det) / 1000) if t is not None and t >= det else None
+
+def alert_session_rows(device, boot_indexes):
+    """One dict per alert session (_alert_keys) of the given boots, for the alert sessions CSV:
+    'boot' (index), 'session', 'processed' (epoch ms of its commn_set line), 'codes', 'state',
+    'eventdata_calls', 'card', 'videos' (cams), and the Alert Upload Time seconds by metric id."""
+    wanted = set(boot_indexes)
+    commn = {s['key']: s for s in _commn_sessions(device) if s['key'] and s['codes']}
+    steps_of = _alert_sessions(device)
+    calls = Counter()
+    last_summary = {}
+    for h in device.hits('eventdata_summary', 'eventdata_call'):
+        if 'key' in h.g:
+            last_summary[h.g['tid']] = h.g['key']
+        elif h.g['tid'] in last_summary:
+            calls[last_summary[h.g['tid']]] += 1
+    cards = {h.g['key']: h.ts for h in device.hits('eventdata_ok')}
+    videos = defaultdict(set)
+    for h in device.hits('video_ok'):
+        videos[h.g['key']].add(int(h.g['cam']))
+    rows = []
+    for key in _alert_keys(device):
+        sess, steps = commn.get(key), steps_of.get(key)
+        ts = sess['ts'] if sess else (steps or {}).get('det') or cards.get(key)
+        boot = device.boot_of(ts) if ts is not None else None
+        if boot not in wanted:
+            continue
+        row = {'boot': boot, 'session': key, 'processed': sess['ts'] if sess else None,
+               'codes': sess['codes'] if sess else [], 'state': sess['state'] if sess else None,
+               'eventdata_calls': calls.get(key, 0), 'card': key in cards, 'videos': sorted(videos.get(key, ())),
+               'rec': _rec_epoch(key)}
+        for mid, step in ALERT_CSV_STEPS:
+            v = _session_step(steps, step) if steps else None
+            row[mid] = round(v[1], 3) if v else None
+        rows.append(row)
+    return sorted(rows, key=lambda r: r['rec'] or r['processed'] or 0)
+
+
+def _alert_step(step, cam=None):
+    step = (step, cam) if cam is not None else step
+    return lambda d: [v for v in (_session_step(steps, step) for steps in _alert_sessions(d).values()) if v]
 
 def _obs_batches(d):
     """[{'rt', 'req', 'zip_start', 'zip_done', 'call', 'uploaded'}] per obs batch: the lines
@@ -1602,7 +1654,7 @@ STARTUP_METRICS = {m.id for t in KPI_TABLES if t.id == 'kpi-boot' for m in t.met
 
 
 def compute(device, boot_indexes):
-    """{boot index: {metric id: [values]}, '_codes': {code: unique events}} for the given
+    """{boot index: {metric id: [values]}, '_codes': {code: alerts}} for the given
     boots (the reported ones) from a Device; every sample goes to the boot its time is in."""
     wanted = set(boot_indexes)
     result = {b: defaultdict(list) for b in wanted}
@@ -1622,11 +1674,11 @@ def compute(device, boot_indexes):
             b = device.boot_of(ts)
             if b in wanted:
                 result[b][metric.id].append(value)
-    for h in device.hits('event_code'):
-        b = device.boot_of(h.ts)
-        if b in wanted:
-            codes = result[b].setdefault('_codes', Counter())
-            codes[h.g['code']] += 1
+    # Analytics KPIs: the codes of each session's final alert list (commn_set)
+    for sess in _commn_sessions(device):
+        b = device.boot_of(sess['ts'])
+        if b in wanted and sess['codes']:
+            result[b].setdefault('_codes', Counter()).update(sess['codes'])
     return {b: dict(v) for b, v in result.items()}
 
 

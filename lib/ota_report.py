@@ -50,6 +50,7 @@ Usage:
 import argparse
 import bisect
 import contextlib
+import csv
 import errno
 import fcntl
 import gzip
@@ -831,10 +832,15 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         # No time_sync boot at all: the KPIs of the date range go to the one boot (Log not available)
         fallback = ((0, run_start_ms(start), range_end_ms(end))
                     if 0 in reported and not any(b['start'] is not None for b in all_boots) else None)
-        kpi_samples = kpi_metrics.compute(kpi_metrics.Device(kpi_hits, all_boots, reported, fallback), reported)
+        kpi_device = kpi_metrics.Device(kpi_hits, all_boots, reported, fallback)
+        kpi_samples = kpi_metrics.compute(kpi_device, reported)
         for index, detail in reported.items():
             detail['kpi'] = kpi_metrics.boot_values(kpi_samples.get(index, {}))
-        del kpi_hits
+        alert_rows = defaultdict(list)
+        for row in kpi_metrics.alert_session_rows(kpi_device, reported):
+            detail = reported[row['boot']]
+            alert_rows[detail['ota']].append(dict(row, device=device, boot_start=detail['start_fmt']))
+        del kpi_hits, kpi_device
     read_override_values(device, llm_jobs, timings)
     summaries = {}
     for ota, boot_details in detail_by_ota.items():
@@ -844,6 +850,10 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         kpi_summary = kpi_metrics.summarize([kpi_samples.get(b['index'], {}) for b in boot_details])
         doc = device_doc(device, ota, range_days, boot_details, ini_keys)
         doc['kpi_summary'] = kpi_summary
+        if alert_rows.get(ota):
+            doc['alert_sessions_csv'] = f'{device}_alert_sessions.csv'
+            doc['alert_sessions'] = len(alert_rows[ota])
+            write_alert_sessions_csv(out_dir / doc['alert_sessions_csv'], alert_rows[ota])
         # The HTML page is written once the features are known (complete_device_reports)
         with open(out_dir / f'{device}.json', 'w') as f:
             json.dump(doc, f, separators=(',', ':'))
@@ -853,6 +863,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         summaries[ota]['drive'] = doc['drive_summary']
         summaries[ota]['api'] = doc['api_summary']
         summaries[ota]['kpi'] = kpi_summary
+        summaries[ota]['alert_sessions'] = alert_rows.get(ota, [])
         summaries[ota]['profiles'] = profiles.get(ota, {})
         # Days whose upload has detailed logs: only those carry the override information
         summaries[ota]['detailed_days'] = sorted(r['day'] for r in in_range if r['detailed'])
@@ -882,6 +893,34 @@ def _pass_steps(steps):
 def _required(step, steps):
     has_required = any(s['expect'] == 'present' for s in steps)
     return step['expect'] == 'present' or (step['expect'] == 'info' and not has_required)
+
+
+def _utc(ms):
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S') if ms else ''
+
+
+def write_alert_sessions_csv(path, rows):
+    """Alert sessions CSV (kpi_metrics.alert_session_rows + device / boot_start): one row per
+    alert session with its final event codes, what was uploaded and its Alert Upload Time
+    seconds. Camera columns of MDVR / DMS cameras only when some session has a value."""
+    cams = sorted({c for r in rows for c in r['videos']} | {c for c in kpi_metrics.CAMS if c <= 3}
+                  | {c for r in rows for c in kpi_metrics.CAMS
+                     if r.get(f'au_vod_req_cam{c}') is not None or r.get(f'au_video_ok_cam{c}') is not None})
+    steps = [mid for mid, _ in kpi_metrics.ALERT_CSV_STEPS
+             if not (mid[-4:-1] == 'cam' and int(mid[-1]) not in cams)]
+    outcome = {'UPLOAD': 'Uploaded', 'DELETE': 'Not uploaded (DELETE_STATE)'}
+    head = (['Device ID', 'Boot start', 'Session', 'Recording start (UTC)', 'Processed (UTC)', 'Event codes',
+             'Alerts', 'Outcome', 'Event Data API calls', 'Event card published', 'Videos uploaded (cams)']
+            + [f'{kpi_metrics.METRICS[mid].name} (s)' for mid in steps])
+    with open(path, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(head)
+        for r in sorted(rows, key=lambda r: (r['device'], r['rec'] or r['processed'] or 0)):
+            state = outcome.get(r['state']) or ('Uploaded (inference log not uploaded yet)' if r['card'] else '')
+            w.writerow([r['device'], r['boot_start'], r['session'], _utc(r['rec']), _utc(r['processed']),
+                        ' '.join(r['codes']), len(r['codes']) if r['processed'] else '', state, r['eventdata_calls'],
+                        'yes' if r['card'] else 'no', ' '.join(map(str, r['videos']))]
+                       + ['' if r.get(mid) is None else r[mid] for mid in steps])
 
 
 def device_doc(device, ota, days, boot_details, ini_keys):
@@ -1546,6 +1585,16 @@ td.zero{color:var(--none)}
 #cloud-config h3{font-size:13.5px;margin:18px 0 0}#cloud-config code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .keybox{max-height:180px;overflow-y:auto;padding:4px 0;line-height:1.7}
 tfoot td{font-weight:600;background:var(--head);position:sticky;bottom:0}
+.kpi-row{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:20px}
+.kpi-row>section{flex:1 1 300px;margin-bottom:0;min-width:0;padding:20px 18px}
+.kpi-row th,.kpi-row td{padding:8px 10px}.kpi-row td:first-child{text-wrap:pretty}
+.kpi-row .kpi .tbl{width:auto}.kpi-row .kpi table{width:100%}
+.kpi-row th,.kpi-row td:first-child{white-space:normal}.kpi-row tfoot td{white-space:nowrap}
+h2.with-action{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+a.dl{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--accent);
+border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--card);white-space:nowrap}
+a.dl:hover{background:var(--accent-bg);border-color:var(--accent);text-decoration:none}
+a.dl svg{width:14px;height:14px;flex:none}
 .kpi .tbl{width:fit-content;max-width:100%}.kpi td.warn{background:var(--nt-bg);color:var(--nt);font-weight:600}.kpi table{width:auto}.kpi td.text{max-width:420px;white-space:normal}
 .n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
@@ -1880,10 +1929,10 @@ KPI_NO_UNIT = {'count', 'WAF', 'text'}
 
 
 def _kpi_group_sections(value_of, shown, value_head, device_type=None):
-    """One section per KPI table (lib/kpi_metrics.KPI_TABLES): a row per KPI, its name with the
-    unit, and value_of(metric), amber when outside its baseline (kpi_metrics.BASELINES) for the
-    device type. Camera rows of other product lines (MDVR, DMS) only when shown(metric) says
-    some value exists."""
+    """[(table id, section)] per KPI table (lib/kpi_metrics.KPI_TABLES): a row per KPI, its name
+    with the unit, and value_of(metric), amber when outside its baseline (kpi_metrics.BASELINES)
+    for the device type. Camera rows of other product lines (MDVR, DMS) only when shown(metric)
+    says some value exists."""
     out = []
     for table in kpi_metrics.KPI_TABLES:
         rows = []
@@ -1895,9 +1944,30 @@ def _kpi_group_sections(value_of, shown, value_head, device_type=None):
             value = value_of(m)
             warn = kpi_metrics.baseline_issue(m.id, value, device_type)
             rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit, warn)}</tr>')
-        out.append(f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
-                   + _table(['KPI', value_head], rows) + '</section>')
+        out.append((table.id, f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
+                              + _table(['KPI', value_head], rows) + '</section>'))
     return out
+
+
+DOWNLOAD_ICON = ('<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" '
+                 'stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8m-3.2-3.2L8 10.5l3.2-3.2M3 13.5h10"/></svg>')
+# The alert tables, shown side by side at the top of the KPIs
+ALERT_ROW = ('kpi-alerts', 'kpi-alert-upload', 'kpi-codes')
+
+
+def _kpi_layout(sections, codes_section, csv_href=None, csv_sessions=0):
+    """The KPI sections in order, the Analytics KPIs next to the alert tables: Alerts Summary,
+    Alert Upload Time and Analytics KPIs side by side, with the alert sessions CSV download on
+    the Alerts Summary heading."""
+    by_id = dict(sections + [('kpi-codes', codes_section)])
+    if csv_href:
+        title = '<h2>Alerts Summary</h2>'
+        link = (f'<a class="dl" href="{_esc(csv_href)}" download title="Every alert session: final event codes, '
+                f'outcome, uploads and Alert Upload Time per session">{DOWNLOAD_ICON}Alert sessions CSV '
+                f'<span class="muted">({csv_sessions:,})</span></a>')
+        by_id['kpi-alerts'] = by_id['kpi-alerts'].replace(title, f'<h2 class="with-action">Alerts Summary {link}</h2>', 1)
+    row = '<div class="kpi-row">' + ''.join(by_id[i] for i in ALERT_ROW) + '</div>'
+    return row + ''.join(html for tid, html in sections if tid not in ALERT_ROW)
 
 
 def _kpi_sections(report, sm):
@@ -1912,31 +1982,32 @@ def _kpi_sections(report, sm):
         col = columns.get(m.id) or {}
         return col.get('common') if m.unit == 'text' else col.get('p90')
 
-    out = _kpi_group_sections(value_of, lambda m: any(m.id in v for v in values.values()), '#P90',
-                              device_type_for_ota(report.get('ota_version')))
+    sections = _kpi_group_sections(value_of, lambda m: any(m.id in v for v in values.values()), '#P90',
+                                   device_type_for_ota(report.get('ota_version')))
     codes = kpi.get('event_codes') or []
     rows = [f'<tr><td>{_esc(c["code"])}</td><td class="num" data-v="{c["count"]}">{c["count"]:,}</td>'
             f'<td class="num">{c["devices"]}</td>{_kpi_cell(c["p90"], "count")}</tr>' for c in codes]
-    body = (_table(['Event code', '#Unique events', '#Devices', '#P90 per device'], rows,
+    body = (_table(['Event code', '#Alerts', '#Devices', '#P90 per device'], rows,
                    foot=f'<tfoot><tr><td>Total ({len(codes)} codes)</td><td class="num">{sum(c["count"] for c in codes):,}</td>'
                         '<td></td><td></td></tr></tfoot>')
-            if codes else '<p class="muted">No event codes logged.</p>')
-    out.append('<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>')
-    return ''.join(out)
+            if codes else '<p class="muted">No alerts.</p>')
+    codes_section = '<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>'
+    csv_info = report.get('alert_sessions_csv') or {}
+    return _kpi_layout(sections, codes_section, csv_info.get('file'), csv_info.get('sessions', 0))
 
 
-def _device_kpi_sections(kpi_summary, device_type=None):
+def _device_kpi_sections(kpi_summary, device_type=None, csv_href=None, csv_sessions=0):
     """Device page: each KPI with the device's value over its boots on this OTA (sum / mean /
     latest / % as the KPI says, kpi_metrics.summarize). Analytics KPIs: a row per code."""
     metrics = (kpi_summary or {}).get('metrics') or {}
-    out = _kpi_group_sections(lambda m: (metrics.get(m.id) or [None])[0], lambda m: m.id in metrics, '#Value', device_type)
+    sections = _kpi_group_sections(lambda m: (metrics.get(m.id) or [None])[0], lambda m: m.id in metrics, '#Value', device_type)
     codes = sorted(((kpi_summary or {}).get('event_codes') or {}).items(), key=lambda kv: (-kv[1], kv[0]))
     rows = [f'<tr><td>{_esc(code)}</td><td class="num" data-v="{n}">{n:,}</td></tr>' for code, n in codes]
-    body = (_table(['Event code', '#Unique events'], rows,
+    body = (_table(['Event code', '#Alerts'], rows,
                    foot=f'<tfoot><tr><td>Total ({len(codes)} codes)</td><td class="num">{sum(n for _, n in codes):,}</td></tr></tfoot>')
-            if codes else '<p class="muted">No event codes logged.</p>')
-    out.append('<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>')
-    return '\n'.join(out)
+            if codes else '<p class="muted">No alerts.</p>')
+    codes_section = '<section id="kpi-codes" class="kpi"><h2>Analytics KPIs</h2>' + body + '</section>'
+    return _kpi_layout(sections, codes_section, csv_href, csv_sessions)
 
 
 def render_html(report):
@@ -2280,7 +2351,8 @@ def render_device_html(doc):
     else:
         nav = [n for n in nav if n[0] != 'api']
     if doc.get('kpi_summary'):
-        out.append(_device_kpi_sections(doc['kpi_summary'], device_type_for_ota(ota)))
+        out.append(_device_kpi_sections(doc['kpi_summary'], device_type_for_ota(ota), doc.get('alert_sessions_csv'),
+                                        doc.get('alert_sessions', 0)))
     else:
         nav = [n for n in nav if n[0] != 'kpi-alerts']
 
@@ -2569,6 +2641,10 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
         with timed(log, 'write_ota_report_files', timings, ota=ota):
             out_dir = report_dir / ota
             out_dir.mkdir(parents=True, exist_ok=True)
+            alert_rows = [r for s in device_summaries.values() for r in s.get('alert_sessions') or []]
+            if alert_rows:
+                write_alert_sessions_csv(out_dir / 'alert_sessions.csv', alert_rows)
+                report['alert_sessions_csv'] = {'file': 'alert_sessions.csv', 'sessions': len(alert_rows)}
             with open(out_dir / 'ota_report.json', 'w') as f:
                 json.dump(report, f, separators=(',', ':'))
             with open(out_dir / 'ota_report.html', 'w') as f:
