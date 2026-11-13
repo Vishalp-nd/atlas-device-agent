@@ -324,6 +324,32 @@ KPI_LOG_LINES = {
         'unifieduploader', '"uploadstart"',
         r'"lla_(?P<uuid>[0-9a-f]{32})_(?P<n>\d+)": \{"uploadstart": (?P<start>\d{13}), "uploadend": (?P<end>\d{13}), "status": "(?P<status>pass|fail)"',
         '1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]'),
+
+    # ── Health Central (component health upload; thr = "pid: tid" of the upload thread) ──
+    'hc_config': Line(
+        'health_central', 'Config (re)loaded: enabled=',
+        r'HCTR: I: \d+: \d+: Config \(re\)loaded: enabled=(?P<enabled>\d+) .*?upload_max_pending_interval_secs=(?P<interval>\d+) \((?P<source>[^)]*)\)',
+        '1794380702308: 1867: HCTR: I: 5944: 5944: Config (re)loaded: enabled=1 upload_max_pending_bytes=262144 upload_max_pending_interval_secs=3600 (bagheera_config.ini/default) max_pending_storage_bytes=2097152 session_log_max_bytes=2097152  [103182502310_2026-11-11/health_central.log]'),
+    'hc_interval': Line(
+        'health_central', ('upload interval ', 'Upload interval '),
+        r'HCTR: I: \d+: \d+: .*?[Uu]pload interval (?:\d+s -> )?(?P<interval>\d+)s \(server payloadFrequencyMinutes',
+        '1794379623142: 6143735: HCTR: I: 6013: 6501: Upload interval 3600s -> 3600s (server payloadFrequencyMinutes 60)  [103182502310_2026-11-11/health_central.log]'),
+    'hc_attempt': Line(
+        'health_central', 'attempt_upload: starting',
+        r'HCTR: I: (?P<thr>\d+: \d+): attempt_upload: starting, udid=(?P<udid>\d+) payloadId=(?P<payload>\d+) attempt=(?P<n>\d+)',
+        '1794379619596: 6140189: HCTR: I: 6013: 6501: attempt_upload: starting, udid=353 payloadId=1 attempt=1, 1 pending session(s)  [103182502310_2026-11-11/health_central.log]'),
+    'hc_call': Line(
+        'health_central', 'Uploading component health to',
+        r'UPLDCLIENT: I: (?P<thr>\d+: \d+): Uploading component health to \S+/upload/component-health',
+        '1794379619765: 6140358: UPLDCLIENT: I: 6013: 6501: Uploading component health to https://idms-staging.netradyne.com/restserver/api/v1/upload/component-health  [103182502310_2026-11-11/health_central.log]'),
+    'hc_ok': Line(
+        'health_central', 'Upload succeeded for',
+        r'HCTR: I: (?P<thr>\d+: \d+): Upload succeeded for (?P<sessions>\d+) session\(s\) \(udid=(?P<udid>\d+) payloadId=(?P<payload>\d+)',
+        '1794379623143: 6143736: HCTR: I: 6013: 6501: Upload succeeded for 1 session(s) (udid=353 payloadId=1 sessionId 30668-30668): {"response":true,"status":"Payload saved",...  [103182502310_2026-11-11/health_central.log]'),
+    'hc_response': Line(
+        'health_central', 'Upload response (HTTP',
+        r'UPLDCLIENT: I: (?P<thr>\d+: \d+): Upload response \(HTTP (?P<http>\d+)\): .*?"missingPayloads":\[(?P<missing>.?)',
+        '1794379623123: 6143716: UPLDCLIENT: I: 6013: 6501: Upload response (HTTP 200): {"response":true,"status":"Payload saved","payloadFrequencyMinutes":60,"missingPayloads":[{"payloadIds":[],"afterPayloadId":0,"udId":1},...  [103182502310_2026-11-11/health_central.log] (the line is cut at ~300 chars, so only whether the list is empty is read)'),
 }
 
 # Services whose detailed log is also read for its gaps: the last line before a silence of
@@ -623,6 +649,20 @@ def _tables():
             M('lla_retry_s', 'LLA retry duration', 's', 'mean', _lla_step('retry_time'), ['lla_hs_result'],
               'uploadend of attempt 0 to the passing (or last) attempt\'s uploadend, for LLAs that retried'),
         ], 'Seconds per LLA (alert uuid), averaged. LLA is sent only for whitelisted real-time codes.'),
+
+        Table('kpi-health-central', 'Health Central API - Metrics', [
+            M('hc_attempted', 'Health Central API - Attempted', 'count', 'sum', _count('hc_call'), ['hc_call'],
+              'UPLDCLIENT "Uploading component health to .../upload/component-health" (one per API call, retries included)'),
+            M('hc_success', 'Health Central API - Successful', 'count', 'sum', _count('hc_ok'), ['hc_ok'],
+              'HCTR "Upload succeeded for N session(s) (udid=U payloadId=P ...)"'),
+            M('hc_failed', 'Health Central API - Failed', 'count', 'sum', _hc_failed, ['hc_call', 'hc_ok'],
+              'a call with no "Upload succeeded" on the same thread before that thread\'s next call (or ever)'),
+            M('hc_upload_s', 'Health Central Upload Duration', 's', 'mean', _between('hc_attempt', 'hc_ok', pair='thr', start='last'),
+              ['hc_attempt', 'hc_ok'], '"attempt_upload: starting" to its "Upload succeeded" (same thread; a retried upload from its last attempt)'),
+            M('hc_missing', 'Uploads with Missing Payloads reported by server', 'count', 'sum',
+              _count('hc_response', where=lambda g: g.get('missing') == '{'), ['hc_response'],
+              'reply with a non-empty "missingPayloads":[{...}] (payloads the server never got; the line is cut, so not how many)'),
+        ], 'Counts summed over the boots (0 only in boots where health_central ran); duration in seconds per upload, averaged.'),
     ]
 
 
@@ -705,6 +745,8 @@ BASELINES = {
     'lla_api_trigger': _B(hi=1, basis='derived: LLA queue polled every 400 ms (uploader.cpp:5458) + hand-off'),
     'lla_api_ok': _B(hi=40.4, basis='derived: 400 ms queue + lla_retry_limit 3 attempts x 10 s timeout + 2 x LLA_RETRY_SLEEP 5 s (uploader.cpp:108-116,630-649)'),
     'lla_retry_s': _B(hi=30, basis='derived: 2 retries x (LLA_RETRY_SLEEP 5 s + 10 s timeout) (uploader.cpp:114-116)'),
+    # Health Central
+    'hc_missing': _B(hi=0, basis='the server lists the payloads it never received in missingPayloads; none expected'),
 }
 
 
@@ -733,6 +775,8 @@ def baseline_text(metric_id, device_type=None):
         want, low, high = b.expect
         return f'about {want:g}{u} ({want * low:.3g}-{want * high:.3g})'
     lo, hi = override if isinstance(override, tuple) else (b.lo, b.hi)
+    if lo is None and hi == 0:
+        return f'= 0{u}'  # none expected (crashes, resets, missing payloads)
     if lo is not None and hi is not None:
         return f'{lo:g}-{hi:g}{u}'
     return f'<= {hi:g}{u}' if hi is not None else f'>= {lo:g}{u}' if lo is not None else None
@@ -764,7 +808,7 @@ def baseline_issue(metric_id, value, device_type=None):
     if lo is not None and value < lo:
         return f'Expected >= {lo:g}{unit_text}: {b.basis}'
     if hi is not None and value > hi:
-        return f'Expected <= {hi:g}{unit_text}: {b.basis}'
+        return f'Expected {"0" if hi == 0 and lo is None else f"<= {hi:g}"}{unit_text}: {b.basis}'
     return None
 
 
@@ -1576,6 +1620,101 @@ def _obs_step(step):
     return fn
 
 
+def _hc_failed(d):
+    """1 per Health Central API call with no "Upload succeeded" on the same thread before
+    that thread's next call (a failed or cut-off upload)."""
+    oks = defaultdict(list)
+    for h in d.hits('hc_ok'):
+        oks[h.g['thr']].append(h.ts)
+    calls = defaultdict(list)
+    for h in d.hits('hc_call'):
+        calls[h.g['thr']].append(h.ts)
+    out = []
+    for thr, stamps in calls.items():
+        ok = oks.get(thr, [])
+        for i, ts in enumerate(stamps):
+            following = stamps[i + 1] if i + 1 < len(stamps) else float('inf')
+            j = bisect.bisect_left(ok, ts)
+            if not (j < len(ok) and ok[j] < following):
+                out.append((ts, 1))
+    return out
+
+
+# Where the Health Central upload interval came from, as its lines name it
+HC_SOURCE_LABELS = {'bagheera_config.ini/default': 'config default', 'server payloadFrequencyMinutes': 'server'}
+HC_DEFAULT_INTERVAL_S = 3600  # health_central's default upload_max_pending_interval_secs
+
+
+def _hc_settings(d):
+    """[(ts, interval s, source)] of every interval line: "Config (re)loaded ...
+    upload_max_pending_interval_secs=N (<source>)" and the server's "upload interval Ns". Not a
+    KPI (a P90 of intervals over devices means nothing): the HEALTH_CENTRAL callouts use it per boot."""
+    out = []
+    for h in d.hits('hc_config', 'hc_interval'):
+        source = HC_SOURCE_LABELS.get(h.g['source'], h.g['source']) if 'source' in h.g else 'server'
+        out.append((h.ts, int(h.g['interval']), source))
+    return out
+
+
+def health_central_boots(d, boot_indexes):
+    """{boot index: {...}} for the boots where health_central ran, for the API callouts:
+    enabled / enabled_from (the last "enabled=0 -> 1" in the boot, else its first line), the
+    interval and its source at the end of the boot, and the worst gap between two API calls
+    measured against the interval in effect when the gap started (worst = longest relative to it)."""
+    wanted = set(boot_indexes)
+    settings = _hc_settings(d)
+    stamps = [ts for ts, *_ in settings]
+
+    def at(ts):
+        i = bisect.bisect_right(stamps, ts) - 1
+        return settings[i][1:] if i >= 0 else (HC_DEFAULT_INTERVAL_S, 'service default')
+
+    out = {}
+    for b, hits in d.by_boot('hc_config').items():
+        if b not in wanted:
+            continue
+        enabled_from = None
+        for h in hits:
+            on = h.g['enabled'] != '0'
+            if on and enabled_from is None:
+                enabled_from = h.ts
+            elif not on:
+                enabled_from = None
+        interval, source = at(hits[-1].ts)
+        boot_settings = [st for st in settings if d.boot_of(st[0]) == b]
+        if boot_settings:
+            interval, source = boot_settings[-1][1:]
+        entry = {'enabled': hits[-1].g['enabled'] != '0', 'enabled_from': enabled_from,
+                 'interval_s': interval, 'interval_source': source,
+                 'intervals': sorted({st[1] for st in boot_settings} or {interval})}
+        calls = [h.ts for h in d.by_boot('hc_call').get(b, [])]
+        worst = None
+        for a, c in zip(calls, calls[1:]):
+            gap_interval, gap_source = at(a)
+            ratio = (c - a) / 1000 / gap_interval
+            if worst is None or ratio > worst[0]:
+                worst = (ratio, a, round((c - a) / 1000, 1), gap_interval, gap_source)
+        if worst:
+            entry['worst_gap'] = {'from': worst[1], 'gap_s': worst[2], 'interval_s': worst[3], 'interval_source': worst[4]}
+        out[b] = entry
+    return out
+
+
+def health_central_enabled(d, boot_indexes):
+    """{boot index: (enabled bool, line ts, line text)}: [health_central] enabled as the service
+    logged it in "Config (re)loaded: enabled=N", the boot's last such line (a config reload can
+    turn it on or off)."""
+    wanted = set(boot_indexes)
+    out = {}
+    for h in d.hits('hc_config'):
+        b = d.boot_of(h.ts)
+        if b in wanted:
+            line = (f"{h.ts}: HCTR: Config (re)loaded: enabled={h.g['enabled']} ... "
+                    f"upload_max_pending_interval_secs={h.g['interval']} ({h.g['source']})")
+            out[b] = (h.g['enabled'] != '0', h.ts, line)
+    return out
+
+
 def _vod_retries(d):
     return [(h.ts, 1) for h in d.hits('vod_attempt_failed')] + [(h.ts, -1) for h in d.hits('vod_exhausted')]
 
@@ -1643,6 +1782,10 @@ METRICS = {m.id: m for t in KPI_TABLES for m in t.metrics}
 
 # ── per boot / device / OTA ──────────────────────────────────────────────────────────────
 
+# Count KPIs of a service only some OTAs have: 0 only in the boots where the service ran
+# (this line logged), so OTAs without it show the KPI empty rather than 0
+ZERO_ONLY_WITH = {m.id: 'hc_config' for t in KPI_TABLES if t.id == 'kpi-health-central' for m in t.metrics}
+
 # The Bootup, Video Recording & Connectivity KPIs: times from power-on / a reboot
 STARTUP_METRICS = {m.id for t in KPI_TABLES if t.id == 'kpi-boot' for m in t.metrics}
 
@@ -1662,7 +1805,10 @@ def compute(device, boot_indexes):
         if metric.agg == 'sum':
             # 0 where the logs could show the line (not empty)
             crit = all(KPI_LOG_LINES[k].crit for k in metric.lines)
-            for b in (wanted if crit else detailed):
+            zero = wanted if crit else detailed
+            if metric.id in ZERO_ONLY_WITH:
+                zero = zero & set(device.by_boot(ZERO_ONLY_WITH[metric.id]))
+            for b in zero:
                 result[b][metric.id].append(0)
         for ts, value in sorted(metric.fn(device), key=lambda x: x[0]):
             b = device.boot_of(ts)

@@ -54,6 +54,13 @@ LLA_FEATURE = 'LLA'
 DRIVER_LOGIN_FEATURE = 'driverlogin_v2'
 GAP_LIMIT_MIN = 30
 EVENT_MIN_DRIVE = 30
+# Health Central API (when the service is enabled): one call per upload interval, the interval the
+# service logged (kpi_metrics.health_central_boots: [health_central] upload_max_pending_interval_secs
+# from the config default or a cloud override, or the server's payloadFrequencyMinutes); each gap
+# between two calls is judged against the interval in effect when it started, over the limit when
+# longer than HC_GAP_FACTOR intervals
+HEALTH_CENTRAL_API = 28
+HC_GAP_FACTOR = 1.5
 
 RULES = f"""\
 How the findings were worked out (drive_min = the device's drive minutes on this OTA):
@@ -68,6 +75,13 @@ How the findings were worked out (drive_min = the device's drive minutes on this
 - Upload Video: no_video_with_events (Upload Event calls but no Upload Video call).
 - Upload LLA (LLA feature enabled) / Driver Login (driverlogin_v2 enabled): zero_with_drive (0 calls,
   drive_min > {GAP_LIMIT_MIN}) or gap_over_limit (longest gap between calls > {GAP_LIMIT_MIN} min).
+- HEALTH_CENTRAL (boots where the service was enabled): 1 call per upload interval of drive time, the
+  interval the device logged (upload_interval_s; interval_source: "config default" = [health_central]
+  upload_max_pending_interval_secs of bagheera_config.ini, "server" = payloadFrequencyMinutes of the upload reply,
+  anything else = the source the line names, e.g. a cloud override). expected_min = the sum over those boots of
+  floor(drive_min while enabled / that boot's interval in minutes). Kinds: zero, far_below, below as above (more
+  calls are normal: an upload at every shutdown and of what earlier boots left), and gap_over_limit (the gap
+  between two calls in a boot, measured against the interval in effect when it started, > {HC_GAP_FACTOR:g} x it).
 - Can Diagnostics: not checked (no call line in the logs)."""
 
 QA_ROLE = """You are a senior QA engineer reviewing an OTA (firmware) test of telematics devices: you look at
@@ -201,6 +215,25 @@ def _name(api):
     return api_calls.APIS[api][0]
 
 
+def health_central_boots(boots):
+    """[{enabled, calls, drive_min (while enabled), interval_s, intervals, interval_source, worst_gap}]
+    per boot where health_central ran (boot['health_central'], kpi_metrics.health_central_boots),
+    from a device's boot details; the input of the HEALTH_CENTRAL callouts."""
+    out = []
+    for b in boots:
+        hc = b.get('health_central')
+        if not hc:
+            continue
+        drive = b.get('drive_minutes') or 0
+        # Enabled during the boot (a config reload): only the drive time after it counts
+        if hc.get('enabled_from') and b.get('start') and b.get('end') and hc['enabled_from'] > b['start']:
+            drive = min(drive, max(0, (b['end'] - hc['enabled_from']) / 60000))
+        out.append({'enabled': hc['enabled'], 'calls': len((b.get('api_calls') or {}).get(str(HEALTH_CENTRAL_API)) or ()),
+                    'drive_min': round(drive, 1), 'interval_s': hc['interval_s'], 'intervals': hc['intervals'],
+                    'interval_source': hc['interval_source'], 'worst_gap': hc.get('worst_gap')})
+    return out
+
+
 def callout_data(summary, device_summaries, device_info, defaults):
     """The rule checks per device -> {'context': ..., 'findings': {api: {kind: [{device, ...numbers}]}}}."""
     minutes = summary.get('drive_minutes_by_device') or {}
@@ -210,7 +243,8 @@ def callout_data(summary, device_summaries, device_info, defaults):
     if observation and observation > 0:
         per_minutes[16] = observation
     findings = []
-    lla_on = login_on = 0
+    lla_on = login_on = hc_on = 0
+    hc_intervals = set()
 
     def add(api, kind, device, **numbers):
         findings.append(dict(api=_name(api), kind=kind, device=device, **numbers))
@@ -236,6 +270,27 @@ def callout_data(summary, device_summaries, device_info, defaults):
             add(3, 'no_event', d, calls=0, drive_min=drive)
         if calls.get(3) and not calls.get(9):
             add(9, 'no_video_with_events', d, calls=0, event_calls=calls[3])
+        hc = [b for b in (device_summaries.get(d) or {}).get('health_central') or [] if b['enabled']]
+        if hc:
+            hc_on += 1
+            api = HEALTH_CENTRAL_API
+            n = sum(b['calls'] for b in hc)
+            expected = sum(int(b['drive_min'] // (b['interval_s'] / 60)) for b in hc if b['interval_s'])
+            hc_drive = sum(b['drive_min'] for b in hc)
+            intervals = sorted({i for b in hc for i in b['intervals']})
+            sources = sorted({b['interval_source'] for b in hc})
+            hc_intervals.update((i, src) for b in hc for i in b['intervals'] for src in [b['interval_source']])
+            kind = (None if not expected else 'zero' if n == 0 else 'far_below' if n < FAR_BELOW * expected
+                    else 'below' if n < expected else None)
+            if kind:
+                add(api, kind, d, calls=n, expected_min=expected, drive_min=hc_drive,
+                    upload_interval_s=intervals, interval_source=sources)
+            gaps = [b['worst_gap'] for b in hc if b.get('worst_gap')]
+            worst = max(gaps, key=lambda g: g['gap_s'] / g['interval_s'], default=None)
+            if worst and worst['gap_s'] > HC_GAP_FACTOR * worst['interval_s']:
+                add(api, 'gap_over_limit', d, calls=n, max_gap_min=round(worst['gap_s'] / 60, 1),
+                    limit_min=round(HC_GAP_FACTOR * worst['interval_s'] / 60, 1),
+                    upload_interval_s=worst['interval_s'], interval_source=worst['interval_source'])
         for api, feature in ((19, LLA_FEATURE), (13, DRIVER_LOGIN_FEATURE)):
             if feature not in features:
                 continue
@@ -263,6 +318,8 @@ def callout_data(summary, device_summaries, device_info, defaults):
             'observation_frequency_min': observation,
             'devices_with_lla_enabled': lla_on,
             'devices_with_driverlogin_v2_enabled': login_on,
+            'devices_with_health_central_enabled': hc_on,
+            'health_central_upload_intervals': [{'interval_s': i, 'source': src} for i, src in sorted(hc_intervals)],
             'features_enabled_on_ota': [f['name'] for f in summary.get('feature_coverage') or [] if f['devices_on']],
         },
         'findings': groups,  # {api: {kind: [finding, ...]}}

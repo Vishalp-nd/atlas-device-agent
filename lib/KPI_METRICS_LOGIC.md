@@ -140,6 +140,8 @@ Count KPIs are 0 (not empty) in the boots whose logs could show the line: every 
 lines that are also in critical logs, otherwise the boots with detailed logs (a boot with
 an alive point, `ndc_service_uptime`, `syslog_uptime`, `pwr_uptime` or `record_start` line).
 Other KPIs are empty when no line was found.
+Health Central counts are 0 only in the boots where health_central ran (its "Config (re)loaded"
+line), so OTAs without the service show them empty.
 
 ### Camera numbers
 
@@ -535,6 +537,32 @@ in the inference one, so only inference is read.
 | LLA retry count | count | sum over boots | highest attempt n of "lla_&lt;uuid&gt;_&lt;n&gt;" per LLA | `lla_hs_result` (unifieduploader) | `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
 | LLA retry duration | s | mean of all samples | uploadend of attempt 0 to the passing (or last) attempt's uploadend, for LLAs that retried | `lla_hs_result` (unifieduploader) | `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]` |
 
+### Health Central API - Metrics
+
+| KPI | Unit | Device value | How it is computed | Log lines used | Sample log line |
+|---|---|---|---|---|---|
+| Health Central API - Attempted | count | sum over boots | UPLDCLIENT "Uploading component health to .../upload/component-health" (one per API call, retries included) | `hc_call` (health_central) | `1794379619765: 6140358: UPLDCLIENT: I: 6013: 6501: Uploading component health to https://idms-staging.netradyne.com/restserver/api/v1/upload/component-health  [103182502310_2026-11-11/health_central.log]` |
+| Health Central API - Successful | count | sum over boots | HCTR "Upload succeeded for N session(s) (udid=U payloadId=P ...)" | `hc_ok` (health_central) | `1794379623143: 6143736: HCTR: I: 6013: 6501: Upload succeeded for 1 session(s) (udid=353 payloadId=1 sessionId 30668-30668): {"response":true,"status":"Payload saved",...  [103182502310_2026-11-11/health_central.log]` |
+| Health Central API - Failed | count | sum over boots | a call with no "Upload succeeded" on the same thread before that thread's next call (or ever) | `hc_call` (health_central)<br>`hc_ok` (health_central) | `1794379619765: 6140358: UPLDCLIENT: I: 6013: 6501: Uploading component health to https://idms-staging.netradyne.com/restserver/api/v1/upload/component-health  [103182502310_2026-11-11/health_central.log]`<br>`1794379623143: 6143736: HCTR: I: 6013: 6501: Upload succeeded for 1 session(s) (udid=353 payloadId=1 sessionId 30668-30668): {"response":true,"status":"Payload saved",...  [103182502310_2026-11-11/health_central.log]` |
+| Health Central Upload Duration | s | mean of all samples | "attempt_upload: starting" to its "Upload succeeded" (same thread; a retried upload from its last attempt) | `hc_attempt` (health_central)<br>`hc_ok` (health_central) | `1794379619596: 6140189: HCTR: I: 6013: 6501: attempt_upload: starting, udid=353 payloadId=1 attempt=1, 1 pending session(s)  [103182502310_2026-11-11/health_central.log]`<br>`1794379623143: 6143736: HCTR: I: 6013: 6501: Upload succeeded for 1 session(s) (udid=353 payloadId=1 sessionId 30668-30668): {"response":true,"status":"Payload saved",...  [103182502310_2026-11-11/health_central.log]` |
+| Uploads with Missing Payloads reported by server | count | sum over boots | reply with a non-empty "missingPayloads":[{...}] (payloads the server never got; the line is cut, so not how many) | `hc_response` (health_central) | `1794379623123: 6143716: UPLDCLIENT: I: 6013: 6501: Upload response (HTTP 200): {"response":true,"status":"Payload saved","payloadFrequencyMinutes":60,"missingPayloads":[{"payloadIds":[],"afterPayloadId":0,"udId":1},...  [103182502310_2026-11-11/health_central.log] (the line is cut at ~300 chars, so only whether the list is empty is read)` |
+
+The service only runs on OTAs that ship it (5.6.17.rc.2 / 4.6.17.rc.2 on): its counts are 0 only in the boots
+where it logged "Config (re)loaded" (`ZERO_ONLY_WITH`), so other OTAs show the table empty. Its
+`[health_central] enabled` value per boot (the last "Config (re)loaded: enabled=N" of the boot) is also the
+Health Central feature of the Feature Set, and every `hc_call` line is a HEALTH_CENTRAL call (id 28) in the
+API Call Summary (`lib/api_calls.py`).
+
+The upload interval can be changed after the build: `[health_central] upload_max_pending_interval_secs`
+(default 3600 s) by a cloud override, and the server's `payloadFrequencyMinutes` in every upload reply, which
+the device adopts. It is not a KPI row (a P90 of intervals over devices means nothing). The service logs the value it uses with its source ("(bagheera_config.ini/default)",
+"(server payloadFrequencyMinutes)", or whatever source an override names), so the reports take the interval
+from the logs, never from the config file. Per boot (`health_central_boots`, stored as the boot's
+`health_central`) the HEALTH_CENTRAL callouts get the interval and source in effect, the drive minutes while
+the service was enabled, and the worst gap between two calls measured against the interval in effect when that
+gap started (`lib/report_callouts.py`: expected calls = floor(drive min / interval min) per boot, gap over
+limit = more than 1.5 intervals).
+
 ## Not found in the logs
 
 These KPIs stay in the tables, empty:
@@ -578,23 +606,23 @@ other than the ones listed.
 | Device Downtime / Data Loss: Device Cyclic Reboot | &lt;= 112 s | derived: REBOOT_TASK_TIMEOUT 30 s + POR_REBOOT_TIME 20 s (power_monitor.h:125,133-134) + first frame &lt;= 62 s |
 | Device Downtime / Data Loss: Device Reboot from AWS IoT / Cloud Command | &lt;= 112 s | derived: AwsIot reboot_after_secs 0 + REBOOT_TASK_TIMEOUT 30 s + POR_REBOOT_TIME 20 s + first frame &lt;= 62 s |
 | Device Downtime / Data Loss: Service Restart due to Camera Crash | &lt;= 42 s; bagheera: &lt;= 82 s; octo: &lt;= 82 s | derived: krait exit(1) + bagheera.service RestartSec=10s + sleep 2 + &lt;= 30 s cam_rec wait (nd_central.cpp:3085-3125) |
-| Camera Crash Stats: Outward Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Outward Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: Outward Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: Inward Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Inward Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: Inward Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: Left Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Left Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: Left Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: Right Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: Right Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: Right Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: MDVR 4 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 4 Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: MDVR 4 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: MDVR 5 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 5 Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: MDVR 5 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: MDVR 6 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 6 Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: MDVR 6 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: MDVR 7 Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: MDVR 7 Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: MDVR 7 Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
-| Camera Crash Stats: DMS Camera Crash Count - Total | &lt;= 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
+| Camera Crash Stats: DMS Camera Crash Count - Total | = 0 | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Camera Crash Stats: DMS Camera Crash Count % | &lt;= 0 % | no crash expected; a crash = 0 frames or &lt; FPS_THRESHOLD_FOR_CAM_CRASH 5 fps in a 5 s check |
 | Video File Size Details - HD: Outward Video - File Size - HD | about 45 MB (33.8-49.5) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 6000000 bit/s |
 | Video File Size Details - HD: Inward Video - File Size - HD | about 15 MB (11.2-16.5) | spec camera.*_nrt_bitrate x 60 s sessions / 8 (gst_recorder.cpp:1149), 2000000 bit/s |
@@ -633,7 +661,7 @@ other than the ones listed.
 | SdCard / eMMC: Obs files in eMMC | &lt;= 10000 | uploader.cpp:479-484 OBS_FILE_LIMIT 10000 |
 | WAF - eMMC Metrics: External eMMC | &lt;= 3 | nd_factory.cpp:2830-2853 alerts above 3.0 (4.0 for WD external parts; the vendor is not logged) |
 | WAF - eMMC Metrics: Internal eMMC | &lt;= 3 | nd_factory.cpp:2830-2853 alerts above 3.0 |
-| Tegra Watchdog Timeout: Reboot Initiated | &lt;= 0 | the watchdog fires only when a critical service misses keep-alive or svc is not up in 300 s (svc.cpp:119,151,412-434) |
+| Tegra Watchdog Timeout: Reboot Initiated | = 0 | the watchdog fires only when a critical service misses keep-alive or svc is not up in 300 s (svc.cpp:119,151,412-434) |
 | Tegra Watchdog Timeout: Power Monitor Start after reboot | &lt;= 30 s | power_monitor.service has no ExecStartPre; wrapper_service.sh waits &lt;= 30 s |
 | Tegra Watchdog Timeout: Time taken to Reboot | &lt;= 125 s; krait: &lt;= 155 s | derived: svc.watchdog_timeout 90 s (BAGHEERA2) + 5 s kick + power_mon start &lt;= 30 s (svc_internal.h:10-23, svc.cpp:125-136) |
 | Obs Data Zip Upload - Metrics: Upload Request for Obs zip - Received | &lt;= 2 s | derived: upload threads sleep(1) (uploader.cpp:4679) + 1 s |
@@ -641,6 +669,7 @@ other than the ones listed.
 | LLA - Metrics: Uploader LLA Notification to the Cloud - API Call Triggering | &lt;= 1 s | derived: LLA queue polled every 400 ms (uploader.cpp:5458) + hand-off |
 | LLA - Metrics: Uploader LLA Notification to the Cloud - API Call Successful | &lt;= 40.4 s | derived: 400 ms queue + lla_retry_limit 3 attempts x 10 s timeout + 2 x LLA_RETRY_SLEEP 5 s (uploader.cpp:108-116,630-649) |
 | LLA - Metrics: LLA retry duration | &lt;= 30 s | derived: 2 retries x (LLA_RETRY_SLEEP 5 s + 10 s timeout) (uploader.cpp:114-116) |
+| Health Central API - Metrics: Uploads with Missing Payloads reported by server | = 0 | the server lists the payloads it never received in missingPayloads; none expected |
 
 ## Assumptions to review
 
@@ -1372,3 +1401,51 @@ the device-day in brackets; ` ...` marks where a long line was cut.
 - Regex: `"lla_(?P<uuid>[0-9a-f]{32})_(?P<n>\d+)": \{"uploadstart": (?P<start>\d{13}), "uploadend": (?P<end>\d{13}), "status": "(?P<status>pass|fail)"`
 - Sample: `1793149279280: 2060651: UPL: I: 3391: 3684: sending msg to hs--: {"session": "0_trip568a_part05d3f9_33.1186_-117.1010_0.0_1793149263671_y", "alert_info": {"lla_2580cfa0a3204cefbac94ea93ae879a0_0": {"uploadstart": 1793149278811, "uploadend": 1793149279280, "status": "pass", ...  [6603001461_2026-10-28/unifieduploader.log]`
 - Used by: Uploader LLA Notification to the Cloud - API Call Triggering, Uploader LLA Notification to the Cloud - API Call Successful, Total Time Taken for upload (from alert detection), LLA retry count, LLA retry duration
+
+#### `hc_config`
+
+- Service log: `health_central`
+- grep text: `Config (re)loaded: enabled=`
+- Regex: `HCTR: I: \d+: \d+: Config \(re\)loaded: enabled=(?P<enabled>\d+) .*?upload_max_pending_interval_secs=(?P<interval>\d+) \((?P<source>[^)]*)\)`
+- Sample: `1794380702308: 1867: HCTR: I: 5944: 5944: Config (re)loaded: enabled=1 upload_max_pending_bytes=262144 upload_max_pending_interval_secs=3600 (bagheera_config.ini/default) max_pending_storage_bytes=2097152 session_log_max_bytes=2097152  [103182502310_2026-11-11/health_central.log]`
+- Used by: Health Central feature (Feature Set), HEALTH_CENTRAL callouts (interval and its source), 0 versus empty
+
+#### `hc_interval`
+
+- Service log: `health_central`
+- grep text: `upload interval ` or `Upload interval `
+- Regex: `HCTR: I: \d+: \d+: .*?[Uu]pload interval (?:\d+s -> )?(?P<interval>\d+)s \(server payloadFrequencyMinutes`
+- Sample: `1794379623142: 6143735: HCTR: I: 6013: 6501: Upload interval 3600s -> 3600s (server payloadFrequencyMinutes 60)  [103182502310_2026-11-11/health_central.log]`
+- Used by: HEALTH_CENTRAL callouts (interval and its source)
+
+#### `hc_attempt`
+
+- Service log: `health_central`
+- grep text: `attempt_upload: starting`
+- Regex: `HCTR: I: (?P<thr>\d+: \d+): attempt_upload: starting, udid=(?P<udid>\d+) payloadId=(?P<payload>\d+) attempt=(?P<n>\d+)`
+- Sample: `1794379619596: 6140189: HCTR: I: 6013: 6501: attempt_upload: starting, udid=353 payloadId=1 attempt=1, 1 pending session(s)  [103182502310_2026-11-11/health_central.log]`
+- Used by: Health Central Upload Duration
+
+#### `hc_call`
+
+- Service log: `health_central`
+- grep text: `Uploading component health to`
+- Regex: `UPLDCLIENT: I: (?P<thr>\d+: \d+): Uploading component health to \S+/upload/component-health`
+- Sample: `1794379619765: 6140358: UPLDCLIENT: I: 6013: 6501: Uploading component health to https://idms-staging.netradyne.com/restserver/api/v1/upload/component-health  [103182502310_2026-11-11/health_central.log]`
+- Used by: Health Central API - Attempted, Health Central API - Failed, API Call Summary (HEALTH_CENTRAL), HEALTH_CENTRAL callouts
+
+#### `hc_ok`
+
+- Service log: `health_central`
+- grep text: `Upload succeeded for`
+- Regex: `HCTR: I: (?P<thr>\d+: \d+): Upload succeeded for (?P<sessions>\d+) session\(s\) \(udid=(?P<udid>\d+) payloadId=(?P<payload>\d+)`
+- Sample: `1794379623143: 6143736: HCTR: I: 6013: 6501: Upload succeeded for 1 session(s) (udid=353 payloadId=1 sessionId 30668-30668): {"response":true,"status":"Payload saved",...  [103182502310_2026-11-11/health_central.log]`
+- Used by: Health Central API - Successful, Health Central API - Failed, Health Central Upload Duration
+
+#### `hc_response`
+
+- Service log: `health_central`
+- grep text: `Upload response (HTTP`
+- Regex: `UPLDCLIENT: I: (?P<thr>\d+: \d+): Upload response \(HTTP (?P<http>\d+)\): .*?"missingPayloads":\[(?P<missing>.?)`
+- Sample: `1794379623123: 6143716: UPLDCLIENT: I: 6013: 6501: Upload response (HTTP 200): {"response":true,"status":"Payload saved","payloadFrequencyMinutes":60,"missingPayloads":[{"payloadIds":[],"afterPayloadId":0,"udId":1},...  [103182502310_2026-11-11/health_central.log] (the line is cut at ~300 chars, so only whether the list is empty is read)`
+- Used by: Uploads with Missing Payloads reported by server

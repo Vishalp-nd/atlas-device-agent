@@ -14,6 +14,8 @@ writes when it makes the request (one line per call, with the endpoint):
   awsiot              send_keepalive: POST .../upload/pingdata        UPLOAD_PING_DATA
   btfv (nd_bt_man)    Final Curl URL : .../upload/driverLogin          DRIVER_LOGIN
                       Final Curl URL : .../devices/driverLoginStatus/  READ_DRIVER_LOGIN_STATUS
+  health_central      Uploading component health to .../upload/component-health  HEALTH_CENTRAL
+                      (not in the API list, so it has its own id, 28)
 The "command: wget ..." line otacheck and keep_alive_manager print after a call echoes the
 same request, so it is not counted. The DIAG REQ_CURL_HEALTH_REPORT / CURL_HC lines are not
 used: they are missing for most calls when only critical (_c) logs are uploaded.
@@ -24,6 +26,7 @@ lines, so devices that upload critical logs only show little more than otacheck'
 """
 
 import bisect
+import re
 from collections import defaultdict
 
 # message id -> (name, kind); kind as given with the API list (Periodic / NP / '')
@@ -53,6 +56,7 @@ APIS = {
     25: ('PID_DOWNLOAD_STATUS', ''),
     26: ('UPLOAD_CALIBRATION_VIDEO', ''),
     27: ('READ_DRIVER_LOGIN_STATUS', 'NP'),
+    28: ('HEALTH_CENTRAL', 'Periodic'),  # upload/component-health (no message id in the API list)
 }
 
 # (message id, service log, grep BRE prefilter, regex): one line per call
@@ -74,6 +78,7 @@ PATTERNS = [
     (11, 'awsiot', 'send_keepalive: POST', r'send_keepalive: POST \S+/upload/pingdata'),
     (13, 'btfv', 'Final Curl URL', r'Final Curl URL : \S+/upload/driverLogin\b'),
     (27, 'btfv', 'Final Curl URL', r'Final Curl URL : \S+/devices/driverLoginStatus/'),
+    (28, 'health_central', 'Uploading component health to', r'Uploading component health to \S+/upload/component-health'),
 ]
 WITH_PATTERN = sorted({api for api, *_ in PATTERNS})
 
@@ -89,6 +94,7 @@ DISPLAY_ORDER = [
     3,   # Upload Event
     9,   # Upload Video
     10,  # Upload Device Status
+    28,  # Health Central
     19,  # Upload LLA
     21,  # Can Diagnostics
     13,  # Driver Login
@@ -103,7 +109,9 @@ DUP_MS = 1000
 
 
 def _service_files(logs_dir, service):
-    return sorted(p for p in logs_dir.glob(f'{service}*.log*') if p.is_file())
+    """<service>.log* and <service>_c.log* (exact name: 'health' is not health_central)."""
+    name = re.compile(rf'{re.escape(service)}(?:_c)?\.log')
+    return sorted(p for p in logs_dir.glob(f'{service}*.log*') if p.is_file() and name.match(p.name))
 
 
 def scan_day(logs_dir, iter_hits):

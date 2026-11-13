@@ -614,6 +614,11 @@ def remaining_conditions(plain, defaults):
     return sorted(out)
 
 
+# Health Central feature key (feature_mapping.ini [Health Central]): its value per boot is read
+# from health_central's "Config (re)loaded: enabled=N" line, not from the config / LLM
+HEALTH_CENTRAL_KEY = 'health_central.enabled'
+
+
 def read_override_values(device, jobs, timings):
     """LLM pass over boots: jobs [(detail, conditions, evidence)]; fills detail['override_values']."""
     if not jobs:
@@ -834,6 +839,11 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
                     if 0 in reported and not any(b['start'] is not None for b in all_boots) else None)
         kpi_device = kpi_metrics.Device(kpi_hits, all_boots, reported, fallback)
         kpi_samples = kpi_metrics.compute(kpi_device, reported)
+        # [health_central] enabled as the service itself logged it (the Health Central feature)
+        hc_enabled = kpi_metrics.health_central_enabled(kpi_device, reported)
+        # Per boot: Health Central's interval (and source) and worst gap between API calls, for the callouts
+        for index, entry in kpi_metrics.health_central_boots(kpi_device, reported).items():
+            reported[index]['health_central'] = entry
         for index, detail in reported.items():
             detail['kpi'] = kpi_metrics.boot_values(kpi_samples.get(index, {}))
         alert_rows = defaultdict(list)
@@ -842,6 +852,11 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
             alert_rows[detail['ota']].append(dict(row, device=device, boot_start=detail['start_fmt']))
         del kpi_hits, kpi_device
     read_override_values(device, llm_jobs, timings)
+    for index, (on, ts, line) in hc_enabled.items():
+        # The service's own line is exact: it wins over a value the LLM may have read
+        values = reported[index].get('override_values') or {}
+        values[HEALTH_CENTRAL_KEY] = {'value': 'true' if on else 'false', 'evidence': line}
+        reported[index]['override_values'] = values
     summaries = {}
     for ota, boot_details in detail_by_ota.items():
         out_dir = report_dir / ota / 'devices'
@@ -863,6 +878,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         summaries[ota]['drive'] = doc['drive_summary']
         summaries[ota]['api'] = doc['api_summary']
         summaries[ota]['kpi'] = kpi_summary
+        summaries[ota]['health_central'] = report_callouts.health_central_boots(boot_details)
         summaries[ota]['alert_sessions'] = alert_rows.get(ota, [])
         summaries[ota]['profiles'] = profiles.get(ota, {})
         # Days whose upload has detailed logs: only those carry the override information
@@ -2126,7 +2142,7 @@ function renderFeatures(b) {
   }
   const values = Object.entries(b.override_values || {});
   if (values.length) {
-    out.push(`<details open><summary>${values.length} value(s) read from this boot's logs (LLM)</summary><div class="body"><table>`
+    out.push(`<details open><summary>${values.length} value(s) read from this boot's logs (service log lines; LLM for the rest)</summary><div class="body"><table>`
       + '<tr><th>Key</th><th>Value</th><th>Log line</th></tr>'
       + values.map(([k, v]) => `<tr><td><code>${esc(k)}</code></td><td>${esc(JSON.stringify(v.value))}</td>`
         + `<td><span class="line">${esc(v.evidence)}</span></td></tr>`).join('') + '</table></div></details>');
@@ -2735,7 +2751,8 @@ def refresh_callouts(reports_dir):
         ota = ota_dir.name
         report = json.loads((ota_dir / 'ota_report.json').read_text())
         device_summaries = {d: {'api': doc.get('api_summary'), 'feature_set': _latest_feature_set(doc),
-                                'kpi': doc.get('kpi_summary')}
+                                'kpi': doc.get('kpi_summary'),
+                                'health_central': report_callouts.health_central_boots(doc.get('boots') or [])}
                             for d, doc in docs[ota].items()}
         device_info = {d: {'otas': otas_of[d]} for d in device_summaries}
         defaults = ota_config_values(ota)
