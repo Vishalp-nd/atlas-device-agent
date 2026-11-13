@@ -14,7 +14,11 @@ class RunCreateRequest(BaseModel):
     ota_version: str | None = None
     """mode=ota: analyse up to 200 devices currently on this OTA; only its boots are reported."""
     devices: list[str] = []
-    """mode=devices: device ids to analyse (every OTA found in their logs is reported, unless otas is given)."""
+    """mode=devices: device ids to analyse (every OTA found in their logs is reported, unless otas is given).
+    mode=ota: the devices on the OTA, resolved by the UI server (GET /ota-devices on log_analyzer/serve_ui.py)
+    when the backend can't reach the device db; empty = the backend looks them up. Capped at 200."""
+    ota_devices: dict | None = None
+    """mode=ota with devices: how the UI found them (total, states, device_db), kept in the run options."""
     otas: list[str] = []
     """mode=devices: only report boots on these OTA versions (comma separated allowed); empty = every OTA."""
     start: str
@@ -114,6 +118,9 @@ class CompareTarget(BaseModel):
     target: str
     """A device id or an OTA version (both sides must be the same kind)."""
     environment: Literal["stag", "prod"] = "stag"
+    devices: list[str] = []
+    """An OTA side: its devices, resolved by the UI server (as RunCreateRequest.devices); empty = the backend looks them up."""
+    ota_devices: dict | None = None
 
 
 class ComparisonCreateRequest(BaseModel):

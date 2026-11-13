@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse
 
 from . import db, service
 from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR, run_subpath
+from .devices import device_limit
 from .models import (Comparison, ComparisonCreateRequest, ComparisonList, ComparisonReportsRequest, Environment,
                      Environments, OtaSuggestions, Run, RunCreateRequest, RunDetail, RunList, RunLog, RunReport)
 
@@ -69,6 +70,12 @@ def _run_or_404(run_id: int) -> dict:
     return run
 
 
+def _ota_devices_info(info: dict | None) -> dict | None:
+    """The UI's note on an OTA's device list (shown in the run log), keeping only known keys."""
+    info = {k: info[k] for k in ("total", "states", "device_db") if k in (info or {})}
+    return info or None
+
+
 def _check_environment(environment: str | None) -> None:
     if environment is not None and environment not in ENVIRONMENTS:
         raise HTTPException(status_code=422, detail=f"Unknown environment {environment!r}")
@@ -88,7 +95,8 @@ def create_run(req: RunCreateRequest) -> Run:
     start, end = _parse_date(req.start, "start"), _parse_date(req.end, "end")
     try:
         service.validate_range(start, end)
-        devices = service.parse_devices(req.devices) if req.mode == "devices" else []
+        # mode=ota: devices are the OTA's devices when the UI resolved them (else the worker does)
+        devices = service.parse_devices(req.devices)
         otas = service.parse_otas(req.otas) if req.mode == "devices" else []
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -102,13 +110,18 @@ def create_run(req: RunCreateRequest) -> Run:
         "max_devices": req.max_devices, "workers": req.workers,
         "extract_logs": req.extract_logs,
         "otas": otas or None,
+        "ota_devices": _ota_devices_info(req.ota_devices) if req.mode == "ota" and devices else None,
     }.items() if v is not None}
+    if req.mode == "ota" and devices:
+        devices = devices[:device_limit(req.max_devices)]
     run_id = db.create_run(req.mode, req.environment, ota if req.mode == "ota" else None, devices, start, end,
                            (req.product or "").strip() or None, options, req.requested_by)
     service.start_run(run_id)
     log.info("run %s created (%s, %s, %s → %s) in %.2fs", run_id, req.environment,
              ota if req.mode == "ota" else f"{len(devices)} device(s)" + (f" on {', '.join(otas)}" if otas else ""),
              start, end, time.perf_counter() - t0)
+    if req.mode == "ota" and devices:
+        log.info("run %s: %d device(s) on OTA %s resolved by the UI", run_id, len(devices), ota)
     return Run(**db.get_run(run_id))
 
 
@@ -226,11 +239,17 @@ def create_comparison(req: ComparisonCreateRequest) -> Comparison:
     if targets[0] == targets[1] and req.items[0].environment == req.items[1].environment:
         raise HTTPException(status_code=422, detail="The two sides are the same")
     kind = "devices" if devices[0] else "ota"
+    try:
+        # An OTA side's devices, when the UI resolved them (else its worker does)
+        side_devices = [service.parse_devices(i.devices)[:device_limit()] if kind == "ota" else [] for i in req.items]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     items = []
-    for target, item in zip(targets, req.items):
+    for target, item, given in zip(targets, req.items, side_devices):
         if kind == "ota":
-            run_id = db.create_run("ota", item.environment, target, [], start, end,
-                                   (req.product or "").strip() or None, {}, req.requested_by)
+            options = {"ota_devices": _ota_devices_info(item.ota_devices)} if given and item.ota_devices else {}
+            run_id = db.create_run("ota", item.environment, target, given, start, end,
+                                   (req.product or "").strip() or None, options, req.requested_by)
         else:
             run_id = db.create_run("devices", item.environment, None, [target], start, end,
                                    (req.product or "").strip() or None, {}, req.requested_by)

@@ -167,6 +167,33 @@ $('#devices').addEventListener('input', (e) => {
   $('#end').value = iso(end);
 })();
 
+// OTA runs in an environment whose device db the backend can't reach (UI_RESOLVES_OTA_DEVICES,
+// from config.js): this UI's server (serve_ui.py, GET /ota-devices) looks up the devices on the
+// OTA, capped at 200 like the backend, and the run carries them like a device-ID run.
+const UI_OTA_ENVS = new Set(window.UI_RESOLVES_OTA_DEVICES || []);
+async function otaDevices(environment, ota, maxDevices) {
+  const q = new URLSearchParams({ environment, ota });
+  if (maxDevices) q.set('max_devices', maxDevices);
+  let res;
+  try {
+    res = await fetch(`ota-devices?${q}`, { cache: 'no-store' }); // the page's own server
+  } catch (err) {
+    throw new Error(`Could not reach the UI server for the devices on OTA ${ota}: ${err.message}`);
+  }
+  let data = {};
+  try { data = await res.json(); } catch (_) { /* not json */ }
+  if (!res.ok) throw new Error(data.detail || `Could not get the devices on OTA ${ota} (${res.status} ${res.statusText})`);
+  if (!data.devices?.length) throw new Error(`No devices are currently on OTA ${ota} (${data.device_db}).`);
+  return data;
+}
+// Adds devices (+ how they were found) to a run or comparison side when this UI resolves them
+async function withOtaDevices(item, environment, ota, maxDevices) {
+  if (!UI_OTA_ENVS.has(environment)) return item;
+  const found = await otaDevices(environment, ota, maxDevices);
+  return { ...item, devices: found.devices,
+    ota_devices: { total: found.total, states: found.states, device_db: found.device_db } };
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const error = $('#form-error');
@@ -195,8 +222,12 @@ form.addEventListener('submit', async (e) => {
 
   const button = $('#submit');
   button.disabled = true;
-  button.firstElementChild.textContent = 'Starting…';
   try {
+    if (mode === 'ota' && UI_OTA_ENVS.has(env)) {
+      button.firstElementChild.textContent = 'Finding devices…';
+      Object.assign(body, await withOtaDevices({}, env, body.ota_version, body.max_devices));
+    }
+    button.firstElementChild.textContent = 'Starting…';
     const run = await api('/runs', { method: 'POST', body: JSON.stringify(body) });
     location.hash = `#/runs/${run.id}`;
   } catch (err) {
@@ -562,12 +593,16 @@ $('#cmp-form').addEventListener('submit', async (e) => {
   if (DEVICE_ID.test(a) !== DEVICE_ID.test(b)) { error.textContent = 'Both sides must be OTA versions, or both device IDs.'; return; }
   if (!start || !end) { error.textContent = 'Pick a date range.'; return; }
   if (start > end) { error.textContent = '“From” must be on or before “To”.'; return; }
-  const items = [{ target: a, environment: $('#cmp-a-env').value }, { target: b, environment: $('#cmp-b-env').value }];
+  let items = [{ target: a, environment: $('#cmp-a-env').value }, { target: b, environment: $('#cmp-b-env').value }];
   if (items.some((i) => i.environment === 'prod') && !confirm('Start production runs for this comparison?')) return;
   const button = $('#cmp-submit');
   button.disabled = true;
-  button.firstElementChild.textContent = 'Starting…';
   try {
+    if (!DEVICE_ID.test(a) && items.some((i) => UI_OTA_ENVS.has(i.environment))) {
+      button.firstElementChild.textContent = 'Finding devices…';
+      items = await Promise.all(items.map((i) => withOtaDevices(i, i.environment, i.target)));
+    }
+    button.firstElementChild.textContent = 'Starting…';
     const c = await api('/comparisons', { method: 'POST', body: JSON.stringify({ start, end, items }) });
     closePanel();
     location.hash = `#/compare/${c.id}`;

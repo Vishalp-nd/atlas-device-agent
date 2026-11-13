@@ -4,7 +4,8 @@
 
 Stages, each timed and recorded in log_analyzer.run_steps:
   1. queue    wait for the advisory lock, so only one run does heavy log I/O at a time
-  2. resolve  device list (given, or up to OTA_DEVICE_LIMIT devices currently on the OTA)
+  2. resolve  device list (given, or up to OTA_DEVICE_LIMIT devices currently on the OTA; an OTA
+              run can bring that list from the UI when this backend can't reach the device db)
   3. download log archives from s3 per device (kept compressed; lib/log_archive.py reads them)
 The run's environment (config.ENVIRONMENTS) picks the s3 bucket, the device db and the
 local log/config caches; the caches reach lib/ via ATLAS_LOG_ROOT / ATLAS_CONFIG_JSON_ROOT.
@@ -21,7 +22,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-from .config import (ENVIRONMENTS, LIB_DIR, OTA_DEVICE_LIMIT, REPO_ROOT, RUN_LOCK_KEY, RUNS_DIR,
+from .config import (ENVIRONMENTS, LIB_DIR, REPO_ROOT, RUN_LOCK_KEY, RUNS_DIR,
                      SERVICE_LOG, TESTS_DIR, TESTS_SNAPSHOT, WORKERS, runs_relative)
 
 # lib/ modules import each other as top-level modules
@@ -43,35 +44,27 @@ def run_dir(run_id: int):
     return RUNS_DIR / str(run_id)
 
 
-# Devices that are out in the field log the most; list them first when capping
-_STATE_ORDER = {"INSTALLED": 0, "SHIPPED_ACTIVE": 1}
-
-
 def resolve_devices(run: dict) -> list[str]:
     if run["mode"] == "devices":
         return list(dict.fromkeys(run["requested_devices"]))
-    from pipeline.fetch_device_list_by_product_line import _fetch_rows_for_ota
+    from .devices import device_limit, ota_devices
 
     ota = run["ota_version"]
-    device_db = ENVIRONMENTS[run["environment"]]["device_db"]
-    conn = db.db_connect(device_db)
-    try:
-        # rows: [device_id, ota, config, tenant_id, tenant_name, tenant_unique_name, state]
-        rows = _fetch_rows_for_ota(conn, ota)
-    finally:
-        conn.close()
-    rows.sort(key=lambda r: _STATE_ORDER.get(r[6], 2))
-    devices = list(dict.fromkeys(str(r[0]) for r in rows))
-    states: dict[str, int] = {}
-    for r in rows:
-        states[r[6]] = states.get(r[6], 0) + 1
-    log.info("OTA %s: %d device(s) in %s (%s)", ota, len(devices), device_db,
-             ", ".join(f"{k} {v}" for k, v in sorted(states.items(), key=lambda kv: -kv[1])))
-    limit = min(int(run["options"].get("max_devices") or OTA_DEVICE_LIMIT), OTA_DEVICE_LIMIT)
-    if len(devices) > limit:
-        log.warning("OTA %s: analysing %d of %d devices (limit %d)", ota, limit, len(devices), limit)
-        devices = devices[:limit]
-    return devices
+    limit = device_limit(run["options"].get("max_devices"))
+    if run["requested_devices"]:
+        # Resolved by the UI server (its device db is reachable from there, not from here)
+        devices = list(dict.fromkeys(run["requested_devices"]))[:limit]
+        found = run["options"].get("ota_devices") or {}
+        log.info("OTA %s: %d device(s) resolved by the UI from %s%s", ota, len(devices),
+                 found.get("device_db") or "the device db",
+                 f" ({found['total']} on the OTA, limit {limit})" if found.get("total") is not None else "")
+        return devices
+    found = ota_devices(run["environment"], ota, limit)
+    log.info("OTA %s: %d device(s) in %s (%s)", ota, found["total"], found["device_db"],
+             ", ".join(f"{k} {v}" for k, v in found["states"].items()))
+    if found["total"] > limit:
+        log.warning("OTA %s: analysing %d of %d devices (limit %d)", ota, limit, found["total"], limit)
+    return found["devices"]
 
 
 def report_otas(run: dict) -> list[str] | None:
