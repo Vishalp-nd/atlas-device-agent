@@ -8,15 +8,24 @@ place the effective value shows up, in many formats:
     Privacy configuration loaded - save_user_alert_video=0, off_duty_mode=1, upload_video[outward=1, ...]
     save_usr_alert_video:0, inward_led_color:red
 Those lines (EvidenceCollector: `grep -E` per day, then the first EVIDENCE_WINDOW_MS
-of the boot) go to the Azure OpenAI deployment in OAI_MODEL (gpt-5.4-2) through
-LangChain, and JsonOutputParser turns the answer into
+of the boot) go to the Azure OpenAI deployment in OVERRIDE_LLM_MODEL (gpt-5.4-mini at
+reasoning effort OVERRIDE_LLM_REASONING=low; OAI_MODEL when unset) through LangChain, and
+JsonOutputParser turns the answer into
     {"section.key": {"value": ..., "evidence": "<line>"} | null}.
 
 Answers are cached on disk by prompt hash: prompts carry no timestamps or pids,
-so boots that log the same configuration share one call.
+so boots that log the same configuration share one call. The model and reasoning effort
+are part of the key, so changing either asks every boot again.
+
+Model choice: on 10 staging boots (445 keys) gpt-5.4-mini at low reasoning gave the same
+values as gpt-5.4-2 in about half the time (~4 s vs ~8 s a boot). Without reasoning it reads
+upload_video[inward=0] as privacy_mode.inward; o3-mini / gpt-4.1(-mini) / gpt-4o-mini were
+slower or missed values. The other LLM calls (report_callouts) stay on OAI_MODEL.
 
 Configuration (env or .env at the repo root): AZURE_OAI, OAI_ENDPOINT, OAI_MODEL,
-OAI_API_VERSION. OVERRIDE_LLM=0 turns the calls off; missing credentials do too.
+OVERRIDE_LLM_MODEL (deployment for this step; OAI_MODEL if empty), OVERRIDE_LLM_REASONING
+(reasoning_effort: none/low/medium/high; empty: the model default), OVERRIDE_LLM_API_VERSION
+(default 2025-04-01-preview). OVERRIDE_LLM=0 turns the calls off; missing credentials do too.
 """
 
 import bisect
@@ -153,6 +162,15 @@ def _load_env():
         pass
 
 
+def model_settings():
+    """(deployment, reasoning effort or None, api version) of the override LLM."""
+    _load_env()
+    model = os.environ.get('OVERRIDE_LLM_MODEL', '').strip() or os.environ.get('OAI_MODEL', '').strip()
+    reasoning = os.environ.get('OVERRIDE_LLM_REASONING', '').strip().lower() or None
+    api_version = os.environ.get('OVERRIDE_LLM_API_VERSION', '').strip() or '2025-04-01-preview'
+    return model, reasoning, api_version
+
+
 def _get_chain():
     global _chain
     with _chain_lock:
@@ -161,15 +179,18 @@ def _get_chain():
             from langchain_core.prompts import ChatPromptTemplate
             from langchain_openai import AzureChatOpenAI
 
-            _load_env()
+            model, reasoning, api_version = model_settings()
+            extra = {'reasoning_effort': reasoning} if reasoning else {}
             llm = AzureChatOpenAI(
-                azure_deployment=os.environ['OAI_MODEL'].strip(),
+                azure_deployment=model,
                 azure_endpoint=os.environ['OAI_ENDPOINT'].strip(),
                 api_key=os.environ['AZURE_OAI'].strip(),
-                api_version=os.environ.get('OAI_API_VERSION', '2024-08-01-preview').strip(),
+                api_version=api_version,
                 max_retries=int(os.environ.get('OVERRIDE_LLM_RETRIES', '6')),
                 timeout=float(os.environ.get('OVERRIDE_LLM_TIMEOUT', '120')),
+                **extra,
             )
+            log.info('Override LLM: %s (reasoning %s, api %s)', model, reasoning or 'default', api_version)
             prompt = ChatPromptTemplate.from_messages([('system', SYSTEM_PROMPT), ('human', HUMAN_PROMPT)])
             _chain = prompt | llm | JsonOutputParser()
     return _chain
@@ -192,7 +213,9 @@ def extract_values(conditions, evidence):
         'keys': '\n'.join(f'{s}.{k} = {_fmt_default(d)}' for s, k, d in wanted),
         'lines': '\n'.join(evidence),
     }
-    model = os.environ.get('OAI_MODEL', '').strip()
+    model, reasoning, _ = model_settings()
+    if reasoning:
+        model = f'{model}@{reasoning}'
     digest = hashlib.sha256(json.dumps([PROMPT_VERSION, model, variables], sort_keys=True).encode()).hexdigest()
     cache_path = CACHE_DIR / digest[:2] / f'{digest}.json'
     if cache_path.exists():
