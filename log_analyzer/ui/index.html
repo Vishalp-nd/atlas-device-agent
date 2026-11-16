@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log Monitoring Agent</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%2315803d'/%3E%3Cpath d='M4 11V5m4 6V3m4 8V7' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="agent.css?v=2">
 </head>
 <body>
   <header class="topbar">
@@ -86,6 +87,8 @@
     </section>
 
     <section class="card main-card" id="view" aria-live="polite"></section>
+    <!-- Agent mode: a chat with Claude about the run / comparison open on the left (agent.js) -->
+    <section class="card agent-card" id="agent" hidden aria-label="Log agent"></section>
   </main>
 
   <template id="tpl-empty">
@@ -123,6 +126,7 @@
 
   <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
   <script src="config.js"></script>
-  <script src="app.js?v=11"></script>
+  <script src="agent.js?v=2"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

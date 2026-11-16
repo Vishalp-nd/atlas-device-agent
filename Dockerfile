@@ -24,6 +24,16 @@ WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Claude Code, for agent mode (log_analyzer/agent): each chat turn runs `claude -p` with the
+# signed-in person's own token. After the pip layer, so adding it doesn't reinstall Python deps.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends curl ca-certificates \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& curl -fsSL https://claude.ai/install.sh | bash \
+	&& ln -sf /root/.local/bin/claude /usr/local/bin/claude \
+	&& claude --version
+ENV DISABLE_AUTOUPDATER=1
+
 # The real working directory at runtime is the bind-mounted repo root, not
 # anything copied into the image — see the Makefile's `-v $(REPO_ROOT):/repo`.
 WORKDIR /repo

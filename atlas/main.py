@@ -20,6 +20,7 @@ import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from log_analyzer.agent.router import router as log_analyzer_agent_router
 from log_analyzer.router import router as log_analyzer_router
 
 from .router import router as atlas_router
@@ -30,12 +31,15 @@ app.include_router(atlas_router)
 # Log Analyzer API under /log-analyzer. The UI (log_analyzer/ui/) is NOT served here: it runs on its own,
 # e.g. `python -m log_analyzer.serve_ui`, and calls this API at ATLAS_API_URL
 app.include_router(log_analyzer_router)
-# The UI is on another origin, so allow cross-origin calls; LOG_ANALYZER_CORS_ORIGINS: comma-separated origins, default any
+# Agent mode (/log-analyzer/agent): chats with Claude Code about a run, on each person's own token
+app.include_router(log_analyzer_agent_router)
+# The UI is on another origin, so allow cross-origin calls; LOG_ANALYZER_CORS_ORIGINS: comma-separated origins, default any.
+# Agent mode's session is a bearer token (Authorization), never a cookie, so no credentials are allowed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.environ.get("LOG_ANALYZER_CORS_ORIGINS", "*").split(",") if o.strip()],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 

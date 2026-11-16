@@ -406,6 +406,7 @@ async function renderRun(id) {
         </div>
         <div class="actions">
           ${active ? '<button class="ghost danger" id="cancel">Cancel</button>' : '<button class="ghost" id="rerun">Run again</button>'}
+          ${active ? '' : agentButton(`#/runs/${run.id}`)}
         </div>
       </div>
       <div class="facts">
@@ -468,8 +469,20 @@ async function renderRun(id) {
   refresh();
 }
 
+// Agent mode: a run or comparison page with /agent on the end opens the chat beside it
+// (agent.js); the button toggles it. Only finished runs / comparisons offer it.
+const AGENT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z" fill="currentColor"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z" fill="currentColor" opacity=".7"/></svg>';
+function agentButton(page) {
+  const on = location.hash.startsWith(`${page}/agent`);
+  return `<a class="agent-btn${on ? ' on' : ''}" href="${on ? page : `${page}/agent`}" aria-pressed="${on}"
+    title="${on ? 'Leave agent mode' : 'Ask Claude about this run\'s logs and report'}">${AGENT_ICON}<span>${on ? 'Exit agent mode' : 'Agent mode'}</span></a>`;
+}
+
 function route() {
   clearTimeout(timer);
+  const ag = location.hash.match(/^#\/(runs|compare)\/(\d+)\/agent/);
+  if (ag) LAAgent.open(ag[1] === 'runs' ? 'run' : 'comparison', Number(ag[2]));
+  else LAAgent.close();
   const m = location.hash.match(/^#\/runs\/(\d+)/);
   const c = location.hash.match(/^#\/compare\/(\d+)/);
   if (m) renderRun(Number(m[1]));
@@ -675,7 +688,8 @@ async function renderCompare(id) {
         <div class="sub"><span>Comparison #${c.id}</span><span>${esc(kindLabel)}</span>
           ${c.start_date ? `<span>${esc(range(c))}</span>` : ''}<span>${fmtAgo(c.created_at)}</span></div>
       </div>
-      <div class="actions">${c.url ? `<a class="button" href="${esc(API.replace(/\/log-analyzer$/, '') + c.url)}" target="_blank" rel="noopener">Open comparison report ↗</a>` : ''}</div></div>
+      <div class="actions">${c.url ? `<a class="button" href="${esc(API.replace(/\/log-analyzer$/, '') + c.url)}" target="_blank" rel="noopener">Open comparison report ↗</a>` : ''}
+        ${active ? '' : agentButton(`#/compare/${c.id}`)}</div></div>
       ${active && stage ? `<div class="stage"><div class="label"><span>${esc(stage)}</span></div><div class="bar indeterminate"><span></span></div></div>` : ''}
       ${c.error ? `<div class="alert">${esc(c.error)}</div>` : ''}
       <div class="sides">${c.items.map(sideCard).join('')}</div>
