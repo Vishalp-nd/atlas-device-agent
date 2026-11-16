@@ -38,8 +38,9 @@ DB_SCHEMA = "log_analyzer"
 SCHEMA_SQL = Path(__file__).resolve().parent / "schema.sql"
 
 # pytest device-validator tests; the image has no checkout, so the extracted steps
-# are snapshotted here whenever the checkout is available (LOG_ANALYZER_TESTS_DIR, DEVICE_AUTOMATION_ROOT)
-_DEVICE_AUTOMATION_ROOT = os.environ.get("DEVICE_AUTOMATION_ROOT", "/home/ubuntu/device-automation")
+# are snapshotted here whenever the checkout is available (LOG_ANALYZER_TESTS_DIR, DEVICE_AUTOMATION_ROOT).
+# Default: a device-automation checkout next to this repo (in Docker the Makefile mounts it at /device-automation).
+_DEVICE_AUTOMATION_ROOT = os.environ.get("DEVICE_AUTOMATION_ROOT", REPO_ROOT.parent / "device-automation")
 TESTS_DIR = Path(os.environ.get(
     "LOG_ANALYZER_TESTS_DIR",
     Path(_DEVICE_AUTOMATION_ROOT).expanduser() / "pytest_device_validator" / "tests",

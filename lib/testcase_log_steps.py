@@ -30,6 +30,7 @@ import ast
 import itertools
 import json
 import logging
+import os
 import re
 import warnings
 from collections import Counter, defaultdict
@@ -38,7 +39,9 @@ from pathlib import Path
 
 log = logging.getLogger('testcase_log_steps')
 
-DEFAULT_TESTS_DIR = Path('/home/ubuntu/device-automation/pytest_device_validator/tests')
+# device-automation checkout: DEVICE_AUTOMATION_ROOT, else next to this repo
+DEFAULT_TESTS_DIR = (Path(os.environ.get('DEVICE_AUTOMATION_ROOT') or Path(__file__).resolve().parents[2] / 'device-automation')
+                     .expanduser() / 'pytest_device_validator' / 'tests')
 
 SEARCH_METHODS = {'search_log', 'search_log_interval', 'search_logs_until_found'}
 WILDCARD = object()

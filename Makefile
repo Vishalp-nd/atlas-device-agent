@@ -19,6 +19,10 @@ REPO_ROOT  := $(CURDIR)
 ENV_FILE   := .env
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
 GIT_COMMIT := $(shell git rev-parse --verify HEAD 2>/dev/null || echo unknown)
+# device-automation checkout (default: next to this repo). Mounted read-only at /device-automation,
+# which is where the code looks inside the container (/repo/../device-automation); skipped if it doesn't exist.
+DEVICE_AUTOMATION_HOST ?= $(abspath $(REPO_ROOT)/../device-automation)
+DA_MOUNT   := $(if $(wildcard $(DEVICE_AUTOMATION_HOST)),-v $(DEVICE_AUTOMATION_HOST):/device-automation:ro,)
 
 .PHONY: docker-build docker-run docker-run-detached docker-build-run docker-build-run-detached docker-logs docker-stop
 
@@ -37,6 +41,7 @@ docker-run:
 		--shm-size=$(SHM_SIZE) \
 		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
+		$(DA_MOUNT) \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
 		$(IMAGE_NAME)
 
@@ -50,6 +55,7 @@ docker-run-detached:
 		--shm-size=$(SHM_SIZE) \
 		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
+		$(DA_MOUNT) \
 		$(if $(wildcard $(ENV_FILE)),--env-file $(ENV_FILE),) \
 		$(IMAGE_NAME)
 
