@@ -49,7 +49,8 @@ def _tmp_root():
             return '/dev/shm'
     except OSError:
         pass
-    return None  # tempfile's default
+    # tempfile's default, as a path: callers size it (shutil.disk_usage) and sweep it (Path.glob)
+    return tempfile.gettempdir()
 
 
 TMP_ROOT = _tmp_root()
