@@ -1,50 +1,90 @@
 // Agent mode — a chat with Claude about the run or comparison open on the left.
-// Sign-in is DeviceQAI's (an emailed code for allowed addresses), then the person's own
-// Claude token (`claude setup-token`); every answer is a Claude Code run on the server with
-// that token, limited to this run's devices, its dates ±1 day, and its reports.
-// Talks to /log-analyzer/agent (log_analyzer/agent/router.py); app.js opens and closes it.
+// Sign-in and the Claude token are the page's account (account.js, LAAuth); every answer is
+// a Claude Code run on the server with the person's own token, limited to this run's
+// devices, its dates ±1 day, and its reports. Talks to /log-analyzer/agent
+// (log_analyzer/agent/router.py); app.js opens and closes it. The panel's width is the
+// person's: drag its left edge (remembered per browser), double-click it to reset.
 'use strict';
 
 window.LAAgent = (() => {
-  const SESSION_KEY = 'la-agent-session';
   const MODEL_KEY = 'la-agent-model';
+  const WIDTH_KEY = 'la-agent-width';
+  const MIN_PANEL = 360;   // px, the chat
+  const MIN_VIEW = 340;    // px, the run on the left
   const box = document.getElementById('agent');
+  const layout = document.querySelector('.layout');
   const h = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const base = () => API + '/agent'; // API: app.js
+  const call = (...a) => LAAuth.call(...a);
+  const SPARK = LAAuth.spark;
 
   let target = null;        // {kind: 'run'|'comparison', id}
-  let info = null;          // GET /session
   let chat = null;          // the open chat
   let poll = null;
-  let pending = {};         // sign-in form state
+  let shownFor = null;      // the sign-in state the panel was drawn for
   let model = 'sonnet';
   try { model = localStorage.getItem(MODEL_KEY) || 'sonnet'; } catch (_) { /* storage blocked */ }
+  const info = () => LAAuth.info() || {};
 
-  // ── session storage ────────────────────────────────────────────────────
-  const saved = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (_) { return null; } };
-  const save = (v) => { try { v ? localStorage.setItem(SESSION_KEY, JSON.stringify(v)) : localStorage.removeItem(SESSION_KEY); } catch (_) { /* blocked */ } };
+  // ── width: drag the panel's left edge ───────────────────────────────────
+  const wide = () => matchMedia('(min-width: 901px)').matches;
+  let width = null;
+  try { width = Number(localStorage.getItem(WIDTH_KEY)) || null; } catch (_) { /* blocked */ }
 
-  class ApiError extends Error {
-    constructor(message, status, state) { super(message); this.status = status; this.state = state; }
+  function clampWidth(w) {
+    const gap = 20;
+    const room = layout.clientWidth - parseFloat(getComputedStyle(layout).paddingLeft) - parseFloat(getComputedStyle(layout).paddingRight) - gap;
+    return Math.round(Math.min(Math.max(w, MIN_PANEL), Math.max(MIN_PANEL, room - MIN_VIEW)));
   }
+  function applyWidth() {
+    if (box.hidden || !wide() || !width) { layout.style.gridTemplateColumns = ''; return; }
+    const w = clampWidth(width);
+    layout.style.gridTemplateColumns = `minmax(0, 1fr) ${w}px`;
+    const grip = box.querySelector('.ag-grip');
+    if (grip) grip.setAttribute('aria-valuenow', String(w));
+  }
+  function setWidth(w, keep = true) {
+    width = w;
+    if (keep) { try { w ? localStorage.setItem(WIDTH_KEY, String(Math.round(w))) : localStorage.removeItem(WIDTH_KEY); } catch (_) { /* blocked */ } }
+    applyWidth();
+  }
+  addEventListener('resize', applyWidth);
 
-  async function call(path, options = {}) {
-    const s = saved();
-    const headers = { 'Content-Type': 'application/json' };
-    if (s?.session) headers.Authorization = `Bearer ${s.session}`;
-    let res;
-    try {
-      res = await fetch(base() + path, { ...options, headers, cache: 'no-store' });
-    } catch (err) { throw new ApiError(`Can't reach the server: ${err.message}`, 0); }
-    let body = {};
-    try { body = await res.json(); } catch (_) { /* not json */ }
-    if (!res.ok) {
-      const d = body.detail;
-      const msg = typeof d === 'string' ? d : d?.error || (Array.isArray(d) ? d.map((x) => x.msg).join('; ') : res.statusText);
-      if (res.status === 401) { save(null); info = info && { ...info, signed_in: false }; }
-      throw new ApiError(msg, res.status, d?.state);
-    }
-    return body;
+  function grip() {
+    const el = document.createElement('div');
+    el.className = 'ag-grip';
+    el.setAttribute('role', 'separator');
+    el.setAttribute('aria-orientation', 'vertical');
+    el.setAttribute('aria-label', 'Resize the agent panel');
+    el.setAttribute('aria-valuemin', String(MIN_PANEL));
+    el.tabIndex = 0;
+    el.title = 'Drag to resize · double-click to reset';
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !wide()) return;
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      document.body.classList.add('ag-resizing');
+      const right = box.getBoundingClientRect().right;
+      const move = (ev) => setWidth(clampWidth(right - ev.clientX), false);
+      const up = () => {
+        el.removeEventListener('pointermove', move);
+        el.removeEventListener('pointerup', up);
+        el.removeEventListener('pointercancel', up);
+        document.body.classList.remove('ag-resizing');
+        setWidth(clampWidth(box.getBoundingClientRect().width));
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+    });
+    el.addEventListener('dblclick', () => setWidth(null));
+    el.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 80 : 24;
+      const now = box.getBoundingClientRect().width;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setWidth(clampWidth(now + step)); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); setWidth(clampWidth(now - step)); }
+      else if (e.key === 'Home' || e.key === 'Escape') { e.preventDefault(); setWidth(null); }
+    });
+    return el;
   }
 
   // ── markdown (what Claude writes: headings, lists, code, tables, emphasis, links) ──
@@ -52,7 +92,7 @@ window.LAAgent = (() => {
     return h(s)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+      .replace(/(^|[^*\w])\*([^*\s][^*]*)\*(?!\w)/g, '$1<em>$2</em>')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
   function md(text) {
@@ -62,8 +102,7 @@ window.LAAgent = (() => {
     const isTable = (l, n) => /^\s*\|.*\|\s*$/.test(l) && /^\s*\|?\s*:?-{2,}/.test(n || '');
     while (i < lines.length) {
       const l = lines[i];
-      const fence = l.match(/^\s*```(\w*)/);
-      if (fence) {
+      if (/^\s*```/.test(l)) {
         const code = [];
         i++;
         while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
@@ -81,7 +120,7 @@ window.LAAgent = (() => {
         continue;
       }
       const hd = l.match(/^(#{1,4})\s+(.*)/);
-      if (hd) { out.push(`<h${Math.min(hd[1].length + 2, 6)} class="ag-h">${inline(hd[2])}</h${Math.min(hd[1].length + 2, 6)}>`); i++; continue; }
+      if (hd) { const n = Math.min(hd[1].length + 2, 6); out.push(`<h${n} class="ag-h">${inline(hd[2])}</h${n}>`); i++; continue; }
       if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
         const ordered = /^\s*\d+[.)]/.test(l);
         const items = [];
@@ -109,160 +148,20 @@ window.LAAgent = (() => {
   }
 
   // ── frame ──────────────────────────────────────────────────────────────
-  const SPARK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z" fill="currentColor"/><path d="M19 15l.8 2.2 2.2.8-2.2.8L19 21l-.8-2.2-2.2-.8 2.2-.8z" fill="currentColor" opacity=".7"/></svg>';
   const targetLabel = () => target ? (target.kind === 'run' ? `Run #${target.id}` : `Comparison #${target.id}`) : '';
+  const pageOf = () => target ? (target.kind === 'run' ? `#/runs/${target.id}` : `#/compare/${target.id}`) : '#/';
 
   function frame(body, { sub = '', tools = '' } = {}) {
     box.innerHTML = `
       <header class="ag-head">
         <div class="ag-title"><span class="ag-mark">${SPARK}</span><div><h2>Log Agent</h2>
           <div class="ag-sub">${sub || h(targetLabel())}</div></div></div>
-        <div class="ag-tools">${tools}<a class="ag-x" href="${target ? (target.kind === 'run' ? `#/runs/${target.id}` : `#/compare/${target.id}`) : '#/'}" title="Leave agent mode" aria-label="Leave agent mode">×</a></div>
+        <div class="ag-tools">${tools}<a class="ag-x" href="${pageOf()}" title="Leave agent mode" aria-label="Leave agent mode">×</a></div>
       </header>
       <div class="ag-body">${body}</div>`;
-  }
-
-  function busyBtn(btn, on, label) {
-    btn.disabled = on;
-    btn.classList.toggle('loading', on);
-    if (label) btn.querySelector('span:last-child').textContent = label;
-  }
-
-  // ── sign-in: email → code ──────────────────────────────────────────────
-  function renderEmail(error = '') {
-    frame(`
-      <form class="ag-gate" id="ag-email" novalidate>
-        <div class="ag-gate-mark">${SPARK}</div>
-        <h3>Sign in to use the agent</h3>
-        <p class="ag-lead">Ask questions about ${h(targetLabel())}: its devices' logs, its dates and its report. Claude answers on the server with <b>your own</b> Claude account.</p>
-        <label for="ag-mail">Work email</label>
-        <div class="ag-field"><input id="ag-mail" type="email" autocomplete="username email" placeholder="you@${h(info?.domain || 'netradyne.com')}" value="${h(pending.email || saved()?.email || '')}" required></div>
-        <p class="form-error">${h(error)}</p>
-        <button class="primary" type="submit"><span class="spin" aria-hidden="true"></span><span>Email me a code</span></button>
-        <p class="hint">Only addresses the DeviceQAI admin has allowed can sign in.</p>
-      </form>`);
-    const form = box.querySelector('#ag-email');
-    const input = box.querySelector('#ag-mail');
-    input.focus();
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = input.value.trim();
-      if (!email) { renderEmail('Enter your email.'); return; }
-      busyBtn(form.querySelector('button'), true);
-      try {
-        const r = await call('/auth/request', { method: 'POST', body: JSON.stringify({ email }) });
-        pending = { email: r.email, via: r.via, resendAt: Date.now() + r.resend_in * 1000 };
-        renderCode();
-      } catch (err) {
-        pending.email = email;
-        if (err.state === 'not_allowed') renderDenied(email);
-        else renderEmail(err.message);
-      }
-    });
-  }
-
-  function renderDenied(email) {
-    frame(`<div class="ag-gate"><div class="ag-gate-mark warn">!</div><h3>No access yet</h3>
-      <p class="ag-lead"><b>${h(email)}</b> isn't on the DeviceQAI allowlist. Ask the admin to add you, then sign in again.</p>
-      <button class="primary" type="button" id="ag-other"><span>Try another email</span></button></div>`);
-    box.querySelector('#ag-other').addEventListener('click', () => renderEmail());
-  }
-
-  function renderCode(error = '') {
-    frame(`
-      <form class="ag-gate" id="ag-code" novalidate>
-        <div class="ag-gate-mark">${SPARK}</div>
-        <h3>Check your email</h3>
-        <p class="ag-lead">Enter the 6-digit code sent to <b>${h(pending.email)}</b>.</p>
-        ${pending.via === 'console' ? '<p class="ag-note">Mail is off on this server: the code is printed in the backend\'s console (<code>docker logs atlas-agent-api</code>).</p>' : ''}
-        <div class="ag-field"><input id="ag-digits" class="ag-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required></div>
-        <p class="form-error">${h(error)}</p>
-        <button class="primary" type="submit"><span class="spin" aria-hidden="true"></span><span>Sign in</span></button>
-        <div class="ag-links"><button type="button" class="ag-link" id="ag-change">Use another email</button>
-          <button type="button" class="ag-link" id="ag-resend" disabled>Resend code</button></div>
-      </form>`);
-    const form = box.querySelector('#ag-code');
-    const input = box.querySelector('#ag-digits');
-    input.focus();
-    input.addEventListener('input', () => {
-      input.value = input.value.replace(/\D/g, '').slice(0, 6);
-      if (input.value.length === 6) form.requestSubmit();
-    });
-    const resend = box.querySelector('#ag-resend');
-    const tick = () => {
-      if (!box.contains(resend)) return;
-      const left = Math.ceil((pending.resendAt - Date.now()) / 1000);
-      resend.disabled = left > 0;
-      resend.textContent = left > 0 ? `Resend in ${left}s` : 'Resend code';
-      if (left > 0) setTimeout(tick, 1000);
-    };
-    tick();
-    resend.addEventListener('click', async () => {
-      try {
-        const r = await call('/auth/request', { method: 'POST', body: JSON.stringify({ email: pending.email }) });
-        pending.resendAt = Date.now() + r.resend_in * 1000;
-        renderCode();
-      } catch (err) { renderCode(err.message); }
-    });
-    box.querySelector('#ag-change').addEventListener('click', () => renderEmail());
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (input.value.length !== 6) { renderCode('Enter the 6 digits.'); return; }
-      busyBtn(form.querySelector('button.primary'), true);
-      try {
-        const r = await call('/auth/verify', { method: 'POST', body: JSON.stringify({ email: pending.email, code: input.value }) });
-        save({ session: r.session, email: r.email });
-        pending = {};
-        await start();
-      } catch (err) {
-        if (err.state === 'expired') { renderEmail(err.message); return; }
-        renderCode(err.message);
-      }
-    });
-  }
-
-  // ── Claude token ───────────────────────────────────────────────────────
-  function renderToken(error = '') {
-    const tok = info?.token;
-    const why = tok?.status === 'invalid' ? `<p class="ag-note bad">Claude rejected the token you added${tok.hint ? ` (…${h(tok.hint)})` : ''}. Paste a new one.</p>` : '';
-    frame(`
-      <form class="ag-gate wide" id="ag-token" novalidate>
-        <div class="ag-gate-mark">${SPARK}</div>
-        <h3>Connect your Claude account</h3>
-        <p class="ag-lead">The agent runs Claude Code on the server as <b>${h(info.email)}</b>, with your own token, so its usage counts against your Claude plan.</p>
-        ${why}
-        ${info.claude_cli ? '' : '<p class="ag-note bad">Claude Code isn\'t installed on this server, so the token can\'t be checked and the agent can\'t run. Ask the admin.</p>'}
-        <ol class="ag-steps">
-          <li>On your laptop, in a terminal: <code>claude setup-token</code></li>
-          <li>Sign in to your Claude account when the browser opens.</li>
-          <li>Copy the token it prints (starts with <code>sk-ant-oat01-</code>) and paste it here.</li>
-        </ol>
-        <label for="ag-tok">Claude token</label>
-        <div class="ag-field"><input id="ag-tok" type="password" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="sk-ant-oat01-…"></div>
-        <p class="form-error">${h(error)}</p>
-        <button class="primary" type="submit"><span class="spin" aria-hidden="true"></span><span>Connect</span></button>
-        <p class="hint">Stored encrypted on the server, shared with DeviceQAI, and never shown again. You can remove it from the agent's menu.</p>
-        <div class="ag-links"><button type="button" class="ag-link" id="ag-out">Sign out</button></div>
-      </form>`, { sub: `${h(targetLabel())} · ${h(info.email)}` });
-    const form = box.querySelector('#ag-token');
-    const input = box.querySelector('#ag-tok');
-    input.focus();
-    box.querySelector('#ag-out').addEventListener('click', signOut);
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!input.value.trim()) { renderToken('Paste your token.'); return; }
-      const btn = form.querySelector('button.primary');
-      busyBtn(btn, true, 'Checking with Claude…');
-      input.disabled = true;
-      try {
-        const r = await call('/token', { method: 'POST', body: JSON.stringify({ token: input.value.trim() }) });
-        info.token = r.token;
-        await openChat();
-      } catch (err) {
-        if (err.status === 401) { renderEmail('Your session ended. Sign in again.'); return; }
-        renderToken(err.message);
-      }
-    });
+    box.prepend(grip());
+    applyWidth();
+    return box.querySelector('.ag-body');
   }
 
   // ── chat ───────────────────────────────────────────────────────────────
@@ -316,16 +215,14 @@ window.LAAgent = (() => {
 
   function renderChat() {
     const sc = chat.scope;
+    const me = info();
     const tools = `
-      <select id="ag-model" aria-label="Model" title="Claude model">${(info.models || []).map((x) => `<option value="${h(x.id)}" ${x.id === model ? 'selected' : ''}>${h(x.label)}</option>`).join('')}</select>
+      <select id="ag-model" aria-label="Model" title="Claude model">${(me.models || []).map((x) => `<option value="${h(x.id)}" ${x.id === model ? 'selected' : ''}>${h(x.label)}</option>`).join('')}</select>
       <div class="ag-menu"><button type="button" class="ag-dots-btn" id="ag-more" aria-haspopup="menu" aria-expanded="false" title="More">⋯</button>
         <div class="ag-pop" role="menu" hidden>
-          <div class="ag-pop-h"><b>${h(info.email)}</b><span>Claude token ${info.token?.hint ? `…${h(info.token.hint)}` : ''} · ${h(info.token?.status || '')}</span></div>
           <button type="button" role="menuitem" data-act="new">New chat</button>
           <button type="button" role="menuitem" data-act="test">Check my Claude token</button>
-          <button type="button" role="menuitem" data-act="token">Replace my Claude token</button>
-          <button type="button" role="menuitem" data-act="drop">Remove my Claude token</button>
-          <button type="button" role="menuitem" data-act="out">Sign out</button>
+          <button type="button" role="menuitem" data-act="profile">Update profile</button>
         </div></div>`;
     frame(`
       <div class="ag-thread" id="ag-thread"></div>
@@ -343,25 +240,21 @@ window.LAAgent = (() => {
     });
     const more = box.querySelector('#ag-more');
     const pop = box.querySelector('.ag-pop');
+    const shut = () => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
     more.addEventListener('click', (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); });
-    document.addEventListener('click', (e) => { if (!pop.contains(e.target)) { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); } });
+    box.onclick = (e) => { if (!pop.contains(e.target) && e.target !== more) shut(); };
     pop.addEventListener('click', async (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (!act) return;
-      pop.hidden = true;
+      shut();
       if (act === 'new') { if (!chat.busy || confirm('Claude is still answering. Start a new chat anyway?')) await openChat(true); }
-      else if (act === 'token') renderToken();
-      else if (act === 'drop') {
-        if (!confirm('Remove your Claude token from the server? DeviceQAI uses the same one; you can add it again any time.')) return;
-        try { await call('/token/delete', { method: 'POST' }); info.token = null; renderToken(); } catch (err) { alert(err.message); }
-      }
-      else if (act === 'out') signOut();
+      else if (act === 'profile') LAAuth.openProfile();
       else if (act === 'test') {
         try {
           const r = await call('/token/test', { method: 'POST' });
-          info.token = r.token;
-          alert(r.token?.status === 'ok' ? 'Your Claude token works.' : `Token: ${r.token?.status}. ${r.token?.detail || ''}`);
-          if (r.token?.status === 'invalid') renderToken();
+          LAAuth.setInfo({ ...info(), token: r.token });
+          if (r.token?.status === 'ok') alert('Your Claude token works.');
+          else alert(`Token: ${r.token?.status}. ${r.token?.detail || ''}`);
         } catch (err) { alert(err.message); }
       }
     });
@@ -419,13 +312,10 @@ window.LAAgent = (() => {
   function schedulePoll() {
     clearTimeout(poll);
     poll = setTimeout(async () => {
-      if (!chat || !box.isConnected || box.hidden) return;
+      if (!chat || box.hidden) return;
       const from = Math.max(0, chat.messages.length - 2);
       try { merge(await call(`/chats/${chat.id}?after=${from}`)); }
-      catch (err) {
-        if (err.status === 401) { renderEmail('Your session ended. Sign in again.'); return; }
-        schedulePoll();
-      }
+      catch (err) { if (err.status !== 401) schedulePoll(); }   // 401: LAAuth's change redraws
     }, 900);
   }
 
@@ -437,9 +327,8 @@ window.LAAgent = (() => {
       merge(r);
       drawThread(true);
     } catch (err) {
-      if (err.state === 'token') { info.token = { ...(info.token || {}), status: 'invalid' }; renderToken(err.message); return; }
-      if (err.status === 401) { renderEmail('Your session ended. Sign in again.'); return; }
-      alert(err.message);
+      if (err.state === 'token') { LAAuth.setInfo({ ...info(), token: { ...(info().token || {}), status: 'invalid' } }); return; }
+      if (err.status !== 401) alert(err.message);
     }
   }
 
@@ -449,33 +338,39 @@ window.LAAgent = (() => {
       chat = await call('/chats', { method: 'POST', body: JSON.stringify({ kind: target.kind, id: target.id, new: fresh }) });
       renderChat();
     } catch (err) {
-      if (err.status === 401) { renderEmail(); return; }
+      if (err.status === 401) return;   // LAAuth's change redraws
       frame(`<div class="ag-gate"><div class="alert">${h(err.message)}</div></div>`);
     }
   }
 
-  async function signOut() {
-    try { await call('/auth/logout', { method: 'POST' }); } catch (_) { /* ended anyway */ }
-    save(null);
-    chat = null;
-    info = { ...info, signed_in: false };
-    renderEmail();
-  }
+  // What the panel shows follows the account: signed out → sign in, no usable token →
+  // connect Claude, else the chat. Redrawn only when that state changes.
+  const stateOf = (me) => !me ? 'loading' : me.unavailable ? 'unavailable' : !me.signed_in ? 'out'
+    : (!me.token || me.token.status === 'invalid') ? 'token' : `in:${me.email}`;
 
-  async function start() {
+  function show() {
+    if (box.hidden || !target) return;
+    const me = LAAuth.info();
+    const state = stateOf(me);
+    if (state === shownFor) return;
+    shownFor = state;
     clearTimeout(poll);
-    frame('<div class="ag-loading"><div class="skeleton" style="width:50%"></div><div class="skeleton"></div></div>');
-    try {
-      info = await call('/session');
-    } catch (err) {
-      frame(`<div class="ag-gate"><div class="alert">${h(err.message)}</div>
+    if (state === 'loading') { frame('<div class="ag-loading"><div class="skeleton" style="width:50%"></div><div class="skeleton"></div></div>'); return; }
+    if (state === 'unavailable') {
+      frame(`<div class="ag-gate"><div class="alert">${h(me.unavailable)}</div>
         <p class="hint">Agent mode needs the DeviceQAI sign-in (device-automation/deviceqa_auth) next to this server.</p></div>`);
       return;
     }
-    if (!info.signed_in) { renderEmail(); return; }
-    if (!info.token || info.token.status === 'invalid') { renderToken(); return; }
-    await openChat();
+    chat = null;
+    if (state === 'out') {
+      const body = frame('');
+      LAAuth.signInForm(body, { lead: `Ask questions about ${h(targetLabel())}: its devices' logs, its dates and its report. Claude answers on the server with <b>your own</b> Claude account.` });
+      return;
+    }
+    if (state === 'token') { LAAuth.tokenForm(frame('', { sub: `${h(targetLabel())} · ${h(me.email)}` }), {}); return; }
+    openChat();
   }
+  LAAuth.onChange(show);
 
   return {
     // app.js: the run / comparison on the left is in agent mode
@@ -484,16 +379,21 @@ window.LAAgent = (() => {
       target = { kind, id };
       document.body.classList.add('agent-mode');
       box.hidden = false;
-      if (!same) { chat = null; start(); }
+      if (same) return;
+      chat = null;
+      shownFor = null;
+      if (LAAuth.info()) show(); else { show(); LAAuth.load(); }
     },
     close() {
       if (box.hidden) return;
       clearTimeout(poll);
       box.hidden = true;
       box.innerHTML = '';
+      layout.style.gridTemplateColumns = '';
       document.body.classList.remove('agent-mode');
       target = null;
       chat = null;
+      shownFor = null;
     },
     active: () => !box.hidden,
   };

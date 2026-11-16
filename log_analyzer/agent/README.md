@@ -25,6 +25,11 @@ Until `LOGIN_MAIL_SEND=1` (and `SMTP_*`) is set in that checkout's
 `pytest_device_validator/.env`, codes are printed to the backend's console
 (`docker logs atlas-agent-api`), as on DeviceQAI.
 
+The profile icon next to the environment switch is the same account for the whole page:
+signed out it offers **Sign in**; signed in, **Update profile** (display name, kept in
+`OUTPUT/log_analyzer_runs/agent/profiles.json`, and the Claude token) and **Sign out**.
+The agent panel can be dragged wider or narrower from its left edge (double-click resets).
+
 ## What the agent can see
 
 Nothing but this run (or both runs of a comparison):
@@ -72,5 +77,6 @@ log_analyzer/agent/
   store.py      chats on disk: OUTPUT/log_analyzer_runs/agent/<chat>/ (0700)
   turn.py       one answer: `claude -p … --resume <session>` with the person's token
   log_tools.py  the log tools (MCP, stdio)
-log_analyzer/ui/agent.js, agent.css   the chat
+log_analyzer/ui/account.js            sign-in, profile chip / menu / dialogs, the shared forms
+log_analyzer/ui/agent.js, agent.css   the chat (and the account's styles)
 ```

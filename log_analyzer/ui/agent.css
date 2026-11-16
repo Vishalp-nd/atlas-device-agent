@@ -36,7 +36,17 @@ body.agent-mode #view .reports { grid-template-columns: repeat(auto-fill, minmax
   body.agent-mode .agent-card { order: -1; min-height: 70dvh; }
 }
 
-.agent-card { display: flex; flex-direction: column; padding: 0; overflow: hidden !important; }
+.agent-card { position: relative; display: flex; flex-direction: column; padding: 0; overflow: hidden !important; }
+
+/* the resize grip on the panel's left edge (wide screens: the layout is two columns) */
+.ag-grip { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; z-index: 5; cursor: col-resize; touch-action: none; outline: none; }
+.ag-grip::before { content: ""; position: absolute; left: 3px; top: 50%; width: 4px; height: 44px; margin-top: -22px; border-radius: 4px;
+  background: var(--line); transition: background .15s, height .15s, margin-top .15s; }
+.ag-grip:hover::before, .ag-grip:focus-visible::before, body.ag-resizing .ag-grip::before { background: var(--accent); height: 72px; margin-top: -36px; }
+.ag-grip:focus-visible { box-shadow: inset 2px 0 0 var(--accent); }
+body.ag-resizing { cursor: col-resize; user-select: none; }
+body.ag-resizing iframe, body.ag-resizing .ag-thread { pointer-events: none; }
+@media (max-width: 900px) { .ag-grip { display: none; } }
 .agent-card[hidden] { display: none; }
 .ag-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -170,3 +180,55 @@ body.agent-mode #view .reports { grid-template-columns: repeat(auto-fill, minmax
 .ag-stop { padding: 8px 12px; background: var(--bad-bg); color: var(--bad); }
 .ag-send[hidden], .ag-stop[hidden] { display: none; }
 .ag-foot { flex: none; margin: 2px 16px 12px; font-size: 11.5px; color: var(--faint); text-align: center; }
+
+/* ── account (account.js): the profile chip next to the environment switch, its menu, dialogs ── */
+.la-acct { position: relative; display: flex; align-items: center; }
+.la-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700; color: #fff; border: 0;
+  background: linear-gradient(135deg, #15803d, #0f766e 55%, #2563eb); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--line);
+  transition: box-shadow .15s, transform .15s; }
+.la-av:hover, .la-acct.open .la-av { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent); }
+.la-av.out { background: var(--surface-2); color: var(--muted); }
+.la-av.out svg { width: 17px; height: 17px; }
+.la-av.big { width: 44px; height: 44px; font-size: 18px; cursor: default; }
+.la-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 260px; padding: 5px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: 0 14px 40px -12px rgba(20, 20, 30, .3);
+  opacity: 0; visibility: hidden; transform: translateY(-4px) scale(.98); transform-origin: right top;
+  transition: opacity .14s, transform .18s, visibility 0s .18s; }
+.la-acct.open .la-menu { opacity: 1; visibility: visible; transform: none; transition: opacity .14s, transform .18s; }
+.la-menu-h { padding: 9px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; display: grid; gap: 2px; }
+.la-menu-h b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.la-menu-h span { font-size: 12px; color: var(--muted); word-break: break-all; }
+.la-menu button[data-a="profile"], .la-menu button[data-a="out"] { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  font: inherit; font-size: 13px; border: 0; background: none; color: var(--fg); padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.la-menu button[data-a="profile"]:hover, .la-menu button[data-a="out"]:hover { background: var(--surface-2); }
+.la-menu button svg { width: 16px; height: 16px; color: var(--muted); flex: none; }
+.la-menu-pad { padding: 6px 5px 4px; }
+.la-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.la-tok { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.la-tok::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.la-tok.ok { color: var(--ok); } .la-tok.expiring, .la-tok.unchecked { color: var(--warn); } .la-tok.invalid { color: var(--bad); }
+.la-menu-h .la-tok { margin-top: 4px; }
+
+.la-modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
+  background: rgba(15, 16, 19, .45); backdrop-filter: blur(2px); animation: la-fade .15s ease-out; }
+@keyframes la-fade { from { opacity: 0; } }
+.la-modal-card { position: relative; width: min(500px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 24px 70px -20px rgba(0,0,0,.45);
+  animation: cmp-in .18s ease-out; }
+.la-modal-x { position: absolute; right: 10px; top: 8px; z-index: 1; font: inherit; font-size: 22px; line-height: 1; border: 0; background: none;
+  color: var(--muted); cursor: pointer; padding: 4px 8px; border-radius: 7px; }
+.la-modal-x:hover { background: var(--surface-2); color: var(--fg); }
+.la-modal .ag-gate { margin: 0 auto; }
+.la-profile { padding: 24px 24px 20px; display: flex; flex-direction: column; }
+.la-profile-top { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.la-profile-top h3 { margin: 0; font-size: 16px; text-transform: none; letter-spacing: -.01em; color: var(--fg); }
+.la-profile label { margin-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.la-profile .hint code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.la-profile-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.la-profile-actions .primary { width: auto; min-width: 140px; }
+.la-profile .primary .spin, .la-menu .primary .spin { display: none; width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; animation: ag-spin .7s linear infinite; }
+.la-profile .primary.loading .spin { display: inline-block; }
+.ag-link.danger { color: var(--bad); }
+.la-done { color: var(--ok); font-size: 12.5px; margin: 0 0 8px; }

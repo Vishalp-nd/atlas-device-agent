@@ -55,8 +55,20 @@ def session(request: Request):
     who = auth.store().session(auth.bearer(request), auth.client_ip(request))
     if who is None or who.kind != "user":
         return {**base, "signed_in": False}
-    return {**base, "signed_in": True, "email": who.email, "name": who.name,
-            "token": _token_state(who.email)}
+    name = store.profile(who.email).get("name") or ""
+    return {**base, "signed_in": True, "email": who.email, "name": name or who.name,
+            "display_name": name, "token": _token_state(who.email)}
+
+
+@router.post("/profile")
+def update_profile(request: Request, body: dict = Body(default={})):
+    """The person's display name (the Claude token has its own endpoints below)."""
+    who = auth.person(request)
+    name = " ".join(str(body.get("name") or "").split())
+    if len(name) > store.NAME_MAX:
+        raise HTTPException(422, f"Keep the name under {store.NAME_MAX} characters.")
+    store.put_profile(who.email, name=name)
+    return {"name": name or who.name, "display_name": name}
 
 
 @router.post("/auth/request")

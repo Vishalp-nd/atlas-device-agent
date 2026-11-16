@@ -119,6 +119,31 @@ class Chat:
         return p
 
 
+PROFILES = ROOT / "profiles.json"
+NAME_MAX = 60
+
+
+def profile(email: str) -> dict:
+    """The person's Log Analyzer profile: {name} (display name; empty = the email's name)."""
+    try:
+        return dict(json.loads(PROFILES.read_text()).get(email) or {})
+    except (OSError, ValueError):
+        return {}
+
+
+def put_profile(email: str, **fields) -> dict:
+    ROOT.mkdir(parents=True, exist_ok=True)
+    with (ROOT / ".profiles.lock").open("a+") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            data = json.loads(PROFILES.read_text())
+        except (OSError, ValueError):
+            data = {}
+        data[email] = {**(data.get(email) or {}), **fields, "updated": time.time()}
+        _write(PROFILES, data)
+    return data[email]
+
+
 def chats_of(email: str, kind: str, target_id: int) -> list[Chat]:
     """This person's chats about this run / comparison, newest first."""
     if not ROOT.is_dir():
