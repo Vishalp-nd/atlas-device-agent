@@ -250,7 +250,7 @@ const featInput = $('#features-input');
 function renderFeatureChips() {
   $('#features-chips').innerHTML = [...selectedFeatures].map((f) =>
     `<span class="chip">${esc(f)}<button type="button" data-remove="${esc(f)}" aria-label="Remove ${esc(f)}">×</button></span>`).join('');
-  featInput.placeholder = selectedFeatures.size ? '' : 'Select feature';
+  featInput.placeholder = selectedFeatures.size ? '' : 'Search features';
   $('#feature-count').textContent = selectedFeatures.size ? `${selectedFeatures.size} selected` : '';
 }
 
@@ -323,7 +323,10 @@ featInput.addEventListener('keydown', (e) => {
 $('#features-list').addEventListener('mousedown', (e) => {
   e.preventDefault();  // keep the focus (and the list) while picking
   const opt = e.target.closest('.opt');
-  if (opt) { activeFeature = Number(opt.dataset.i); toggleFeature(shownFeatures[activeFeature]); }
+  if (!opt) return;
+  toggleFeature(shownFeatures[Number(opt.dataset.i)]);
+  // a pick ends the search, like Enter: clear the typed text so only the chips stay in the box
+  if (featInput.value) { featInput.value = ''; activeFeature = -1; renderFeatureList(); }
 });
 $('#features-clear').addEventListener('mousedown', (e) => e.preventDefault());
 $('#features-clear').addEventListener('click', () => {
