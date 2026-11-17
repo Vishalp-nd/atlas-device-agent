@@ -239,31 +239,46 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// ── feature filter (multi-select of feature_mapping.ini features) ─────────
+// ── feature filter: combobox over the feature_mapping.ini features ────────
+// Typing in the box filters the list under it; picked features show as chips in the box.
 let allFeatures = [];
 const selectedFeatures = new Set();
+let shownFeatures = [];
+let activeFeature = -1;
+const featInput = $('#features-input');
 
-function renderFeatureValue() {
-  const value = $('#features-value');
-  const n = selectedFeatures.size;
-  value.textContent = n ? [...selectedFeatures].join(', ') : 'All devices';
-  value.classList.toggle('placeholder', !n);
-  $('#feature-count').textContent = n ? `${n} selected` : '';
+function renderFeatureChips() {
+  $('#features-chips').innerHTML = [...selectedFeatures].map((f) =>
+    `<span class="chip">${esc(f)}<button type="button" data-remove="${esc(f)}" aria-label="Remove ${esc(f)}">×</button></span>`).join('');
+  featInput.placeholder = selectedFeatures.size ? '' : 'Select feature';
+  $('#feature-count').textContent = selectedFeatures.size ? `${selectedFeatures.size} selected` : '';
 }
 
 function renderFeatureList() {
-  const q = $('#features-search').value.trim().toLowerCase();
-  const shown = allFeatures.filter((f) => f.toLowerCase().includes(q));
-  $('#features-list').innerHTML = shown.length
-    ? shown.map((f) => `<label class="check"><input type="checkbox" value="${esc(f)}"${selectedFeatures.has(f) ? ' checked' : ''}> ${esc(f)}</label>`).join('')
+  const q = featInput.value.trim().toLowerCase();
+  shownFeatures = allFeatures.filter((f) => f.toLowerCase().includes(q));
+  if (activeFeature >= shownFeatures.length) activeFeature = shownFeatures.length - 1;
+  $('#features-list').innerHTML = shownFeatures.length
+    ? shownFeatures.map((f, i) => `<div class="opt${i === activeFeature ? ' active' : ''}" role="option" id="feat-opt-${i}"
+        aria-selected="${selectedFeatures.has(f)}" data-i="${i}"><span class="box" aria-hidden="true"></span>${esc(f)}</div>`).join('')
     : `<div class="empty-note">${allFeatures.length ? 'No feature matches.' : 'Features could not be loaded.'}</div>`;
-  $('#features-shown').textContent = q ? `${shown.length} of ${allFeatures.length}` : `${allFeatures.length} features`;
+  featInput.setAttribute('aria-activedescendant', activeFeature >= 0 ? `feat-opt-${activeFeature}` : '');
+  $('#features-shown').textContent = q ? `${shownFeatures.length} of ${allFeatures.length}` : `${allFeatures.length} features`;
+  $(`#feat-opt-${activeFeature}`)?.scrollIntoView({ block: 'nearest' });
 }
 
 function setFeaturePanel(open) {
+  if (open === !$('#features-panel').hidden) return;
   $('#features-panel').hidden = !open;
-  $('#features-toggle').setAttribute('aria-expanded', String(open));
-  if (open) { renderFeatureList(); $('#features-search').focus(); }
+  $('#features').classList.toggle('open', open);
+  featInput.setAttribute('aria-expanded', String(open));
+  if (open) { activeFeature = -1; renderFeatureList(); }
+}
+
+function toggleFeature(name) {
+  if (selectedFeatures.has(name)) selectedFeatures.delete(name); else selectedFeatures.add(name);
+  renderFeatureChips();
+  renderFeatureList();
 }
 
 async function loadFeatures() {
@@ -271,18 +286,51 @@ async function loadFeatures() {
   renderFeatureList();
 }
 
-$('#features-toggle').addEventListener('click', () => setFeaturePanel($('#features-panel').hidden));
-$('#features-search').addEventListener('input', renderFeatureList);
-$('#features-list').addEventListener('change', (e) => {
-  if (e.target.type !== 'checkbox') return;
-  if (e.target.checked) selectedFeatures.add(e.target.value); else selectedFeatures.delete(e.target.value);
-  renderFeatureValue();
+$('#features-box').addEventListener('mousedown', (e) => {
+  if (e.target.closest('[data-remove]')) return;
+  if (e.target !== featInput) e.preventDefault();  // keep the focus in the input
+  featInput.focus();
+  setFeaturePanel($('#features-panel').hidden || e.target === featInput);
 });
-$('#features-clear').addEventListener('click', () => { selectedFeatures.clear(); renderFeatureValue(); renderFeatureList(); });
-document.addEventListener('click', (e) => { if (!$('#features').contains(e.target)) setFeaturePanel(false); });
-$('#features').addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('#features-panel').hidden) { setFeaturePanel(false); $('#features-toggle').focus(); }
+$('#features-chips').addEventListener('click', (e) => {
+  const remove = e.target.closest('[data-remove]');
+  if (remove) { toggleFeature(remove.dataset.remove); featInput.focus(); }
 });
+featInput.addEventListener('focus', () => setFeaturePanel(true));
+featInput.addEventListener('input', () => { activeFeature = featInput.value ? 0 : -1; setFeaturePanel(true); renderFeatureList(); });
+featInput.addEventListener('keydown', (e) => {
+  const open = !$('#features-panel').hidden;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!open) return setFeaturePanel(true);
+    const step = e.key === 'ArrowDown' ? 1 : -1;
+    activeFeature = Math.max(0, Math.min(shownFeatures.length - 1, activeFeature + step));
+    renderFeatureList();
+  } else if (e.key === 'Enter') {
+    if (!open) return;
+    e.preventDefault();  // no form submit while picking
+    const pick = shownFeatures[activeFeature >= 0 ? activeFeature : 0];
+    if (pick) { toggleFeature(pick); featInput.value = ''; renderFeatureList(); }
+  } else if (e.key === 'Escape' && open) {
+    e.preventDefault();
+    setFeaturePanel(false);
+  } else if (e.key === 'Backspace' && !featInput.value && selectedFeatures.size) {
+    toggleFeature([...selectedFeatures].pop());
+  } else if (e.key === 'Tab') {
+    setFeaturePanel(false);
+  }
+});
+$('#features-list').addEventListener('mousedown', (e) => {
+  e.preventDefault();  // keep the focus (and the list) while picking
+  const opt = e.target.closest('.opt');
+  if (opt) { activeFeature = Number(opt.dataset.i); toggleFeature(shownFeatures[activeFeature]); }
+});
+$('#features-clear').addEventListener('mousedown', (e) => e.preventDefault());
+$('#features-clear').addEventListener('click', () => {
+  selectedFeatures.clear(); featInput.value = ''; renderFeatureChips(); renderFeatureList(); featInput.focus();
+});
+// The event path, not contains(): picking an option redraws the list, detaching the clicked node
+document.addEventListener('mousedown', (e) => { if (!e.composedPath().includes($('#features'))) setFeaturePanel(false); });
 
 async function loadSuggestions() {
   try {

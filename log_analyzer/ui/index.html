@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log Monitoring Agent</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%2315803d'/%3E%3Cpath d='M4 11V5m4 6V3m4 8V7' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <header class="topbar">
@@ -62,11 +62,14 @@
         <div class="field">
           <label id="features-label">Features enabled <span class="muted">(optional)</span> <span class="count" id="feature-count"></span></label>
           <div class="multi" id="features">
-            <button type="button" class="multi-toggle" id="features-toggle" aria-expanded="false" aria-controls="features-panel"
-                    aria-labelledby="features-label features-value"><span id="features-value">All devices</span><span class="caret" aria-hidden="true">▾</span></button>
+            <div class="multi-box" id="features-box">
+              <span class="chips" id="features-chips"></span>
+              <input id="features-input" role="combobox" aria-expanded="false" aria-controls="features-list" aria-autocomplete="list"
+                     aria-labelledby="features-label" placeholder="Select feature" autocomplete="off" spellcheck="false">
+              <span class="caret" aria-hidden="true">▾</span>
+            </div>
             <div class="multi-panel" id="features-panel" hidden>
-              <input type="search" id="features-search" placeholder="Search features" autocomplete="off" spellcheck="false" aria-label="Search features">
-              <div class="multi-list" id="features-list" role="group" aria-labelledby="features-label"></div>
+              <div class="multi-list" id="features-list" role="listbox" aria-multiselectable="true" aria-labelledby="features-label"></div>
               <div class="multi-foot"><span class="muted" id="features-shown"></span><button type="button" class="ghost" id="features-clear">Clear</button></div>
             </div>
           </div>
@@ -137,6 +140,6 @@
 
   <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
   <script src="config.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
