@@ -2125,11 +2125,12 @@ def _kpi_cell(value, unit, warn=None, expected=None):
 KPI_NO_UNIT = {'count', 'WAF', 'text'}
 
 
-def _kpi_group_sections(value_of, shown, value_head, device_type=None):
+def _kpi_group_sections(value_of, shown, value_head, device_type=None, heads=None, notes=None):
     """[(table id, section)] per KPI table (lib/kpi_metrics.KPI_TABLES): a row per KPI, its name
     with the unit, and value_of(metric), amber when outside its baseline (kpi_metrics.BASELINES)
     for the device type. Camera rows of other product lines (MDVR, DMS) only when shown(metric)
-    says some value exists."""
+    says some value exists. heads: {table id: value column heading} where it differs from value_head;
+    notes: {metric id: text after the KPI name}, e.g. ' (P90)'."""
     out = []
     for table in kpi_metrics.KPI_TABLES:
         rows = []
@@ -2141,9 +2142,10 @@ def _kpi_group_sections(value_of, shown, value_head, device_type=None):
             value = value_of(m)
             warn = kpi_metrics.baseline_issue(m.id, value, device_type)
             expected = kpi_metrics.baseline_text(m.id, device_type)
-            rows.append(f'<tr><td>{_esc(m.name + unit)}</td>{_kpi_cell(value, m.unit, warn, expected)}</tr>')
+            note = (notes or {}).get(m.id, '')
+            rows.append(f'<tr><td>{_esc(m.name + unit + note)}</td>{_kpi_cell(value, m.unit, warn, expected)}</tr>')
         out.append((table.id, f'<section id="{table.id}" class="kpi"><h2>{_esc(table.title)}</h2>'
-                              + _table(['KPI', value_head], rows) + '</section>'))
+                              + _table(['KPI', (heads or {}).get(table.id, value_head)], rows) + '</section>'))
     return out
 
 
@@ -2184,9 +2186,16 @@ def _kpi_layout(sections, codes_section, csv_href=None, csv_sessions=0):
     return row + ''.join(html for tid, html in sections if tid not in ALERT_ROW)
 
 
+# KPI tables whose counts the OTA report shows as the total over every device instead of the P90
+# (durations stay P90); their value column has no heading
+KPI_TOTAL_TABLES = {'kpi-health-central'}
+KPI_TOTAL_METRICS = {m.id for t in kpi_metrics.KPI_TABLES if t.id in KPI_TOTAL_TABLES
+                     for m in t.metrics if m.agg == 'sum'}
+
+
 def _kpi_sections(report, sm):
     """OTA report: each KPI with its overall P90 over the devices (text KPIs: the most common
-    value). Analytics KPIs: a row per code."""
+    value; KPI_TOTAL_TABLES counts: the total over the devices). Analytics KPIs: a row per code."""
     kpi = report.get('kpi')
     if not kpi:
         return ''
@@ -2194,10 +2203,16 @@ def _kpi_sections(report, sm):
 
     def value_of(m):
         col = columns.get(m.id) or {}
+        if m.id in KPI_TOTAL_METRICS:
+            return col.get('total')
         return col.get('common') if m.unit == 'text' else col.get('p90')
 
     sections = _kpi_group_sections(value_of, lambda m: any(m.id in v for v in values.values()), '#P90',
-                                   device_type_for_ota(report.get('ota_version')))
+                                   device_type_for_ota(report.get('ota_version')),
+                                   heads={t: '' for t in KPI_TOTAL_TABLES},
+                                   # The table has no P90 heading: its P90 rows say so after their name
+                                   notes={m.id: ' (P90)' for t in kpi_metrics.KPI_TABLES if t.id in KPI_TOTAL_TABLES
+                                          for m in t.metrics if m.id not in KPI_TOTAL_METRICS})
     codes = kpi.get('event_codes') or []
     rows = [f'<tr><td>{_esc(c["code"])}</td><td class="num" data-v="{c["count"]}">{c["count"]:,}</td>'
             f'<td class="num">{c["devices"]}</td>{_kpi_cell(c["p90"], "count")}</tr>' for c in codes]
