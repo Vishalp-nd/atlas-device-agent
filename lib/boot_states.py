@@ -114,7 +114,7 @@ def load(path=RULES_FILE):
         if not line or line[0] in ';#':
             continue
         if line.startswith('[') and line.endswith(']'):
-            current = dims.setdefault(line[1:-1].strip(), {'values': [], 'default': None, 'rules': []})
+            current = dims.setdefault(line[1:-1].strip(), {'values': [], 'default': None, 'once': set(), 'rules': []})
             continue
         if current is None or '=' not in line:
             log.warning('%s:%d: not a rule, skipped: %s', path.name, n, line)
@@ -122,6 +122,9 @@ def load(path=RULES_FILE):
         value, _, rule = (s.strip() for s in line.partition('='))
         if value == 'default':
             current['default'] = rule or None
+            continue
+        if value == 'once':
+            current['once'].update(v.strip() for v in rule.split(',') if v.strip())
             continue
         if value not in current['values']:
             current['values'].append(value)
@@ -167,6 +170,11 @@ def _primitive_timeline(dim_rules, hits, boot, lo, hi):
         if entry:
             events.extend((ts, value) for ts in entry[0])
     events.sort()
+    # A "once" value (an event logged again later, e.g. the boot's wakeup reason) only counts at its first line
+    once = dim_rules.get('once') or ()
+    if once:
+        seen = set()
+        events = [e for e in events if e[1] not in once or not (e[1] in seen or seen.add(e[1]))]
     out = []
     state, since = dim_rules['default'], lo
     for ts, value in events:
@@ -198,6 +206,10 @@ def _derived_timeline(parts, fn, lo, hi):
         else:
             out.append((a, b, value))
     return out
+
+
+# The dimensions shown on the device page (the markers' ones; lte / wifi / internet / signal are behind link and network)
+SHOWN_DIMS = ('power', 'motion', 'gps', 'link', 'network', 'roaming')
 
 
 class BootTimeline:
@@ -235,6 +247,26 @@ class BootTimeline:
                 break
         self._windows[key] = result
         return result
+
+    def summary(self, lo=None, hi=None):
+        """{dim: [[value, minutes, % of the time the state is known], ...]} per SHOWN_DIMS dimension
+        the logs tell, most time first, over [lo, hi) (the boot's span when it has no start / end)."""
+        lo = self.lo if lo is None else max(self.lo, lo)
+        hi = self.hi if hi is None else min(self.hi, hi)
+        out = {}
+        for dim in SHOWN_DIMS:
+            if not self.rules.detected(dim):
+                continue
+            totals = {}
+            for s, e, v in self.dim(dim):
+                s, e = max(s, lo), min(e, hi)
+                if e > s and s != -INF and e != INF:
+                    totals[v] = totals.get(v, 0) + (e - s)
+            known = sum(totals.values())
+            if known:
+                out[dim] = [[v, round(ms / 60000, 1), round(100 * ms / known, 1)]
+                            for v, ms in sorted(totals.items(), key=lambda kv: -kv[1])]
+        return out
 
 
 def _intersect(a, b):

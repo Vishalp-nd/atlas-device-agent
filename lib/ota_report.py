@@ -903,6 +903,11 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         verdicts, failures, passes = defaultdict(list), [], []
         # The boot's states (INPUT/boot_states.ini), built on first use and shared by its tests
         timeline = boot_states.BootTimeline(_STATE_RULES, hits, boot['index'], boot['start'], boot['end'])
+        # The boot's states for the device page: time in each, from its start (else its first line) to its
+        # end (else the end of the logs)
+        detail['states'] = timeline.summary(
+            boot['start'] if boot['start'] is not None else (span['first'][0] if span.get('first') else None),
+            boot['end'] if boot['end'] is not None else (span['last'][0] if span.get('last') else None))
         reasons = defaultdict(list)
         for i, test in enumerate(_EVAL_TESTS):
             result = evaluate_test(test, hits, boot['index'], boot['start'], detail['device_type'], timeline)
@@ -2480,8 +2485,45 @@ def _drive_rows(boots):
     return _table(head, rows)
 
 
-DEVICE_NAV = [('drives', 'Drive Summary'), ('features', 'Features enabled'), ('cloud-config', 'Cloud config'), ('api', 'API calls'),
+DEVICE_NAV = [('drives', 'Drive Summary'), ('states', 'Device States'), ('features', 'Features enabled'), ('cloud-config', 'Cloud config'), ('api', 'API calls'),
               ('kpi-alerts', 'KPI Metrics'), ('boot-summary', 'Drive Session Summary'), ('boots', 'Boots')]
+
+
+STATE_DIM_TITLES = {'power': 'Power', 'motion': 'Motion', 'gps': 'GPS', 'link': 'Link', 'network': 'Network',
+                    'roaming': 'Roaming'}
+STATE_VALUE_LABELS = {'ignition_on': 'Ignition ON', 'ignition_off': 'Ignition OFF', 'lpm': 'LPM', 'wom': 'WOM',
+                      'idle': 'Idle', 'moving': 'Out of idle', 'valid': 'Valid', 'invalid': 'Invalid',
+                      'no_gps': 'No GPS', 'lte': 'LTE only', 'wifi': 'WiFi only', 'lte_wifi': 'LTE + WiFi',
+                      'none': 'None', 'proper': 'Proper', 'poor': 'Poor', 'yes': 'Roaming', 'no': 'Home'}
+
+
+def _state_cell(entries):
+    """'Ignition ON 92% · Ignition OFF 8%' (minutes on hover); a state under 1% shows as <1%."""
+    if not entries:
+        return '<td class="muted">—</td>'
+    parts = []
+    for value, minutes, pct in entries:
+        label = STATE_VALUE_LABELS.get(value, value)
+        share = '<1%' if pct < 1 else f'{pct:.0f}%'
+        parts.append(f'<span class="st" title="{_esc(label)}: {minutes:g} min">{_esc(label)} <b>{_esc(share)}</b></span>')
+    return f'<td>{" · ".join(parts)}</td>'
+
+
+def _device_states_section(boots, labels):
+    """Device States: per boot (UDID) the states the logs show (INPUT/boot_states.ini) and the share of
+    the boot's time in each."""
+    if not any('states' in b for b in boots):
+        body = '<p class="muted">Not in this report: boot states are recorded from new runs on.</p>'
+    else:
+        dims = [d for d in STATE_DIM_TITLES if any((b.get('states') or {}).get(d) for b in boots)]
+        # The short UDID label (as in the Drive Summary), its time range on hover
+        rows = [f'<tr><td><a href="#boot-{b["index"]}" title="{_esc(label)}">{_esc(b.get("label") or label)}</a></td>'
+                + ''.join(_state_cell((b.get('states') or {}).get(d)) for d in dims) + '</tr>'
+                for b, label in zip(boots, labels)]
+        body = ('<p class="muted">Share of each boot\'s time in each state, from its log lines '
+                '(INPUT/boot_states.ini); hover for minutes.</p>'
+                + _table(['UDID'] + [STATE_DIM_TITLES[d] for d in dims], rows))
+    return f'<section id="states"><h2>Device States</h2>{body}</section>'
 
 
 def _device_cloud_config(cc, defaults=None):
@@ -2572,6 +2614,8 @@ def render_device_html(doc):
     out = [f'<div class="top"><h1>{_esc(device)}</h1><span>OTA {_esc(ota)}{f" · {_esc(span)}" if span else ""}</span></div>',
            '<section id="drives"><h2>Drive Summary</h2>', _drive_overview(doc.get('drive_summary')),
            _drive_rows(boots), '</section>']
+    labels = [_boot_label(dict(b, start=b['start_fmt'], end=b['end'] and b['end_fmt'])) for b in boots]
+    out.append(_device_states_section(boots, labels))
 
     features = doc.get('features') or []
     out.append('<section id="features"><h2>Features enabled</h2>')
@@ -2604,7 +2648,6 @@ def render_device_html(doc):
         nav = [n for n in nav if n[0] != 'kpi-alerts']
 
     rows = []
-    labels = [_boot_label(dict(b, start=b['start_fmt'], end=b['end'] and b['end_fmt'])) for b in boots]
     for b, label in zip(boots, labels):
         on = '' if b.get('features') is None else sum(1 for st in b['features'] if st == 0)
         n_calls = sum(len(v) for v in (b.get('api_calls') or {}).values())
