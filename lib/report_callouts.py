@@ -156,7 +156,8 @@ Write at most {max_callouts} callouts, most important first, each one or two pla
    (e.g. every periodic API missing on the same devices: those devices were offline or lost connectivity rather
    than an API bug; uploads missing with events present: upload path), whether the issues sit on a few devices or
    across the fleet, and links to drive time, low power, shutdown reasons or enabled features when the numbers show it.
-   With fewer than 3 devices on the OTA, say nothing about concentration or spread (it says nothing then).
+   With fewer than 3 devices on the OTA, write no callout about concentration or spread at all (not even to say
+   there is none): it says nothing then.
 Do not repeat a single API's finding on its own (those callouts exist already). Only use the given numbers and
 devices; never recompute, invent devices, values or causes the data does not support. Level: critical (a device or
 pattern that blocks the release: many issues on one device, or one pattern across most devices), warning (a few

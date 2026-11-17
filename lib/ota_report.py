@@ -1733,6 +1733,7 @@ font-variant-numeric:tabular-nums;user-select:all}
 .callouts{list-style:none;margin:0;padding:0}.callouts li{padding:8px 0;border-bottom:1px solid var(--line);line-height:1.5}
 .callouts li:last-child{border-bottom:0}.callouts b{margin-right:6px}.callouts details{margin-top:4px;font-size:12.5px}.callouts summary{cursor:pointer;color:var(--muted)}
 .callouts .devs{display:flex;flex-wrap:wrap;gap:4px 10px;padding:6px 0 0 14px}
+.callouts.sub{margin:4px 0 0 18px}.callouts.sub li{padding:6px 0;border-bottom:1px dashed var(--line)}.callouts.sub li:last-child{border-bottom:0}
 @property --co-angle{syntax:'<angle>';inherits:false;initial-value:0deg}
 .callouts-box{border:2px solid transparent;background:linear-gradient(var(--card),var(--card)) padding-box,
 conic-gradient(from var(--co-angle),#1a73e8,#0b0f19,#4285f4,#8ab4f8,#0b0f19,#1a73e8) border-box;
@@ -1931,6 +1932,7 @@ def _drive_section(sm):
 
 
 CALLOUT_DOTS = {'critical': 'c-fail', 'warning': 'c-nt', 'info': 'c-acc'}
+CALLOUT_ORDER = ['critical', 'warning', 'info']
 
 
 def _callouts_section(report, key='callouts', section_id='callouts', title='Callouts-API Summary'):
@@ -1940,13 +1942,28 @@ def _callouts_section(report, key='callouts', section_id='callouts', title='Call
     co = report.get(key)
     if co is None:
         return ''
-    items = []
-    for c in co.get('callouts') or []:
+    def devices_of(c):
         devices = c.get('devices') or []
-        more = (f'<details><summary>{len(devices)} device{"" if len(devices) == 1 else "s"}</summary>'
+        return (f'<details><summary>{len(devices)} device{"" if len(devices) == 1 else "s"}</summary>'
                 f'<div class="devs">{" ".join(_dev_link(d) for d in devices)}</div></details>' if devices else '')
+
+    def dot(level):
+        return f'<i class="dot {CALLOUT_DOTS.get(level, "c-acc")}"></i>'
+
+    callouts = co.get('callouts') or []
+    items = []
+    # The Overall callouts (across APIs and devices) are one point with a sub-point each,
+    # marked with the most severe level among them
+    overall = [c for c in callouts if c['api'] == 'Overall']
+    if overall:
+        worst = min((c['level'] for c in overall), key=lambda lv: CALLOUT_ORDER.index(lv) if lv in CALLOUT_ORDER else 9)
+        subs = ''.join(f'<li>{dot(c["level"])}{_esc(c["text"])}{devices_of(c)}</li>' for c in overall)
+        items.append(f'<li>{dot(worst)}<b>Overall</b><ul class="callouts sub">{subs}</ul></li>')
+    for c in callouts:
+        if c['api'] == 'Overall':
+            continue
         label = '' if c['api'] == 'General' else f'<b>{_esc(c["api"])}</b> '
-        items.append(f'<li><i class="dot {CALLOUT_DOTS.get(c["level"], "c-acc")}"></i>{label}{_esc(c["text"])}{more}</li>')
+        items.append(f'<li>{dot(c["level"])}{label}{_esc(c["text"])}{devices_of(c)}</li>')
     body = f'<ul class="callouts">{"".join(items)}</ul>' if items else ''
     if co.get('error'):
         body += f'<p class="muted">{_esc(co["error"])}</p>'
