@@ -2888,7 +2888,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             # API and KPI callouts wait on the LLM independently: both at once
             with ThreadPoolExecutor(2) as callout_pool:
                 api_co = callout_pool.submit(report_callouts.build, ota, report['summary'], device_summaries,
-                                             device_info, defaults)
+                                             device_info, defaults, report.get('kpi'), device_type_for_ota(ota))
                 # KPI callouts not needed for now (the Callouts-KPI Metrics section is left out)
                 # kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
                 #                              device_type_for_ota(ota))
@@ -2938,6 +2938,23 @@ def _latest_feature_set(doc):
     return []
 
 
+def _doc_issue_fields(doc):
+    """What the Overall callouts read from a device summary, rebuilt from its device JSON:
+    tc_counts (FAIL boots per test), key_fails, drive, cloud_config verdict."""
+    tests = doc.get('tests') or []
+    keys = doc.get('config_keys') or []
+    tc_counts, key_fails = defaultdict(Counter), Counter()
+    for b in doc.get('boots') or []:
+        for i in (b.get('verdicts') or {}).get('FAIL', ()):
+            if i < len(tests):
+                tc_counts[tests[i]['key']]['FAIL'] += 1
+        for i in (b.get('config') or {}).get('failed_keys', ()):
+            if i < len(keys):
+                key_fails[tuple(keys[i])] += 1
+    return {'tc_counts': tc_counts, 'key_fails': key_fails, 'drive': doc.get('drive_summary'),
+            'cloud_config': {'verdict': (doc.get('cloud_config') or {}).get('verdict')}}
+
+
 def refresh_callouts(reports_dir):
     """Rebuild only the callouts of finished reports (<reports_dir>/<ota>/ota_report.json and
     devices/*.json) and rewrite ota_report.json/.html; no logs are read."""
@@ -2954,13 +2971,14 @@ def refresh_callouts(reports_dir):
         report = json.loads((ota_dir / 'ota_report.json').read_text())
         device_summaries = {d: {'api': doc.get('api_summary'), 'feature_set': _latest_feature_set(doc),
                                 'kpi': doc.get('kpi_summary'),
-                                'health_central': report_callouts.health_central_boots(doc.get('boots') or [])}
+                                'health_central': report_callouts.health_central_boots(doc.get('boots') or []),
+                                **_doc_issue_fields(doc)}
                             for d, doc in docs[ota].items()}
         device_info = {d: {'otas': otas_of[d]} for d in device_summaries}
         defaults = ota_config_values(ota)
         with ThreadPoolExecutor(2) as callout_pool:
             api_co = callout_pool.submit(report_callouts.build, ota, report.get('summary') or {}, device_summaries,
-                                         device_info, defaults)
+                                         device_info, defaults, report.get('kpi'), device_type_for_ota(ota))
             # KPI callouts not needed for now (the Callouts-KPI Metrics section is left out)
             # kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
             #                              device_type_for_ota(ota))

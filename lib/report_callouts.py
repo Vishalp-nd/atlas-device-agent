@@ -13,6 +13,14 @@ override_llm uses) then words the findings: one call per API that has findings, 
 parallel, each with all of that API's affected devices (no cap). Each callout lists every
 affected device from the checks, not from the model's answer.
 
+Overall callouts (device_profiles + one more LLM call, in parallel with the API ones): across APIs
+and devices rather than per API. Each device with an issue gets a profile from the report (API
+findings, failing test cases, failing config keys, KPIs outside their baseline, cloud config
+verdict, plus drive / low-power / shutdown facts); the code ranks the devices, counts which
+issues occur together on the same devices and how concentrated the issues are, and the model
+words what stands out: the devices with the most issues, issues that move together (and what
+they point to), patterns over drive time, low power or features. They come first, as "Overall".
+
 Answers are cached on disk by prompt hash (same findings -> no new call).
 REPORT_CALLOUTS=0 turns the calls off; so does a missing LLM configuration.
 """
@@ -131,6 +139,50 @@ Context:
 KPIs outside their baseline:
 {rows}"""
 
+OVERALL_SYSTEM_PROMPT = QA_ROLE + """
+You write the overall callouts of the OTA report's API Call Summary. Each API gets its own callouts separately; yours
+look across APIs and devices. You get, all computed exactly from the report:
+- api_issue_totals: per API and finding kind (see the rules), how many devices have it and its level;
+- devices: a profile of the devices with issues, the most affected first: their API findings, failing test cases,
+  failing config keys, KPIs outside their baseline, cloud config verdict, and facts (drive minutes, boots,
+  low-power boots, previous shutdown reasons ...); multi_issue: issues in several areas or APIs;
+- issues_together: pairs of issues found on the same devices, with how many devices have both;
+- concentration: how many devices have any issue and what share of all issues the most affected devices carry.
+Write at most {max_callouts} callouts, most important first, each one or two plain, specific sentences:
+1. First, the devices with the most issues (multi_issue): name the worst 2-4 with what each has (e.g. "103182502310:
+   no Keep Alive or Version Check calls, 12 failing test cases, 4 KPIs missed"). If no device is multi_issue, say
+   the issues are spread out instead.
+2. Then patterns that a per-API look misses: issues that come together on the same devices and what they point to
+   (e.g. every periodic API missing on the same devices: those devices were offline or lost connectivity rather
+   than an API bug; uploads missing with events present: upload path), whether the issues sit on a few devices or
+   across the fleet, and links to drive time, low power, shutdown reasons or enabled features when the numbers show it.
+   With fewer than 3 devices on the OTA, say nothing about concentration or spread (it says nothing then).
+Do not repeat a single API's finding on its own (those callouts exist already). Only use the given numbers and
+devices; never recompute, invent devices, values or causes the data does not support. Level: critical (a device or
+pattern that blocks the release: many issues on one device, or one pattern across most devices), warning (a few
+devices or a partial pattern), info (worth knowing).
+Answer with JSON only: {{"callouts": [{{"level": "critical|warning|info", "text": "<callout>",
+"devices": ["<ids of the devices the callout is about, from the input>"]}}]}}"""
+
+OVERALL_HUMAN_PROMPT = """OTA {ota}
+
+{rules}
+
+Context:
+{context}
+
+API issues over all devices:
+{api_issue_totals}
+
+Devices with issues (most affected first):
+{devices}
+
+Issues found together on the same devices:
+{issues_together}
+
+Concentration:
+{concentration}"""
+
 COMPARE_SYSTEM_PROMPT = QA_ROLE + """
 Now you compare two reports, A and B (two OTA versions, or the same device on two builds / periods), for one
 section of the comparison report. Every row is already normalised so the two sides can be compared directly:
@@ -165,7 +217,14 @@ Rows (only those that differ):
 NO_UNIT = {'count', 'WAF', 'text'}
 
 PROMPTS = {'api': (SYSTEM_PROMPT, HUMAN_PROMPT), 'kpi': (KPI_SYSTEM_PROMPT, KPI_HUMAN_PROMPT),
+           'overall': (OVERALL_SYSTEM_PROMPT, OVERALL_HUMAN_PROMPT),
            'compare': (COMPARE_SYSTEM_PROMPT, COMPARE_HUMAN_PROMPT)}
+# Overall callouts: at most this many, over at most OVERALL_DEVICES device profiles (the most affected)
+OVERALL_MAX_CALLOUTS = 6
+OVERALL_DEVICES = 40
+# Points per issue when ranking devices (a level's weight; test cases / KPIs capped so one area can't dominate)
+LEVEL_POINTS = {'critical': 3, 'warning': 2, 'info': 1}
+AREA_CAP = 5
 _chains = {}
 _chain_lock = threading.Lock()
 
@@ -326,6 +385,137 @@ def callout_data(summary, device_summaries, device_info, defaults):
     }
 
 
+def device_profiles(findings, device_summaries, minutes, report_kpi=None, device_type=None):
+    """Per device with any issue: what is wrong where, ranked most affected first.
+
+    findings: callout_data()['findings'] ({api: {kind: [{device, ...}]}}). Returns
+    {'devices': [profile], 'issues_together': [...], 'concentration': {...}, 'api_issue_totals': [...]}.
+    A profile: device, score, areas, multi_issue, api_issues [{api, kind, level}], failing_test_cases
+    {count, examples}, config_keys_failing, kpis_missed {count, kpis}, cloud_config, facts.
+    """
+    api_issues = {}
+    totals = []
+    for api, kinds in findings.items():
+        for kind, items in kinds.items():
+            level = KIND_LEVEL.get(kind, 'info')
+            totals.append({'api': api, 'kind': kind, 'level': level, 'devices': len(items)})
+            for f in items:
+                api_issues.setdefault(f['device'], []).append({'api': api, 'kind': kind, 'level': level})
+    kpi_missed = {}
+    if report_kpi:
+        for table, rows in kpi_callout_data(report_kpi, device_summaries, device_type)['tables'].items():
+            for row in rows:
+                for dv in row['devices_outside']:
+                    kpi_missed.setdefault(dv['device'], []).append(row['kpi'])
+
+    profiles = []
+    for d, s in device_summaries.items():
+        s = s or {}
+        failing = sorted(k for k, c in (s.get('tc_counts') or {}).items() if (c or {}).get('FAIL'))
+        keys = len(s.get('key_fails') or {})
+        cloud = (s.get('cloud_config') or {}).get('verdict')
+        apis = api_issues.get(d, [])
+        kpis = kpi_missed.get(d, [])
+        areas = [a for a, on in (('api', apis), ('tests', failing), ('config', keys), ('kpi', kpis),
+                                 ('cloud_config', cloud == 'FAIL')) if on]
+        if not areas:
+            continue
+        score = (sum(LEVEL_POINTS[i['level']] for i in apis) + min(len(failing), AREA_CAP)
+                 + min(len(kpis), AREA_CAP) + (2 if keys else 0) + (2 if cloud == 'FAIL' else 0))
+        drive = s.get('drive') or {}
+        reasons = drive.get('previous_shutdown_reasons') or {}
+        facts = {k: v for k, v in {
+            'drive_min': round(minutes.get(d) or 0),
+            'boots': drive.get('boots'),
+            'low_power_boots': drive.get('low_power_boots') or None,
+            'short_drives': drive.get('drives_short') or None,
+            'session_issues': drive.get('session_issues') or None,
+            'improper_service_runs': drive.get('runs_improper') or None,
+            'previous_shutdown_reasons': dict(list(reasons.items())[:3]) or None,
+            'features_on': s.get('feature_set') or None,
+        }.items() if v is not None}
+        profiles.append({
+            'device': d, 'score': score, 'areas': areas,
+            'multi_issue': len(areas) >= 2 or len(apis) >= 3,
+            'api_issues': apis,
+            'failing_test_cases': {'count': len(failing), 'examples': [k.split('/')[-1] for k in failing[:3]]} if failing else None,
+            'config_keys_failing': keys or None,
+            'kpis_missed': {'count': len(kpis), 'kpis': kpis[:5]} if kpis else None,
+            'cloud_config': cloud if cloud == 'FAIL' else None,
+            'facts': facts,
+        })
+    profiles.sort(key=lambda p: (-p['score'], p['device']))
+
+    # Issues found together: pairs of API findings / areas on the same devices
+    labels = {p['device']: sorted({f"{i['api']}: {i['kind']}" for i in p['api_issues']}
+                                  | {a for a in p['areas'] if a != 'api'}) for p in profiles}
+    pairs = {}
+    for d, items in labels.items():
+        for i, a in enumerate(items):
+            for b in items[i + 1:]:
+                pairs.setdefault((a, b), []).append(d)
+    together = [{'issues': list(k), 'devices': len(v), 'device_ids': v[:5]}
+                for k, v in sorted(pairs.items(), key=lambda kv: -len(kv[1])) if len(v) >= 2][:10]
+
+    total_score = sum(p['score'] for p in profiles) or 1
+    top = profiles[:max(1, len(profiles) // 5)]
+    concentration = {
+        'devices_on_ota': len(minutes) or len(device_summaries),
+        'devices_with_issues': len(profiles),
+        'multi_issue_devices': sum(1 for p in profiles if p['multi_issue']),
+        'top_20pct_devices': len(top),
+        'top_20pct_share_of_issues_pct': round(100 * sum(p['score'] for p in top) / total_score),
+    }
+    return {'devices': profiles, 'issues_together': together, 'concentration': concentration,
+            'api_issue_totals': sorted(totals, key=lambda t: (LEVELS.index(t['level']), -t['devices']))}
+
+
+def _plain_overall(profiles, concentration):
+    """The overall callouts without the LLM: the multi-issue devices, plainly."""
+    multi = [p for p in profiles if p['multi_issue']]
+    if not multi:
+        return [{'level': 'info', 'api': 'Overall', 'kind': 'overall', 'devices': [p['device'] for p in profiles],
+                 'text': f"{concentration['devices_with_issues']} of {concentration['devices_on_ota']} devices have "
+                         f"issues, none in several areas."}]
+    worst = '; '.join(f"{p['device']} ({', '.join(p['areas'])})" for p in multi[:4])
+    return [{'level': 'critical' if any(i['level'] == 'critical' for p in multi for i in p['api_issues']) else 'warning',
+             'api': 'Overall', 'kind': 'overall', 'devices': [p['device'] for p in multi],
+             'text': f"{len(multi)} of {concentration['devices_on_ota']} devices have issues in several areas: {worst}."}]
+
+
+def _overall_callouts(ota, context, data):
+    """Overall callouts by the LLM (devices kept only if they are in the input); the plain ones
+    if the call fails."""
+    profiles = data['devices']
+    shown = profiles[:OVERALL_DEVICES]
+    variables = {'ota': ota, 'rules': RULES, 'max_callouts': OVERALL_MAX_CALLOUTS,
+                 'context': json.dumps(context, separators=(',', ':')),
+                 'api_issue_totals': json.dumps(data['api_issue_totals'], separators=(',', ':')),
+                 'devices': json.dumps([{k: v for k, v in p.items() if v not in (None, [], {})} for p in shown],
+                                       separators=(',', ':'))
+                 + (f'\n(+ {len(profiles) - len(shown)} more devices with fewer issues)' if len(profiles) > len(shown) else ''),
+                 'issues_together': json.dumps(data['issues_together'], separators=(',', ':')),
+                 'concentration': json.dumps(data['concentration'], separators=(',', ':'))}
+    known = {p['device'] for p in profiles}
+    try:
+        raw, source = _cached_invoke(variables, kind='overall')
+        callouts = []
+        for item in (raw.get('callouts') if isinstance(raw, dict) else None) or []:
+            text = str((item or {}).get('text', '')).strip()
+            if not text:
+                continue
+            level = item.get('level') if item.get('level') in LEVELS else 'warning'
+            devices = [str(d) for d in item.get('devices') or [] if str(d) in known]
+            callouts.append({'level': level, 'api': 'Overall', 'kind': 'overall', 'text': text[:800],
+                             'devices': list(dict.fromkeys(devices))})
+        if callouts:
+            return callouts[:OVERALL_MAX_CALLOUTS], source, None
+        return _plain_overall(profiles, data['concentration']), source, 'empty answer'
+    except Exception as exc:
+        log.exception('%s: overall callouts LLM call failed: %s', ota, exc)
+        return _plain_overall(profiles, data['concentration']), None, type(exc).__name__
+
+
 def _cached_invoke(variables, kpi=False, kind=None):
     """(answer, source) for one prompt, from the disk cache or the LLM."""
     kind = kind or ('kpi' if kpi else 'api')
@@ -374,30 +564,41 @@ def _api_callouts(ota, api, kinds, context):
     return callouts, source, error
 
 
-def build(ota, summary, device_summaries, device_info, defaults):
+def build(ota, summary, device_summaries, device_info, defaults, report_kpi=None, device_type=None):
     """{'callouts': [{'level', 'api', 'kind', 'text', 'devices'}], 'llm_calls', 'cached', 'error'}.
-    The checks always run; without the LLM the callouts get a plain text (error says why)."""
+    The checks always run; without the LLM the callouts get a plain text (error says why).
+    The "Overall" callouts (across APIs and devices, see device_profiles) come first; report_kpi /
+    device_type add the KPIs outside their baseline to the device profiles."""
     if not summary.get('drive_minutes_by_device'):
         return {'callouts': [], 'llm_calls': 0, 'cached': 0, 'error': 'No devices with drive data on this OTA'}
     data = callout_data(dict(summary, ota=ota), device_summaries, device_info, defaults)
     context, findings = data['context'], data['findings']
-    if not findings:
+    overall = device_profiles(findings, device_summaries, summary.get('drive_minutes_by_device') or {},
+                              report_kpi, device_type)
+    if not findings and not overall['devices']:
         return {'callouts': [{'level': 'info', 'api': 'General', 'kind': 'ok', 'devices': [],
                               'text': 'No anomaly noticed.'}],
                 'llm_calls': 0, 'cached': 0, 'error': None}
     use_llm = enabled()
     results = []
     if use_llm:
-        with ThreadPoolExecutor(min(LLM_PARALLEL, len(findings))) as pool:
-            results = list(pool.map(lambda kv: _api_callouts(ota, kv[0], kv[1], context), findings.items()))
+        jobs = [lambda kv=kv: _api_callouts(ota, kv[0], kv[1], context) for kv in findings.items()]
+        if overall['devices']:
+            jobs.append(lambda: _overall_callouts(ota, context, overall))
+        with ThreadPoolExecutor(min(LLM_PARALLEL, len(jobs))) as pool:
+            results = list(pool.map(lambda job: job(), jobs))
     else:
+        if overall['devices']:
+            results.append((_plain_overall(overall['devices'], overall['concentration']), None, None))
         for api, kinds in findings.items():
             results.append(([{'level': KIND_LEVEL.get(k, 'info'), 'api': api, 'kind': k,
                               'devices': [f['device'] for f in items],
                               'text': f'{len(items)} of {context["devices"]} devices: {k.replace("_", " ")}'}
                              for k, items in kinds.items()], None, None))
     callouts = [c for cs, _, _ in results for c in cs]
-    callouts.sort(key=lambda c: (LEVELS.index(c['level']), -len(c['devices'])))
+    # Overall first (in the model's order), then the per-API ones by level and reach
+    callouts.sort(key=lambda c: (c['api'] != 'Overall', 0 if c['api'] == 'Overall' else LEVELS.index(c['level']),
+                                 0 if c['api'] == 'Overall' else -len(c['devices'])))
     errors = sorted({e for _, _, e in results if e})
     return {
         'callouts': callouts,
