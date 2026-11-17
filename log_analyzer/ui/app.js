@@ -204,7 +204,8 @@ form.addEventListener('submit', async (e) => {
     end: $('#end').value,
     environment: env,
   };
-  if (selectedFeatures.size) body.features = [...selectedFeatures];
+  if (requiredPicker.selected.size) body.features = [...requiredPicker.selected];
+  if (validatePicker.selected.size) body.validate_features = [...validatePicker.selected];
   if (mode === 'ota') {
     body.ota_version = $('#ota').value.trim();
     if (!body.ota_version) { error.textContent = 'Enter an OTA version.'; return; }
@@ -235,101 +236,124 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// ── feature filter: combobox over the feature_mapping.ini features ────────
+// ── feature pickers: comboboxes over the feature_mapping.ini features ────────
 // Typing in the box filters the list under it; picked features show as chips in the box.
+// Two of them: "Required features" (devices to analyse) and "Features to be validated" (test
+// cases to judge, plus Generic). Adding to either adds to the other (Generic only exists in
+// the second); removing a required feature also stops validating it.
 let allFeatures = [];
-const selectedFeatures = new Set();
-let shownFeatures = [];
-let activeFeature = -1;
-const featInput = $('#features-input');
+const GENERIC = 'Generic';
 
-function renderFeatureChips() {
-  $('#features-chips').innerHTML = [...selectedFeatures].map((f) =>
-    `<span class="chip">${esc(f)}<button type="button" data-remove="${esc(f)}" aria-label="Remove ${esc(f)}">×</button></span>`).join('');
-  featInput.placeholder = selectedFeatures.size ? '' : 'Search features';
-  $('#feature-count').textContent = selectedFeatures.size ? `${selectedFeatures.size} selected` : '';
+function featurePicker(id, { extra = [], onAdd = () => {}, onRemove = () => {} } = {}) {
+  const root = $(`#${id}`), input = $(`#${id}-input`), panel = $(`#${id}-panel`), list = $(`#${id}-list`);
+  const selected = new Set();
+  let shown = [], active = -1;
+  const options = () => [...extra, ...allFeatures];
+
+  function renderChips() {
+    $(`#${id}-chips`).innerHTML = [...selected].map((f) =>
+      `<span class="chip">${esc(f)}<button type="button" data-remove="${esc(f)}" aria-label="Remove ${esc(f)}">×</button></span>`).join('');
+    input.placeholder = selected.size ? '' : 'Search features';
+    $(`#${id}-count`).textContent = selected.size ? `${selected.size} selected` : '';
+  }
+  function renderList() {
+    const q = input.value.trim().toLowerCase();
+    shown = options().filter((f) => f.toLowerCase().includes(q));
+    if (active >= shown.length) active = shown.length - 1;
+    list.innerHTML = shown.length
+      ? shown.map((f, i) => `<div class="opt${i === active ? ' active' : ''}" role="option" id="${id}-opt-${i}"
+          aria-selected="${selected.has(f)}" data-i="${i}"><span class="box" aria-hidden="true"></span>${esc(f)}</div>`).join('')
+      : `<div class="empty-note">${allFeatures.length ? 'No feature matches.' : 'Features could not be loaded.'}</div>`;
+    input.setAttribute('aria-activedescendant', active >= 0 ? `${id}-opt-${active}` : '');
+    $(`#${id}-shown`).textContent = q ? `${shown.length} of ${options().length}` : `${options().length} features`;
+    $(`#${id}-opt-${active}`)?.scrollIntoView({ block: 'nearest' });
+  }
+  function setPanel(open) {
+    if (open === !panel.hidden) return;
+    panel.hidden = !open;
+    root.classList.toggle('open', open);
+    input.setAttribute('aria-expanded', String(open));
+    if (open) { active = -1; renderList(); }
+  }
+  // quiet: a change made by the other picker, not passed back to it
+  function add(name, quiet) {
+    if (selected.has(name)) return;
+    selected.add(name); renderChips(); renderList();
+    if (!quiet) onAdd(name);
+  }
+  function remove(name, quiet) {
+    if (!selected.delete(name)) return;
+    renderChips(); renderList();
+    if (!quiet) onRemove(name);
+  }
+  const toggle = (name) => (selected.has(name) ? remove(name) : add(name));
+
+  $(`#${id}-box`).addEventListener('mousedown', (e) => {
+    if (e.target.closest('[data-remove]')) return;
+    if (e.target !== input) e.preventDefault();  // keep the focus in the input
+    input.focus();
+    setPanel(panel.hidden || e.target === input);
+  });
+  $(`#${id}-chips`).addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-remove]');
+    if (chip) { remove(chip.dataset.remove); input.focus(); }
+  });
+  input.addEventListener('focus', () => setPanel(true));
+  input.addEventListener('input', () => { active = input.value ? 0 : -1; setPanel(true); renderList(); });
+  input.addEventListener('keydown', (e) => {
+    const open = !panel.hidden;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) return setPanel(true);
+      active = Math.max(0, Math.min(shown.length - 1, active + (e.key === 'ArrowDown' ? 1 : -1)));
+      renderList();
+    } else if (e.key === 'Enter') {
+      if (!open) return;
+      e.preventDefault();  // no form submit while picking
+      const pick = shown[active >= 0 ? active : 0];
+      if (pick) { toggle(pick); input.value = ''; renderList(); }
+    } else if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      setPanel(false);
+    } else if (e.key === 'Backspace' && !input.value && selected.size) {
+      remove([...selected].pop());
+    } else if (e.key === 'Tab') {
+      setPanel(false);
+    }
+  });
+  list.addEventListener('mousedown', (e) => {
+    e.preventDefault();  // keep the focus (and the list) while picking
+    const opt = e.target.closest('.opt');
+    if (!opt) return;
+    toggle(shown[Number(opt.dataset.i)]);
+    // a pick ends the search, like Enter: clear the typed text so only the chips stay in the box
+    if (input.value) { input.value = ''; active = -1; renderList(); }
+  });
+  $(`#${id}-clear`).addEventListener('mousedown', (e) => e.preventDefault());
+  $(`#${id}-clear`).addEventListener('click', () => {
+    [...selected].forEach((f) => remove(f));
+    input.value = ''; renderList(); input.focus();
+  });
+  // The event path, not contains(): picking an option redraws the list, detaching the clicked node
+  document.addEventListener('mousedown', (e) => { if (!e.composedPath().includes(root)) setPanel(false); });
+
+  return { selected, add, remove, renderList };
 }
 
-function renderFeatureList() {
-  const q = featInput.value.trim().toLowerCase();
-  shownFeatures = allFeatures.filter((f) => f.toLowerCase().includes(q));
-  if (activeFeature >= shownFeatures.length) activeFeature = shownFeatures.length - 1;
-  $('#features-list').innerHTML = shownFeatures.length
-    ? shownFeatures.map((f, i) => `<div class="opt${i === activeFeature ? ' active' : ''}" role="option" id="feat-opt-${i}"
-        aria-selected="${selectedFeatures.has(f)}" data-i="${i}"><span class="box" aria-hidden="true"></span>${esc(f)}</div>`).join('')
-    : `<div class="empty-note">${allFeatures.length ? 'No feature matches.' : 'Features could not be loaded.'}</div>`;
-  featInput.setAttribute('aria-activedescendant', activeFeature >= 0 ? `feat-opt-${activeFeature}` : '');
-  $('#features-shown').textContent = q ? `${shownFeatures.length} of ${allFeatures.length}` : `${allFeatures.length} features`;
-  $(`#feat-opt-${activeFeature}`)?.scrollIntoView({ block: 'nearest' });
-}
-
-function setFeaturePanel(open) {
-  if (open === !$('#features-panel').hidden) return;
-  $('#features-panel').hidden = !open;
-  $('#features').classList.toggle('open', open);
-  featInput.setAttribute('aria-expanded', String(open));
-  if (open) { activeFeature = -1; renderFeatureList(); }
-}
-
-function toggleFeature(name) {
-  if (selectedFeatures.has(name)) selectedFeatures.delete(name); else selectedFeatures.add(name);
-  renderFeatureChips();
-  renderFeatureList();
-}
+const requiredPicker = featurePicker('features', {
+  onAdd: (name) => validatePicker.add(name, true),
+  onRemove: (name) => validatePicker.remove(name, true),
+});
+const validatePicker = featurePicker('validate', {
+  extra: [GENERIC],
+  onAdd: (name) => { if (name !== GENERIC) requiredPicker.add(name, true); },
+});
 
 async function loadFeatures() {
   try { ({ features: allFeatures } = await api('/features')); } catch (_) { allFeatures = []; }
-  renderFeatureList();
+  requiredPicker.renderList();
+  validatePicker.renderList();
 }
-
-$('#features-box').addEventListener('mousedown', (e) => {
-  if (e.target.closest('[data-remove]')) return;
-  if (e.target !== featInput) e.preventDefault();  // keep the focus in the input
-  featInput.focus();
-  setFeaturePanel($('#features-panel').hidden || e.target === featInput);
-});
-$('#features-chips').addEventListener('click', (e) => {
-  const remove = e.target.closest('[data-remove]');
-  if (remove) { toggleFeature(remove.dataset.remove); featInput.focus(); }
-});
-featInput.addEventListener('focus', () => setFeaturePanel(true));
-featInput.addEventListener('input', () => { activeFeature = featInput.value ? 0 : -1; setFeaturePanel(true); renderFeatureList(); });
-featInput.addEventListener('keydown', (e) => {
-  const open = !$('#features-panel').hidden;
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (!open) return setFeaturePanel(true);
-    const step = e.key === 'ArrowDown' ? 1 : -1;
-    activeFeature = Math.max(0, Math.min(shownFeatures.length - 1, activeFeature + step));
-    renderFeatureList();
-  } else if (e.key === 'Enter') {
-    if (!open) return;
-    e.preventDefault();  // no form submit while picking
-    const pick = shownFeatures[activeFeature >= 0 ? activeFeature : 0];
-    if (pick) { toggleFeature(pick); featInput.value = ''; renderFeatureList(); }
-  } else if (e.key === 'Escape' && open) {
-    e.preventDefault();
-    setFeaturePanel(false);
-  } else if (e.key === 'Backspace' && !featInput.value && selectedFeatures.size) {
-    toggleFeature([...selectedFeatures].pop());
-  } else if (e.key === 'Tab') {
-    setFeaturePanel(false);
-  }
-});
-$('#features-list').addEventListener('mousedown', (e) => {
-  e.preventDefault();  // keep the focus (and the list) while picking
-  const opt = e.target.closest('.opt');
-  if (!opt) return;
-  toggleFeature(shownFeatures[Number(opt.dataset.i)]);
-  // a pick ends the search, like Enter: clear the typed text so only the chips stay in the box
-  if (featInput.value) { featInput.value = ''; activeFeature = -1; renderFeatureList(); }
-});
-$('#features-clear').addEventListener('mousedown', (e) => e.preventDefault());
-$('#features-clear').addEventListener('click', () => {
-  selectedFeatures.clear(); featInput.value = ''; renderFeatureChips(); renderFeatureList(); featInput.focus();
-});
-// The event path, not contains(): picking an option redraws the list, detaching the clicked node
-document.addEventListener('mousedown', (e) => { if (!e.composedPath().includes($('#features'))) setFeaturePanel(false); });
 
 async function loadSuggestions() {
   try {

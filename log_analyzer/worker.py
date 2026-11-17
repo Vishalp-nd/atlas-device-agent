@@ -136,6 +136,7 @@ def analyse(run: dict, devices: list[str], timings: list[dict]) -> dict:
         otas=report_otas(run),
         tests_snapshot=TESTS_SNAPSHOT,
         on_progress=on_progress,
+        validate_features=run["options"].get("validate_features"),
     )
 
 

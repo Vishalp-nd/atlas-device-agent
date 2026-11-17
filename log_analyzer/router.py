@@ -120,12 +120,21 @@ def create_run(req: RunCreateRequest) -> Run:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    validate = [f.strip() for f in req.validate_features if f and f.strip()]
+    if validate:
+        known = {name.lower(): name for name in feature_filter.feature_names()}
+        unknown = [f for f in validate if f.lower() != "generic" and f.lower() not in known]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Unknown feature(s) to validate: {', '.join(unknown)}")
+        validate = list(dict.fromkeys("generic" if f.lower() == "generic" else known[f.lower()] for f in validate))
+
     options = {k: v for k, v in {
         "max_devices": req.max_devices, "workers": req.workers,
         "extract_logs": req.extract_logs,
         "otas": otas or None,
         "ota_devices": _ota_devices_info(req.ota_devices) if req.mode == "ota" and devices else None,
         "features": features or None,
+        "validate_features": validate or None,
     }.items() if v is not None}
     if req.mode == "ota" and devices:
         devices = devices[:device_limit(req.max_devices)]

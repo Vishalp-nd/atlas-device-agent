@@ -35,6 +35,9 @@ class RunCreateRequest(BaseModel):
     """Only analyse devices with every one of these features (feature_mapping.ini names) enabled,
     by their cloud override config on top of the OTA package defaults (lib/feature_filter.py);
     the others are skipped before their logs are downloaded. Empty = every device."""
+    validate_features: list[str] = []
+    """Only judge the test cases whose feature marker (@pytest.mark.feature) names one of these
+    features, or "Generic" for the tests marked generic. Empty = every test case."""
     requested_by: str | None = None
 
 

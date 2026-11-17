@@ -2613,6 +2613,19 @@ def prepare_markers(tests, rules, feature_names):
              marked, len(tests), sum(1 for t in tests if t['_requires']), sum(1 for t in tests if t['_features']))
 
 
+def select_tests(tests, names):
+    """The tests whose feature marker names one of names (feature_mapping.ini names, or
+    "generic" for the tests marked generic). Unmarked tests are left out."""
+    wanted = {n.lower() for n in names}
+    kept = [t for t in tests
+            if wanted & {f.lower() for f in (t.get('_features') or ())}
+            or ('generic' in wanted and 'generic' in {f.lower() for f in (t.get('features') or ())})]
+    log.info('Features to validate %s: %d of %d test files', sorted(names), len(kept), len(tests))
+    if not kept:
+        log.warning('No test case is marked with the features to validate: no test cases are judged')
+    return kept
+
+
 def load_tests(tests_dir, snapshot=None):
     """Test cases with their log steps (see testcase_log_steps.extract_all_cached)."""
     return [dict(t, key=f'{t["folder"]}/{t["name"]}')
@@ -2684,12 +2697,14 @@ def day_budget(workers):
 
 
 def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=None, otas=None,
-        tests_snapshot=None, on_progress=None):
+        tests_snapshot=None, on_progress=None, validate_features=None):
     """Build the reports for devices over [start, end].
 
     report_dir: where <ota>/ota_report.* and <ota>/devices/ go (default OUTPUT/ota_reports).
     otas: only report boots on these OTA versions (default: every OTA found).
     on_progress(done, total, device, error): called in this process as each device finishes.
+    validate_features: only judge the tests whose feature marker names one of these
+    (feature_mapping.ini names, or "generic"); None / empty: every test.
     Returns {'reports': {ota: {...kpis, 'path'}}, 'timings': [...], 'device_errors': {device: error}}.
     """
     global _TESTS, _EVAL_TESTS, _PATTERNS, _FEATURES, _STATE_RULES
@@ -2702,8 +2717,13 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
 
     with timed(log, 'load_tests', timings):
         _TESTS = load_tests(tests_dir, tests_snapshot)
-        _EVAL_TESTS = [t for t in _TESTS if t['steps']]
         _STATE_RULES = boot_states.load()
+        _FEATURES = feature_status.load_features()
+        prepare_markers(_TESTS, _STATE_RULES, [f['name'] for f in _FEATURES])
+        if validate_features:
+            _TESTS = select_tests(_TESTS, validate_features)
+        _EVAL_TESTS = [t for t in _TESTS if t['steps']]
+        # Only the selected tests' patterns are grepped
         _PATTERNS = patterns_by_service(_TESTS, _STATE_RULES.patterns())
     log.info('Extracted %d log steps from %d test files, %d patterns over %d services',
              sum(len(t['steps']) for t in _TESTS), len(_TESTS),
@@ -2711,8 +2731,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
 
     by_ota = defaultdict(dict)
     device_info = {}
-    features = _FEATURES = feature_status.load_features()
-    prepare_markers(_TESTS, _STATE_RULES, [f['name'] for f in features])
+    features = _FEATURES
     day_scan.configure(patterns=_PATTERNS, feature_keys={k for f in _FEATURES for _, k, _ in f['conditions']})
     log.info('Override values by LLM: %s', 'on' if override_llm.enabled() else 'off (OVERRIDE_LLM / credentials)')
     # One job per device-day (read the logs), then one per device (put it together) as soon as

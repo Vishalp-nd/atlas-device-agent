@@ -60,7 +60,7 @@
         </div>
 
         <div class="field">
-          <label id="features-label">Required features <span class="muted">(optional)</span> <span class="count" id="feature-count"></span></label>
+          <label id="features-label">Required features <span class="muted">(optional)</span> <span class="count" id="features-count"></span></label>
           <div class="multi" id="features">
             <div class="multi-box" id="features-box">
               <span class="chips" id="features-chips"></span>
@@ -74,6 +74,23 @@
             </div>
           </div>
           <p class="hint">Only devices with all of these enabled are analysed.</p>
+        </div>
+
+        <div class="field">
+          <label id="validate-label">Features to be validated <span class="muted">(optional)</span> <span class="count" id="validate-count"></span></label>
+          <div class="multi" id="validate">
+            <div class="multi-box" id="validate-box">
+              <span class="chips" id="validate-chips"></span>
+              <input id="validate-input" role="combobox" aria-expanded="false" aria-controls="validate-list" aria-autocomplete="list"
+                     aria-labelledby="validate-label" placeholder="Search features" autocomplete="off" spellcheck="false">
+              <span class="caret" aria-hidden="true">▾</span>
+            </div>
+            <div class="multi-panel" id="validate-panel" hidden>
+              <div class="multi-list" id="validate-list" role="listbox" aria-multiselectable="true" aria-labelledby="validate-label"></div>
+              <div class="multi-foot"><span class="muted" id="validate-shown"></span><button type="button" class="ghost" id="validate-clear">Clear</button></div>
+            </div>
+          </div>
+          <p class="hint">Only test cases of these features are validated (Generic: not tied to a feature). Empty: all test cases.</p>
         </div>
 
         <p class="form-error" id="form-error" role="alert"></p>
@@ -121,6 +138,6 @@
 
   <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
   <script src="config.js"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
