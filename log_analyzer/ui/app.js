@@ -203,12 +203,8 @@ form.addEventListener('submit', async (e) => {
     start: $('#start').value,
     end: $('#end').value,
     environment: env,
-    product: $('#product').value.trim() || null,
-    extract_logs: $('#extract_logs').checked,
   };
   if (selectedFeatures.size) body.features = [...selectedFeatures];
-  if ($('#max_devices').value) body.max_devices = Number($('#max_devices').value);
-  if ($('#workers').value) body.workers = Number($('#workers').value);
   if (mode === 'ota') {
     body.ota_version = $('#ota').value.trim();
     if (!body.ota_version) { error.textContent = 'Enter an OTA version.'; return; }

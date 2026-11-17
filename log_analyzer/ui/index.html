@@ -76,25 +76,6 @@
           <p class="hint">Only devices with all of these enabled are analysed.</p>
         </div>
 
-        <details class="advanced">
-          <summary>Advanced</summary>
-          <div class="field">
-            <label for="product">Product</label>
-            <input id="product" name="product" placeholder="auto" spellcheck="false">
-          </div>
-          <div class="row">
-            <div class="field">
-              <label for="max_devices">Max devices</label>
-              <input id="max_devices" name="max_devices" type="number" min="1" placeholder="OTA 200 · list 500">
-            </div>
-            <div class="field">
-              <label for="workers">Workers</label>
-              <input id="workers" name="workers" type="number" min="1" max="64" placeholder="auto">
-            </div>
-          </div>
-          <label class="check"><input type="checkbox" id="extract_logs" name="extract_logs"> Also extract logs to disk (needed by other tools)</label>
-        </details>
-
         <p class="form-error" id="form-error" role="alert"></p>
         <button class="primary" type="submit" id="submit">
           <span>Run analysis</span>
@@ -140,6 +121,6 @@
 
   <!-- Optional: sets window.ATLAS_API_URL from .env (log_analyzer/serve_ui.py) -->
   <script src="config.js"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

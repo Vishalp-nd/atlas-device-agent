@@ -161,11 +161,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .multi-list .empty-note { color: var(--faint); font-size: 12px; padding: 6px 8px; }
 .multi-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; border-top: 1px solid var(--line); margin-top: 6px; padding: 6px 2px 0; }
 .multi-foot button.ghost { padding: 3px 10px; font-size: 12px; }
-.advanced { margin: 2px 0 14px; }
-.advanced summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 550; margin-bottom: 12px; list-style: none; }
-.advanced summary::-webkit-details-marker { display: none; }
-.advanced summary::before { content: "▸"; display: inline-block; margin-right: 6px; transition: transform .15s; }
-.advanced[open] summary::before { transform: rotate(90deg); }
 
 .segmented {
   display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; margin-bottom: 16px;
