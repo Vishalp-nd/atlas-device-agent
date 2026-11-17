@@ -24,6 +24,11 @@ For every device over the date range (all days are read together):
      sorts the hit lines into patterns and boots. Verdicts: PASS, FAIL,
      NOT_TRIGGERED (none of the expected lines appear in the boot), NO_LOG_CHECKS
      (nothing resolvable to grep for; listed once per OTA, not per boot).
+     5b. Test markers (lib/boot_states.py): a test with @pytest.mark.boot_state(...) is judged
+     only where the boot had those states (INPUT/boot_states.ini lines, searched in the same
+     grep pass), and one with @pytest.mark.feature(...) only on boots where some of its
+     features is not OFF (checked once features are known, step 8). Otherwise its verdict is
+     CONDITION_NOT_MET. The Feature Level Summary groups tests by their feature marker.
   6. UDID and drive / power-monitor metrics per boot (lib/drive_metrics.py,
      lib/DRIVE_METRICS_LOGIC.md). Boots are labelled by UDID.
   7. Cloud API calls per boot (lib/api_calls.py): calls of each API and the time between them.
@@ -73,6 +78,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import api_calls
+import boot_states
 import cfg_parser_logs
 import cloud_config
 import day_scan
@@ -114,8 +120,13 @@ KEEP_LINES = 100
 
 # Shown in the reports; NOT_TRIGGERED (nothing expected was logged) and NOT_APPLICABLE
 # (the test is for other device types) are only counted
-SHOWN_VERDICTS = ['FAIL', 'PASS', 'NO_LOG_CHECKS']
-LISTED_VERDICTS = {'FAIL', 'PASS'}
+SHOWN_VERDICTS = ['FAIL', 'PASS', 'CONDITION_NOT_MET', 'NO_LOG_CHECKS']
+# CONDITION_NOT_MET: the boot never had the states the test needs (its boot_state marker),
+# or every feature of its feature marker was OFF in the boot; listed so the feature gating
+# (complete_device_reports) can tell it from a test's other verdicts
+LISTED_VERDICTS = {'FAIL', 'PASS', 'CONDITION_NOT_MET'}
+# Condition windows tried per test and boot (a flapping state can make many short ones)
+MAX_STATE_WINDOWS = 20
 
 # OTA major version (or the number after ".sp.") -> device type, as the test framework
 # derives it (pytest_device_validator conftest._derive_device_type_from_ota)
@@ -127,6 +138,7 @@ _TESTS = []
 _EVAL_TESTS = []  # tests with log steps, evaluated per boot
 _PATTERNS = {}
 _FEATURES = []
+_STATE_RULES = boot_states.Rules({})
 _INI_CACHE = {}
 _DEFAULTS_CACHE = {}
 # The OTA's default config: these files from the package, read as one (the first file wins
@@ -480,8 +492,9 @@ def _grep_ok(bres):
     return rc < 2
 
 
-def patterns_by_service(tests):
-    """{service: [(bre, regex)]} of every step pattern, deduped by regex.
+def patterns_by_service(tests, extra=None):
+    """{service: [(bre, regex)]} of every step pattern plus extra ({service: [(bre, regex)]},
+    the boot state lines), deduped by regex.
 
     A pattern grep rejects would fail the whole -f run, so it is searched as a
     literal instead.
@@ -491,6 +504,9 @@ def patterns_by_service(tests):
         for step in t['steps']:
             for bre, regex in zip(step['greps'], step['regexes']):
                 result[step['service']].setdefault(regex, bre)
+    for service, pairs in (extra or {}).items():
+        for bre, regex in pairs:
+            result[service].setdefault(regex, bre)
     all_bres = [bre for pats in result.values() for bre in pats.values()]
     if not _grep_ok(all_bres):
         for pats in result.values():
@@ -549,7 +565,28 @@ def _applies(item, device_type):
     return not types or device_type is None or device_type in types
 
 
-def evaluate_test(test, hits, boot, boot_start, device_type=None):
+def _trigger_regexes(test, applicable):
+    """(service, regexes) of the test's first expected step: the line that starts it."""
+    for step, ok in zip(test['steps'], applicable):
+        if ok and step['expect'] != 'absent':
+            return step['service'], step['regexes']
+    return None, ()
+
+
+def _hit_between(service_hits, regexes, boot, lo, hi):
+    """Whether any of regexes matched a line in [lo, hi) of the boot."""
+    for regex in regexes:
+        entry = service_hits and service_hits[regex].get(boot)
+        if entry:
+            i = bisect.bisect_left(entry[0], lo)
+            if i < len(entry[0]) and entry[0][i] < hi:
+                return True
+    return False
+
+
+def evaluate_test(test, hits, boot, boot_start, device_type=None, timeline=None):
+    """Verdict of one test in one boot. timeline (boot_states.BootTimeline): judge the test
+    only where the boot had the states of its boot_state marker (test['_requires'])."""
     steps = test['steps']
     if not steps:
         return {'verdict': 'NO_LOG_CHECKS', 'reason': 'No resolvable search_log steps', 'steps': []}
@@ -557,9 +594,35 @@ def evaluate_test(test, hits, boot, boot_start, device_type=None):
     applicable = [_applies(s, device_type) for s in steps]
     if not _applies(test, device_type) or not any(applicable):
         return {'verdict': 'NOT_APPLICABLE', 'reason': f'Not run on {device_type}', 'steps': []}
+    requires = test.get('_requires')
+    if not requires or timeline is None:
+        return _evaluate_steps(test, hits, boot, boot_start or 0, applicable)
+
+    windows = timeline.windows(requires)
+    if not windows:
+        return {'verdict': 'CONDITION_NOT_MET', 'steps': [],
+                'reason': f'The boot never had {boot_states.describe(requires)}'}
+    # The test counts where it started (its first expected line) inside a window
+    service, regexes = _trigger_regexes(test, applicable)
+    service_hits = hits.get(service)
+    for lo, hi in windows[:MAX_STATE_WINDOWS]:
+        if not _hit_between(service_hits, regexes, boot, lo, hi):
+            continue
+        result = _evaluate_steps(test, hits, boot, max(lo, boot_start or 0), applicable)
+        if result['verdict'] in ('PASS', 'FAIL'):
+            return result
+    # Not started inside any window: NOT_TRIGGERED if it never started at all
+    result = _evaluate_steps(test, hits, boot, boot_start or 0, applicable)
+    if result['verdict'] == 'NOT_TRIGGERED':
+        return result
+    return {'verdict': 'CONDITION_NOT_MET', 'steps': [],
+            'reason': f'Its log lines only appear while the boot did not have {boot_states.describe(requires)}'}
+
+
+def _evaluate_steps(test, hits, boot, cursor, applicable):
+    steps = test['steps']
 
     has_required = any(s['expect'] == 'present' for s, ok in zip(steps, applicable) if ok)
-    cursor = boot_start or 0
     results = []
     for step, ok in zip(steps, applicable):
         if not ok:
@@ -838,8 +901,13 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         # static info is stored once per device; a FAIL or PASS keeps [status, match_ts, line] per step.
         detail['device_type'] = device_type_for_ota(boot['ota'])
         verdicts, failures, passes = defaultdict(list), [], []
+        # The boot's states (INPUT/boot_states.ini), built on first use and shared by its tests
+        timeline = boot_states.BootTimeline(_STATE_RULES, hits, boot['index'], boot['start'], boot['end'])
+        reasons = defaultdict(list)
         for i, test in enumerate(_EVAL_TESTS):
-            result = evaluate_test(test, hits, boot['index'], boot['start'], detail['device_type'])
+            result = evaluate_test(test, hits, boot['index'], boot['start'], detail['device_type'], timeline)
+            if result['verdict'] == 'CONDITION_NOT_MET':
+                reasons[result['reason']].append(i)
             verdicts[result['verdict']].append(i)
             if result['verdict'] == 'FAIL':
                 failures.append({'test': i, 'reason': result['reason'], 'steps': _compact_steps(result['steps'])})
@@ -850,6 +918,8 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         detail['verdicts'] = {v: ids for v, ids in verdicts.items() if v in LISTED_VERDICTS}
         detail['failures'] = failures
         detail['passes'] = passes
+        # Why the CONDITION_NOT_MET tests were not judged: {reason: [test index, ...]}
+        detail['conditions'] = dict(reasons)
         detail_by_ota[boot['ota']].append(detail)
 
     timings.append({'step': 'evaluate', 'device': device, 'status': 'ok',
@@ -974,7 +1044,8 @@ def device_doc(device, ota, days, boot_details, ini_keys):
     tests = []
     for i, t in enumerate(_EVAL_TESTS):
         info = {'key': t['key'], 'tc_id': t['tc_id'], 'feature': t['feature'], 'functionality': t['functionality'],
-                'device_types': t.get('device_types')}
+                'device_types': t.get('device_types'), 'features': t.get('features'),
+                'boot_state': t.get('boot_state') or None}
         if i in with_steps:
             info['steps'] = [{'method': s['method'], 'service': s['service'], 'patterns': s['patterns'],
                               'expect': s['expect'], 'required': _required(s, t['steps']),
@@ -1139,6 +1210,46 @@ def cloud_config_check(fetched, defaults, latest, detailed_days=()):
     return result
 
 
+def gate_by_features(boot, statuses, feature_index):
+    """Tests whose feature marker names only features that are OFF in this boot become
+    CONDITION_NOT_MET (their verdict is moved, the boot's counts follow). A feature that is
+    OVERRIDDEN / NA (value unknown) never gates. Returns how many tests were moved."""
+    where = {i: v for v, ids in boot['verdicts'].items() for i in ids}
+    moved = defaultdict(list)
+    for i, t in enumerate(_EVAL_TESTS):
+        names = t.get('_features')
+        if not names or any(statuses[feature_index[n]] != 'OFF' for n in names):
+            continue
+        before = where.get(i)
+        if before == 'CONDITION_NOT_MET':
+            continue
+        if before is None:
+            # Not listed: NOT_APPLICABLE (other device types, stays) or NOT_TRIGGERED
+            if not _applies(t, boot['device_type']) or not any(_applies(s, boot['device_type']) for s in t['steps']):
+                continue
+            before = 'NOT_TRIGGERED'
+        n = boot['summary'].get(before, 0) - 1
+        if n > 0:
+            boot['summary'][before] = n
+        else:
+            boot['summary'].pop(before, None)
+        what = f"Feature {names[0]} is" if len(names) == 1 else f"Features {', '.join(names)} are"
+        moved[f'{what} OFF in this boot'].append(i)
+    if not moved:
+        return 0
+    gone = {i for ids in moved.values() for i in ids}
+    for v in list(boot['verdicts']):
+        boot['verdicts'][v] = [i for i in boot['verdicts'][v] if i not in gone]
+    boot['verdicts'].setdefault('CONDITION_NOT_MET', []).extend(sorted(gone))
+    boot['summary']['CONDITION_NOT_MET'] = boot['summary'].get('CONDITION_NOT_MET', 0) + len(gone)
+    boot['failures'] = [f for f in boot['failures'] if f['test'] not in gone]
+    boot['passes'] = [f for f in boot.get('passes', []) if f['test'] not in gone]
+    conditions = boot.setdefault('conditions', {})
+    for reason, ids in moved.items():
+        conditions.setdefault(reason, []).extend(ids)
+    return len(gone)
+
+
 def complete_device_reports(ota, device_summaries, report_dir, features, cloud=None):
     """Features per boot for every device on the OTA, then the device pages.
 
@@ -1154,6 +1265,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features, cloud=N
     totals = [Counter() for _ in features]
     devices_on = [0] * len(features)
     feature_keys = {key for f in features for _, key, _ in f['conditions']}
+    feature_index = {f['name']: i for i, f in enumerate(features)}
     for device, summary in device_summaries.items():
         path = report_dir / ota / 'devices' / f'{device}.json'
         with open(path) as f:
@@ -1162,6 +1274,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features, cloud=N
         latest_set = latest_config = None
         detailed_days = set(summary.get('detailed_days') or ())
         key_fails = Counter()
+        gated = 0
         for b in doc['boots']:
             profile = summary['profiles'].get(b['index'])
             values = b.get('override_values')
@@ -1181,6 +1294,7 @@ def complete_device_reports(ota, device_summaries, report_dir, features, cloud=N
             statuses = [status for status, _ in feature_status.evaluate(features, defaults, overridden, values)]
             b['features'] = [feature_status.STATUSES.index(st) for st in statuses]
             b['overridden_keys'] = sorted(overridden)
+            gated += gate_by_features(b, statuses, feature_index)
             latest_set = [features[i]['name'] for i, st in enumerate(statuses) if st == 'ON']
             for i, st in enumerate(statuses):
                 per_feature[i][st] += 1
@@ -1197,6 +1311,13 @@ def complete_device_reports(ota, device_summaries, report_dir, features, cloud=N
         with open(path.with_suffix('.html'), 'w') as f:
             f.write(render_device_html(doc))
         summary['key_fails'] = key_fails
+        if gated:
+            # Verdicts moved by the feature gating: recount the device's test cases
+            fresh = summarize_boots(device, doc['boots'], doc['config_keys'])
+            summary['tc_counts'], summary['tc_fail_boots'] = fresh['tc_counts'], fresh['tc_fail_boots']
+            counts = {b['index']: b['summary'] for b in doc['boots']}
+            for row in summary['boots']:
+                row['summary'] = counts.get(row['index'], row['summary'])
         configs = {b['index']: b['config'] for b in doc['boots']}
         for row in summary['boots']:
             if 'summary' in row['config']:
@@ -1334,12 +1455,18 @@ def build_ota_summary(ota, device_summaries, tests):
         if not t['steps']:
             report['no_log_checks'].append({'tc_id': t['tc_id'], 'feature': t['feature'], 'name': t['name']})
             continue
-        features[t['feature']].append({
-            'key': t['key'], 'tc_id': t['tc_id'], 'name': t['name'], 'functionality': t['functionality'],
-            'unresolved_steps': len(t['unresolved']),
-            'boots': dict(tc_counts[t['key']]),
-            'failed_in': tc_fail_boots[t['key']],
-        })
+        # Grouped by the feature marker (a test of several features is under each; names not in
+        # feature_mapping.ini are ignored), else by the feature its docstring / folder gives
+        groups = (t.get('_features') or (['Generic'] if 'generic' in (t.get('features') or ()) else None)
+                  or [t['feature']])
+        for group in groups:
+            features[group].append({
+                'key': t['key'], 'tc_id': t['tc_id'], 'name': t['name'], 'functionality': t['functionality'],
+                'unresolved_steps': len(t['unresolved']),
+                'boots': dict(tc_counts[t['key']]),
+                'failed_in': tc_fail_boots[t['key']],
+                'boot_state': t.get('boot_state') or None,
+            })
     for feature, tcs in sorted(features.items()):
         summary = Counter()
         for tc in tcs:
@@ -1529,6 +1656,7 @@ border-radius:4px;padding:1px 4px;word-break:break-all}
 .chip.pass,.chip.on{color:var(--pass);background:var(--pass-bg)}
 .chip.fail,.chip.out_of_order,.chip.not_found,.chip.no_log_file{color:var(--fail);background:var(--fail-bg)}
 .chip.not_triggered,.chip.overridden{color:var(--nt);background:var(--nt-bg)}
+.chip.condition_not_met{color:var(--muted);background:var(--none-bg)}
 .chip.no_log_checks,[class*="chip info_"],.chip.na,.chip.not_for_device,.chip.off{color:var(--muted);background:var(--none-bg)}
 .side a.back{color:var(--accent);margin-bottom:12px}
 details.flash{border-color:var(--fail);box-shadow:0 0 0 3px var(--fail-bg);transition:box-shadow .4s,border-color .4s}
@@ -1651,7 +1779,7 @@ a.dl:hover{background:var(--accent-bg);border-color:var(--accent);text-decoratio
 a.dl svg{width:14px;height:14px;flex:none}
 td[data-exp]{cursor:help;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
 .kpi .tbl{width:fit-content;max-width:100%}.kpi td.warn{background:var(--nt-bg);color:var(--nt);font-weight:600}.kpi table{width:auto}.kpi td.text{max-width:420px;white-space:normal}
-.n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}
+.n-pass{color:var(--pass);font-weight:600}.n-fail{color:var(--fail);font-weight:600}.n-nt{color:var(--nt)}.n-cnm{color:var(--none)}
 .mini{display:flex;height:6px;width:120px;border-radius:4px;overflow:hidden;background:var(--none-bg)}
 .fail-rate{display:flex;align-items:center;gap:10px}.fail-rate span{min-width:38px;text-align:right;font-variant-numeric:tabular-nums}.fail-rate span.zero{color:var(--none)}
 tr.feat{cursor:pointer}tr.feat td:first-child::before{content:"▸";display:inline-block;width:14px;color:var(--muted);transition:transform .15s}
@@ -1928,15 +2056,19 @@ def _feature_level_section(report):
         tcs = feat['test_cases']
         triggered = [tc for tc in tcs if tc['boots'].get('PASS') or tc['boots'].get('FAIL')]
         fail = [tc for tc in triggered if tc['boots'].get('FAIL')]
-        npass, nfail, nt = len(triggered) - len(fail), len(fail), len(tcs) - len(triggered)
+        # Never judged because no boot had its conditions (boot_state / feature markers)
+        cnm = [tc for tc in tcs if tc not in triggered and tc['boots'].get('CONDITION_NOT_MET')]
+        npass, nfail, ncnm = len(triggered) - len(fail), len(fail), len(cnm)
+        nt = len(tcs) - len(triggered) - ncnm
         rate = nfail / (len(tcs) or 1)
         bar = (f'<div class="fail-rate"><div class="mini">'
                + ''.join(f'<i class="{c}" style="width:{100 * n / (len(tcs) or 1):.1f}%"></i>'
-                         for n, c in ((npass, 'c-pass'), (nfail, 'c-fail'), (nt, 'c-nt')) if n)
+                         for n, c in ((npass, 'c-pass'), (nfail, 'c-fail'), (nt, 'c-nt'), (ncnm, 'c-none')) if n)
                + f'</div><span class="{"n-fail" if nfail else "zero"}">{100 * rate:.0f}%</span></div>')
         rows.append(f'<tr class="feat"><td>{_esc(feature)}</td><td class="num">{len(tcs)}</td>'
                     f'<td class="num">{len(triggered)}</td><td class="num{" n-pass" if npass else " zero"}">{npass}</td>'
                     f'<td class="num{" n-fail" if nfail else " zero"}">{nfail}</td><td class="num{" n-nt" if nt else " zero"}">{nt}</td>'
+                    f'<td class="num{" n-cnm" if ncnm else " zero"}">{ncnm}</td>'
                     f'<td data-v="{rate:.3f}">{bar}</td></tr>')
         detail = []
         for tc in sorted(tcs, key=lambda tc: (-tc['boots'].get('FAIL', 0), -tc['boots'].get('PASS', 0), str(tc['tc_id']))):
@@ -1949,13 +2081,19 @@ def _feature_level_section(report):
             tc_ref = urllib.parse.quote(str(tc.get('key') or tc['tc_id']), safe='')
             failed = ' '.join(f'<a href="devices/{_esc(dev)}.html#fail={first_boot[dev]}:{tc_ref}">{_esc(dev)}</a>'
                               f'<span class="n-fail"> ({n})</span>' for dev, n in fails.items())
+            needs = ', '.join(f'{d}={"|".join(v)}' for d, v in sorted((tc.get('boot_state') or {}).items()))
             detail.append(f'<tr><td>{_esc(tc["tc_id"])}</td><td class="wrap">{_esc(tc["functionality"])}</td>'
+                          f'<td class="wrap muted">{_esc(needs)}</td>'
                           f'<td class="num n-pass">{b.get("PASS", 0) or ""}</td>'
-                          f'<td class="num n-fail">{b.get("FAIL", 0) or ""}</td><td>{failed}</td></tr>')
-        rows.append('<tr class="tcs" hidden><td colspan="7"><table><thead><tr><th>TC</th><th>Functionality</th>'
-                    '<th class="num">Pass boots</th><th class="num">Fail boots</th><th>Failed on</th></tr></thead>'
+                          f'<td class="num n-fail">{b.get("FAIL", 0) or ""}</td>'
+                          f'<td class="num n-cnm">{b.get("CONDITION_NOT_MET", 0) or ""}</td><td>{failed}</td></tr>')
+        rows.append('<tr class="tcs" hidden><td colspan="8"><table><thead><tr><th>TC</th><th>Functionality</th>'
+                    '<th>Needs</th><th class="num">Pass boots</th><th class="num">Fail boots</th>'
+                    '<th class="num" title="Boots without the states / features the test needs">Condition not met</th>'
+                    '<th>Failed on</th></tr></thead>'
                     f'<tbody>{"".join(detail)}</tbody></table></td></tr>')
-    head = ['Feature Name', '#Total Testcases', '#Total Triggered', '#Pass', '#Fail', '#Not Triggered', 'Failure %']
+    head = ['Feature Name', '#Total Testcases', '#Total Triggered', '#Pass', '#Fail', '#Not Triggered',
+            '#Condition not met', 'Failure %']
     return f'<section id="features"><h2>Feature Level Summary</h2>{_table(head, rows)}</section>'
 
 
@@ -2457,6 +2595,24 @@ def render_device_html(doc):
     return _shell(f'{device} {ota}', 'Device', device, side, '\n'.join(out), js, DEVICE_STYLE)
 
 
+def prepare_markers(tests, rules, feature_names):
+    """Per test, what its markers make checkable: '_requires' (boot_states.Rules.usable of its
+    boot_state marker) and '_features' (its feature marker's names that are in
+    feature_mapping.ini; None for unmarked or generic tests). Unknown values are logged."""
+    for t in tests:
+        for err in t.get('marker_errors') or ():
+            log.warning('%s: %s', t['key'], err)
+    boot_states.check_markers(tests, rules, feature_names)
+    known = set(feature_names)
+    for t in tests:
+        t['_requires'] = rules.usable(t.get('boot_state'))
+        named = [f for f in t.get('features') or () if f in known]
+        t['_features'] = named or None
+    marked = sum(1 for t in tests if t.get('features') or t.get('boot_state'))
+    log.info('Test markers: %d of %d tests marked, %d filtered on boot state, %d on features',
+             marked, len(tests), sum(1 for t in tests if t['_requires']), sum(1 for t in tests if t['_features']))
+
+
 def load_tests(tests_dir, snapshot=None):
     """Test cases with their log steps (see testcase_log_steps.extract_all_cached)."""
     return [dict(t, key=f'{t["folder"]}/{t["name"]}')
@@ -2536,7 +2692,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     on_progress(done, total, device, error): called in this process as each device finishes.
     Returns {'reports': {ota: {...kpis, 'path'}}, 'timings': [...], 'device_errors': {device: error}}.
     """
-    global _TESTS, _EVAL_TESTS, _PATTERNS, _FEATURES
+    global _TESTS, _EVAL_TESTS, _PATTERNS, _FEATURES, _STATE_RULES
     devices = [str(d) for d in devices]
     workers = workers or default_workers()
     report_dir = Path(report_dir or REPORT_BASE_DIR)
@@ -2547,7 +2703,8 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     with timed(log, 'load_tests', timings):
         _TESTS = load_tests(tests_dir, tests_snapshot)
         _EVAL_TESTS = [t for t in _TESTS if t['steps']]
-        _PATTERNS = patterns_by_service(_TESTS)
+        _STATE_RULES = boot_states.load()
+        _PATTERNS = patterns_by_service(_TESTS, _STATE_RULES.patterns())
     log.info('Extracted %d log steps from %d test files, %d patterns over %d services',
              sum(len(t['steps']) for t in _TESTS), len(_TESTS),
              sum(len(p) for p in _PATTERNS.values()), len(_PATTERNS))
@@ -2555,6 +2712,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
     by_ota = defaultdict(dict)
     device_info = {}
     features = _FEATURES = feature_status.load_features()
+    prepare_markers(_TESTS, _STATE_RULES, [f['name'] for f in features])
     day_scan.configure(patterns=_PATTERNS, feature_keys={k for f in _FEATURES for _, k, _ in f['conditions']})
     log.info('Override values by LLM: %s', 'on' if override_llm.enabled() else 'off (OVERRIDE_LLM / credentials)')
     # One job per device-day (read the logs), then one per device (put it together) as soon as

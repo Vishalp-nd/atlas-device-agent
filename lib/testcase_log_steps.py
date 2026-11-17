@@ -21,6 +21,10 @@ skips/returns for some types limits the whole test, an if/else around a search
 limits that step, and an early `if <device_type cond>: return/skip` limits the
 steps after it in the same method. None means every device type.
 
+Markers: @pytest.mark.feature("FCW", ...) (features from feature_mapping.ini, or "generic")
+and @pytest.mark.boot_state(power="ignition_off", ...) (lib/boot_states.py) on the module
+(pytestmark), a test class or a test method become "features" and "boot_state".
+
 Feature: the "Feature: X — Y" docstring line (X = feature, Y = functionality),
 else feature_name from the matching test_cases/<folder>/TC_*_<id>*.yaml, else
 the feature most used by documented tests in the same folder, else the folder.
@@ -500,6 +504,87 @@ def _extract_steps(fn, scopes):
     return steps, unresolved
 
 
+# ── markers: @pytest.mark.feature(...) / @pytest.mark.boot_state(...) ─────
+
+MARKERS = ('feature', 'boot_state')
+
+
+def _mark_name(node):
+    """'feature' for pytest.mark.feature(...) / mark.feature(...), else None."""
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+        return None
+    owner = node.func.value
+    is_mark = ((isinstance(owner, ast.Attribute) and owner.attr == 'mark')
+               or (isinstance(owner, ast.Name) and owner.id == 'mark'))
+    return node.func.attr if is_mark and node.func.attr in MARKERS else None
+
+
+def _str_values(node):
+    """'a' / ('a', 'b') / ['a', 'b'] -> ['a', 'b']; anything else -> None."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value.strip()]
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        items = [_str_values(e) for e in node.elts]
+        return None if any(i is None for i in items) else [v for i in items for v in i]
+    return None
+
+
+def _marks(nodes):
+    """Marker calls among decorator / pytestmark nodes."""
+    for node in nodes:
+        if isinstance(node, (ast.List, ast.Tuple)):
+            yield from _marks(node.elts)
+        elif _mark_name(node):
+            yield node
+
+
+def _module_marks(tree):
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'pytestmark' for t in node.targets)):
+            yield from _marks([node.value])
+
+
+def read_markers(tree):
+    """{'features': [...] | None, 'boot_state': {dim: [values]}, 'marker_errors': [...]} of a test file.
+
+    A test file is one TC, so the module's pytestmark, its test classes' decorators and its
+    test methods' decorators all apply to it: features are combined, and for boot_state the
+    closest scope wins per dimension (method over class over module).
+    """
+    scopes = [list(_module_marks(tree))]
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            scopes.append(list(_marks(node.decorator_list)))
+            methods = [n for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            methods = [node]
+        else:
+            continue
+        for fn in methods:
+            if fn.name.startswith('test'):
+                scopes.append(list(_marks(fn.decorator_list)))
+    features, state, errors = [], {}, []
+    for marks in scopes:
+        for call in marks:
+            line = call.lineno
+            if _mark_name(call) == 'feature':
+                values = [_str_values(a) for a in call.args]
+                if call.keywords or not values or any(v is None for v in values):
+                    errors.append(f'line {line}: feature() takes feature names as strings')
+                    continue
+                features.extend(v for vs in values for v in vs if v not in features)
+            else:
+                if call.args:
+                    errors.append(f'line {line}: boot_state() takes dimension=value(s) keywords only')
+                for kw in call.keywords:
+                    values = _str_values(kw.value)
+                    if kw.arg is None or not values:
+                        errors.append(f'line {line}: boot_state({kw.arg}=...) needs a string or a tuple of strings')
+                        continue
+                    state[kw.arg] = values
+    return {'features': features or None, 'boot_state': state, 'marker_errors': errors}
+
+
 def extract_test_file(path, yaml_by_folder, yaml_by_number):
     source = path.read_text(errors='replace')
     try:
@@ -556,6 +641,7 @@ def extract_test_file(path, yaml_by_folder, yaml_by_number):
         'feature_source': feature_source,
         'functionality': functionality or path.stem,
         'device_types': _type_list(test_types),
+        **read_markers(tree),
         'steps': steps,
         'unresolved': unresolved,
     }
