@@ -22,6 +22,11 @@ values as gpt-5.4-2 in about half the time (~4 s vs ~8 s a boot). Without reason
 upload_video[inward=0] as privacy_mode.inward; o3-mini / gpt-4.1(-mini) / gpt-4o-mini were
 slower or missed values. The other LLM calls (report_callouts) stay on OAI_MODEL.
 
+When the endpoint can't be reached (connection error or timeout), a marker file next to the
+cache (UNREACHABLE_MARK) tells every worker process to skip the LLM for OVERRIDE_LLM_COOLDOWN_S
+(300 s): the boots fall back to defaults/overrides instead of each retrying for minutes (a run
+once spent 21 hours that way). After the cooldown one call tries again; a success clears it.
+
 Configuration (env or .env at the repo root): AZURE_OAI, OAI_ENDPOINT, OAI_MODEL,
 OVERRIDE_LLM_MODEL (deployment for this step; OAI_MODEL if empty), OVERRIDE_LLM_REASONING
 (reasoning_effort: none/low/medium/high; empty: the model default), OVERRIDE_LLM_API_VERSION
@@ -35,6 +40,7 @@ import logging
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 import cfg_parser_logs
@@ -144,6 +150,54 @@ Log lines (service | message), first minutes of one boot:
 _chain = None
 _chain_lock = threading.Lock()
 
+# Shared by the run's worker processes (and runs): its mtime is when the endpoint last failed to answer
+UNREACHABLE_MARK = CACHE_DIR / '.llm_unreachable'
+COOLDOWN_S = float(os.environ.get('OVERRIDE_LLM_COOLDOWN_S', '300'))
+
+
+class LLMUnavailable(RuntimeError):
+    """The endpoint failed to answer within the cooldown: not called."""
+
+
+def _is_connection_error(exc):
+    """A connection error or timeout (openai.APIConnectionError covers APITimeoutError)."""
+    try:
+        import openai
+        if isinstance(exc, openai.APIConnectionError):
+            return True
+    except ImportError:
+        pass
+    return isinstance(exc, (ConnectionError, TimeoutError))
+
+
+def _check_reachable():
+    """Raise LLMUnavailable while the endpoint is in its cooldown. When the cooldown is over,
+    this call becomes the probe: the marker is refreshed first so the other workers keep
+    skipping until the probe answers (and clears it) or fails (and restarts the cooldown)."""
+    try:
+        age = time.time() - UNREACHABLE_MARK.stat().st_mtime
+    except OSError:
+        return
+    if age < COOLDOWN_S:
+        raise LLMUnavailable(f'LLM endpoint unreachable ({age:.0f}s ago); not called, tried again after {COOLDOWN_S:.0f}s')
+    try:
+        os.utime(UNREACHABLE_MARK)
+    except OSError:
+        pass
+
+
+def _mark(unreachable, exc=None):
+    try:
+        if unreachable:
+            UNREACHABLE_MARK.parent.mkdir(parents=True, exist_ok=True)
+            UNREACHABLE_MARK.write_text(f'{type(exc).__name__}: {exc}'[:300])
+            log.warning('LLM endpoint unreachable (%s): skipping LLM calls for %.0fs', type(exc).__name__, COOLDOWN_S)
+        elif UNREACHABLE_MARK.exists():
+            UNREACHABLE_MARK.unlink(missing_ok=True)
+            log.info('LLM endpoint reachable again')
+    except OSError:
+        pass
+
 
 def enabled():
     if os.environ.get('OVERRIDE_LLM', '1').strip().lower() in ('0', 'false', 'no', 'off'):
@@ -187,7 +241,7 @@ def _get_chain():
                 api_key=os.environ['AZURE_OAI'].strip(),
                 api_version=api_version,
                 max_retries=int(os.environ.get('OVERRIDE_LLM_RETRIES', '6')),
-                timeout=float(os.environ.get('OVERRIDE_LLM_TIMEOUT', '120')),
+                timeout=float(os.environ.get('OVERRIDE_LLM_TIMEOUT', '60')),
                 **extra,
             )
             log.info('Override LLM: %s (reasoning %s, api %s)', model, reasoning or 'default', api_version)
@@ -204,7 +258,8 @@ def extract_values(conditions, evidence):
     """{section.key: {'value', 'evidence'} | None} for conditions [(section, key, default)].
 
     Returns (values, source) with source 'cache', 'llm' or 'no_evidence'.
-    Raises on LLM errors (the caller decides how to degrade).
+    Raises on LLM errors (the caller decides how to degrade), LLMUnavailable without calling
+    while the endpoint is in its unreachable cooldown.
     """
     wanted = sorted({(s, k, d) for s, k, d in conditions})
     if not evidence:
@@ -223,7 +278,14 @@ def extract_values(conditions, evidence):
             return json.loads(cache_path.read_text()), 'cache'
         except ValueError:
             pass
-    raw = _get_chain().invoke(variables)
+    _check_reachable()
+    try:
+        raw = _get_chain().invoke(variables)
+    except Exception as exc:
+        if _is_connection_error(exc):
+            _mark(True, exc)
+        raise
+    _mark(False)
     values = {}
     for s, k, _ in wanted:
         name = f'{s}.{k}'

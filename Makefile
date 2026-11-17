@@ -6,6 +6,7 @@
 #   make docker-build-run-detached PORT=9000  # same, on a different port
 #   make docker-logs                          # tail logs of a detached run
 #   make docker-stop                          # stop + remove the container (either mode)
+#   make docker-limits                        # apply the CPU / memory caps to the running container, no restart
 #
 # Log Analyzer UI (static server, same image, different command; talks to ATLAS_API_URL from .env):
 #   make docker-ui-run-detached               # run the UI in background on UI_PORT (default 8081)
@@ -22,6 +23,18 @@ UI_PORT    ?= 8611
 UI_NAME    := atlas-log-analyzer-ui
 # The Log Analyzer rebuilds each log day in /dev/shm; Docker's default is too small
 SHM_SIZE   ?= 8g
+# CPU and memory caps for the API container (where the Log Analyzer runs), so a big run can't
+# take the whole machine: CPU_LIMIT_PCT of the host's CPUs (--cpus) and MEM_LIMIT_PCT of its RAM
+# (--memory, which also counts the container's /dev/shm; no swap on top). Past the memory cap the
+# kernel kills a process inside the container instead of the host running out of memory.
+# Or set CPUS / MEMORY directly (e.g. MEMORY=20g).
+CPU_LIMIT_PCT ?= 90
+MEM_LIMIT_PCT ?= 80
+HOST_CPUS  := $(shell nproc 2>/dev/null || echo 1)
+HOST_MEM_MB := $(shell awk '/^MemTotal:/ { printf "%d", $$2 / 1024 }' /proc/meminfo 2>/dev/null || echo 0)
+CPUS       ?= $(shell awk 'BEGIN { printf "%.2f", $(HOST_CPUS) * $(CPU_LIMIT_PCT) / 100 }')
+MEMORY     ?= $(shell awk 'BEGIN { printf "%dm", $(HOST_MEM_MB) * $(MEM_LIMIT_PCT) / 100 }')
+LIMITS     := --cpus=$(CPUS) --memory=$(MEMORY) --memory-swap=$(MEMORY)
 REPO_ROOT  := $(CURDIR)
 ENV_FILE   := .env
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
@@ -48,7 +61,7 @@ AGENT_MOUNTS := \
 # S3 credentials for the log downloads where there is no EC2 instance role (e.g. a laptop)
 AWS_MOUNT := $(if $(wildcard $(AWS_DIR)),-v $(AWS_DIR):/root/.aws:ro,)
 
-.PHONY: docker-build docker-run docker-run-detached docker-build-run docker-build-run-detached docker-logs docker-stop \
+.PHONY: docker-build docker-run docker-run-detached docker-build-run docker-build-run-detached docker-logs docker-stop docker-limits \
 	docker-ui-run docker-ui-run-detached docker-ui-logs docker-ui-stop
 
 docker-build:
@@ -65,6 +78,7 @@ docker-run:
 		--name $(IMAGE_NAME) \
 		--add-host=host.docker.internal:host-gateway \
 		--shm-size=$(SHM_SIZE) \
+		$(LIMITS) \
 		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
 		$(DA_MOUNT) $(AGENT_MOUNTS) $(AWS_MOUNT) \
@@ -80,6 +94,7 @@ docker-run-detached:
 		--name $(IMAGE_NAME) \
 		--add-host=host.docker.internal:host-gateway \
 		--shm-size=$(SHM_SIZE) \
+		$(LIMITS) \
 		-p $(PORT):8501 \
 		-v $(REPO_ROOT):/repo \
 		$(DA_MOUNT) $(AGENT_MOUNTS) $(AWS_MOUNT) \
@@ -96,6 +111,10 @@ docker-logs:
 docker-stop:
 	-docker stop $(IMAGE_NAME)
 	-docker rm $(IMAGE_NAME)
+
+# The caps of a running container can be changed in place (kept across its restarts)
+docker-limits:
+	docker update $(LIMITS) $(IMAGE_NAME)
 
 # Log Analyzer UI — reuses the atlas-agent-api image (run `make docker-build` first if it
 # doesn't exist). Serves log_analyzer/ui/ with config.js generated from ATLAS_API_URL in .env;

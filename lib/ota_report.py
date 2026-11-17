@@ -138,10 +138,30 @@ CONFIG_FETCHED_MARKER = '.config_fetched'
 # Worker processes per CPU (OTA_REPORT_WORKERS_PER_CPU): the work is grep and
 # decompression with I/O waits, so more processes than cores keeps the CPUs busy
 WORKERS_PER_CPU = float(os.environ.get('OTA_REPORT_WORKERS_PER_CPU', '3'))
-# Memory the run may use (OTA_REPORT_MEMORY_GB): worker processes (about
-# WORKER_MEMORY_GB each) plus the days being read, rebuilt in log_archive.TMP_ROOT
-# (/dev/shm is RAM). A day is only started when its estimated size fits.
-MEMORY_BUDGET_BYTES = int(float(os.environ.get('OTA_REPORT_MEMORY_GB', '20')) * 1024 ** 3)
+
+
+def memory_limit_bytes():
+    """Memory this process may use: its cgroup's limit (a Docker --memory cap) when there is
+    one below the machine's RAM, else the machine's RAM."""
+    total = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    for path in ('/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes'):
+        try:
+            value = Path(path).read_text().strip()
+        except OSError:
+            continue
+        if value.isdigit() and 0 < int(value) < total:
+            return int(value)
+    return total
+
+
+# Memory the run may use (OTA_REPORT_MEMORY_GB; default MEMORY_SHARE of memory_limit_bytes()):
+# worker processes (about WORKER_MEMORY_GB each) plus the days being read, rebuilt in
+# log_archive.TMP_ROOT (/dev/shm is RAM). A day is only started when its estimated size fits.
+# Half leaves room for the API, the hit spools' page cache and whatever else runs on the machine
+# (a fixed 20 GB once ran a 30 GB machine with no swap out of memory).
+MEMORY_SHARE = 0.5
+MEMORY_BUDGET_BYTES = (int(float(os.environ['OTA_REPORT_MEMORY_GB']) * 1024 ** 3) if os.environ.get('OTA_REPORT_MEMORY_GB')
+                       else int(memory_limit_bytes() * MEMORY_SHARE))
 WORKER_MEMORY_BYTES = int(float(os.environ.get('OTA_REPORT_WORKER_MEMORY_GB', '0.35')) * 1024 ** 3)
 TMP_SHARE = 0.9  # never fill the temp filesystem past this
 # Parallel LLM calls per device (OVERRIDE_LLM_CONCURRENCY)
@@ -634,6 +654,8 @@ def read_override_values(device, jobs, timings):
             values, source = override_llm.extract_values(conditions, evidence)
             detail['override_values'] = {k: v for k, v in values.items() if v is not None}
             detail['override_llm'] = source
+        except override_llm.LLMUnavailable as exc:  # skipped at once: the endpoint is down
+            detail['override_llm'] = f'unavailable: {exc}'[:300]
         except Exception as exc:  # the report goes on with defaults/overrides only
             log.warning('%s %s: override LLM failed: %s', device, detail['label'], exc)
             detail['override_llm'] = f'error: {type(exc).__name__}: {exc}'[:300]
