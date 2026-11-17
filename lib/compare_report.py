@@ -43,7 +43,7 @@ MAX_CODE_ROWS = 25
 # Left navigation; KPI Metrics is a group that expands into its tables (filled in render_html)
 NAV = [('overview', 'Overview'), ('drive', 'Drive Summary'), ('feature-sets', 'Feature Set Summary'),
        ('api', 'API Call Summary'), ('callouts', 'Callouts-API Summary'), ('features', 'Feature Level Summary'),
-       ('kpi', 'KPI Metrics'), ('kpi-callouts', 'Callouts-KPI Metrics')]
+       ('kpi', 'KPI Metrics')]  # , ('kpi-callouts', 'Callouts-KPI Metrics')]  (KPI callouts off for now)
 
 STYLE = """
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
@@ -493,8 +493,10 @@ def build(report_a, report_b, labels, out_dir, sides=None):
     api_co = report_callouts.build_compare(labels, 'API Call Summary', {'API Call Summary': _api_callout_rows(api_rows)},
                                            context, max_callouts=8)
     # One call over every KPI table, so changes that move together across tables can be linked
-    kpi_rows = [dict(r, table=t) for t, rows in _kpi_callout_groups(kpi_tables, codes, A, B).items() for r in rows]
-    kpi_co = report_callouts.build_compare(labels, 'KPI Summary', {'KPI Summary': kpi_rows}, context, max_callouts=10)
+    # KPI callouts not needed for now (the Callouts-KPI Metrics section is left out)
+    # kpi_rows = [dict(r, table=t) for t, rows in _kpi_callout_groups(kpi_tables, codes, A, B).items() for r in rows]
+    # kpi_co = report_callouts.build_compare(labels, 'KPI Summary', {'KPI Summary': kpi_rows}, context, max_callouts=10)
+    kpi_co = None
     doc = {
         'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
         'labels': list(labels), 'sides': sides,
@@ -550,8 +552,9 @@ def render_html(doc, A, B, overview, fs_html, api_rows, feat_html, kpi_tables, c
             + '</div></section>',
             _overview_section(overview, labels), fs_html, _api_section(api_rows, labels),
             _callouts_html(doc['callouts'], 'callouts', 'Callouts-API Summary'),
-            feat_html, _kpi_head(), _kpi_sections(kpi_tables, labels, _codes_section(codes, labels)),
-            _callouts_html(doc['kpi_callouts'], 'kpi-callouts', 'Callouts-KPI Metrics')]
+            feat_html, _kpi_head(), _kpi_sections(kpi_tables, labels, _codes_section(codes, labels))]
+    # KPI callouts off for now
+    # body.append(_callouts_html(doc['kpi_callouts'], 'kpi-callouts', 'Callouts-KPI Metrics'))
     return _shell(f'{la} vs {lb}', 'Comparison report', f'{la} vs {lb}', _nav(kpi_tables, codes), ''.join(body),
                   f'<script>{REPORT_JS}</script>', STYLE)
 
@@ -567,7 +570,7 @@ def main():
     ra, rb = json.loads(Path(args.a).read_text()), json.loads(Path(args.b).read_text())
     doc = build(ra, rb, (args.label_a or ra.get('ota_version'), args.label_b or rb.get('ota_version')), args.out_dir)
     print(f'{args.out_dir}/compare_report.html: {len(doc["callouts"]["callouts"])} API and '
-          f'{len(doc["kpi_callouts"]["callouts"])} KPI callouts')
+          f'{len((doc["kpi_callouts"] or {}).get("callouts", []))} KPI callouts')
 
 
 if __name__ == '__main__':

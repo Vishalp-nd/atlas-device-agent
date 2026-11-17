@@ -2237,7 +2237,8 @@ def render_html(report):
     body.append(_feature_level_section(report))
     if sm:
         body.append(_kpi_sections(report, sm))
-        body.append(_callouts_section(report, 'kpi_callouts', 'kpi-callouts', 'Callouts-KPI Metrics'))
+        if report.get('kpi_callouts'):  # off for now (see run(): KPI callouts not built)
+            body.append(_callouts_section(report, 'kpi_callouts', 'kpi-callouts', 'Callouts-KPI Metrics'))
     return _shell(f'OTA {ota}', 'OTA report', ota, nav, ''.join(body), f'<script>{REPORT_JS}</script>')
 
 
@@ -2888,9 +2889,11 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             with ThreadPoolExecutor(2) as callout_pool:
                 api_co = callout_pool.submit(report_callouts.build, ota, report['summary'], device_summaries,
                                              device_info, defaults)
-                kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
-                                             device_type_for_ota(ota))
-                report['callouts'], report['kpi_callouts'] = api_co.result(), kpi_co.result()
+                # KPI callouts not needed for now (the Callouts-KPI Metrics section is left out)
+                # kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
+                #                              device_type_for_ota(ota))
+                # report['callouts'], report['kpi_callouts'] = api_co.result(), kpi_co.result()
+                report['callouts'], report['kpi_callouts'] = api_co.result(), None
         with timed(log, 'write_ota_report_files', timings, ota=ota):
             out_dir = report_dir / ota
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -2958,9 +2961,11 @@ def refresh_callouts(reports_dir):
         with ThreadPoolExecutor(2) as callout_pool:
             api_co = callout_pool.submit(report_callouts.build, ota, report.get('summary') or {}, device_summaries,
                                          device_info, defaults)
-            kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
-                                         device_type_for_ota(ota))
-            report['callouts'], report['kpi_callouts'] = api_co.result(), kpi_co.result()
+            # KPI callouts not needed for now (the Callouts-KPI Metrics section is left out)
+            # kpi_co = callout_pool.submit(report_callouts.build_kpi, ota, report.get('kpi'), device_summaries,
+            #                              device_type_for_ota(ota))
+            # report['callouts'], report['kpi_callouts'] = api_co.result(), kpi_co.result()
+            report['callouts'], report['kpi_callouts'] = api_co.result(), None
         with open(ota_dir / 'ota_report.json', 'w') as f:
             json.dump(report, f, separators=(',', ':'))
         with open(ota_dir / 'ota_report.html', 'w') as f:

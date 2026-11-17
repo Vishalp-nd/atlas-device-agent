@@ -159,7 +159,7 @@ def main(comparison_id: int) -> int:
         db.update_comparison(comparison_id, status="succeeded", stage="done", error=None,
                              report_path="compare_report.html", finished_at=datetime.now(timezone.utc), pid=None)
         log.info("comparison %s: %s vs %s built in %.1fs (%d API, %d KPI callouts)", comparison_id, labels[0], labels[1],
-                 time.perf_counter() - t0, len(doc["callouts"]["callouts"]), len(doc["kpi_callouts"]["callouts"]))
+                 time.perf_counter() - t0, len(doc["callouts"]["callouts"]), len((doc["kpi_callouts"] or {}).get("callouts", [])))
         return 0
     except Cancelled:
         db.update_comparison(comparison_id, status="cancelled", stage="cancelled",
