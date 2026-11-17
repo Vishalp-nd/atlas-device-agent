@@ -109,7 +109,7 @@ window.LAAuth = (() => {
           <h3>Check your email</h3>
           <p class="ag-lead">Enter the 6-digit code sent to <b>${h(pending.email)}</b>.</p>
           ${pending.via === 'console' ? '<p class="ag-note">Mail is off on this server: the code is printed in the backend\'s console (<code>docker logs atlas-agent-api</code>).</p>' : ''}
-          <div class="ag-field"><input class="ag-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" aria-label="6-digit code"></div>
+          <div class="ag-field"><input class="ag-otp" inputmode="numeric" autocomplete="one-time-code" placeholder="••••••" aria-label="6-digit code"></div>
           <p class="form-error">${h(error)}</p>
           <button class="primary" type="submit"><span class="spin" aria-hidden="true"></span><span>Sign in</span></button>
           <div class="ag-links"><button type="button" class="ag-link" data-a="change">Use another email</button>
@@ -118,10 +118,19 @@ window.LAAuth = (() => {
       const form = el.querySelector('form');
       const input = el.querySelector('.ag-otp');
       input.focus();
-      input.addEventListener('input', () => {
-        input.value = input.value.replace(/\D/g, '').slice(0, 6);
+      // No maxlength: the mail shows the code spaced ("1 2 3 4 5 6"), and a length limit would
+      // cut a paste to its first 6 characters before the spaces are dropped. Keep the digits.
+      const take = (raw) => {
+        input.value = String(raw || '').replace(/\D/g, '').slice(0, 6);
         if (input.value.length === 6) form.requestSubmit();
+      };
+      input.addEventListener('paste', (e) => {
+        const text = (e.clipboardData || window.clipboardData)?.getData('text');
+        if (text == null) return;
+        e.preventDefault();
+        take(text);
       });
+      input.addEventListener('input', () => take(input.value));
       const resend = el.querySelector('[data-a="resend"]');
       const tick = () => {
         if (!el.contains(resend)) return;
