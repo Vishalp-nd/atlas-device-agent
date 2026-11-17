@@ -206,6 +206,7 @@ form.addEventListener('submit', async (e) => {
     product: $('#product').value.trim() || null,
     extract_logs: $('#extract_logs').checked,
   };
+  if (selectedFeatures.size) body.features = [...selectedFeatures];
   if ($('#max_devices').value) body.max_devices = Number($('#max_devices').value);
   if ($('#workers').value) body.workers = Number($('#workers').value);
   if (mode === 'ota') {
@@ -236,6 +237,51 @@ form.addEventListener('submit', async (e) => {
     button.disabled = false;
     renderEnv();
   }
+});
+
+// ── feature filter (multi-select of feature_mapping.ini features) ─────────
+let allFeatures = [];
+const selectedFeatures = new Set();
+
+function renderFeatureValue() {
+  const value = $('#features-value');
+  const n = selectedFeatures.size;
+  value.textContent = n ? [...selectedFeatures].join(', ') : 'All devices';
+  value.classList.toggle('placeholder', !n);
+  $('#feature-count').textContent = n ? `${n} selected` : '';
+}
+
+function renderFeatureList() {
+  const q = $('#features-search').value.trim().toLowerCase();
+  const shown = allFeatures.filter((f) => f.toLowerCase().includes(q));
+  $('#features-list').innerHTML = shown.length
+    ? shown.map((f) => `<label class="check"><input type="checkbox" value="${esc(f)}"${selectedFeatures.has(f) ? ' checked' : ''}> ${esc(f)}</label>`).join('')
+    : `<div class="empty-note">${allFeatures.length ? 'No feature matches.' : 'Features could not be loaded.'}</div>`;
+  $('#features-shown').textContent = q ? `${shown.length} of ${allFeatures.length}` : `${allFeatures.length} features`;
+}
+
+function setFeaturePanel(open) {
+  $('#features-panel').hidden = !open;
+  $('#features-toggle').setAttribute('aria-expanded', String(open));
+  if (open) { renderFeatureList(); $('#features-search').focus(); }
+}
+
+async function loadFeatures() {
+  try { ({ features: allFeatures } = await api('/features')); } catch (_) { allFeatures = []; }
+  renderFeatureList();
+}
+
+$('#features-toggle').addEventListener('click', () => setFeaturePanel($('#features-panel').hidden));
+$('#features-search').addEventListener('input', renderFeatureList);
+$('#features-list').addEventListener('change', (e) => {
+  if (e.target.type !== 'checkbox') return;
+  if (e.target.checked) selectedFeatures.add(e.target.value); else selectedFeatures.delete(e.target.value);
+  renderFeatureValue();
+});
+$('#features-clear').addEventListener('click', () => { selectedFeatures.clear(); renderFeatureValue(); renderFeatureList(); });
+document.addEventListener('click', (e) => { if (!$('#features').contains(e.target)) setFeaturePanel(false); });
+$('#features').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#features-panel').hidden) { setFeaturePanel(false); $('#features-toggle').focus(); }
 });
 
 async function loadSuggestions() {
@@ -721,4 +767,5 @@ renderEnv();
 loadEnvironments();
 health();
 loadSuggestions();
+loadFeatures();
 route();

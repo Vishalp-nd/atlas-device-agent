@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import sys
 import threading
 import time
 from pathlib import Path
@@ -26,9 +27,16 @@ from fastapi.responses import FileResponse
 
 from . import db, service
 from .config import DEFAULT_ENVIRONMENT, ENVIRONMENTS, REPO_ROOT, RUNS_DIR, run_subpath
+from .config import LIB_DIR
 from .devices import device_limit
 from .models import (Comparison, ComparisonCreateRequest, ComparisonList, ComparisonReportsRequest, Environment,
-                     Environments, OtaSuggestions, Run, RunCreateRequest, RunDetail, RunList, RunLog, RunReport)
+                     Environments, FeatureList, OtaSuggestions, Run, RunCreateRequest, RunDetail, RunList, RunLog,
+                     RunReport)
+
+# lib/ modules import each other as top-level modules
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
+import feature_filter  # noqa: E402
 
 log = logging.getLogger("log_analyzer.router")
 
@@ -105,12 +113,19 @@ def create_run(req: RunCreateRequest) -> Run:
         raise HTTPException(status_code=422, detail="A valid ota_version is required for mode=ota")
     if req.mode == "devices" and not devices:
         raise HTTPException(status_code=422, detail="At least one device id is required for mode=devices")
+    features = [f.strip() for f in req.features if f and f.strip()]
+    if features:
+        try:
+            features = [f["name"] for f in feature_filter.selected_features(features)]
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     options = {k: v for k, v in {
         "max_devices": req.max_devices, "workers": req.workers,
         "extract_logs": req.extract_logs,
         "otas": otas or None,
         "ota_devices": _ota_devices_info(req.ota_devices) if req.mode == "ota" and devices else None,
+        "features": features or None,
     }.items() if v is not None}
     if req.mode == "ota" and devices:
         devices = devices[:device_limit(req.max_devices)]
@@ -123,6 +138,12 @@ def create_run(req: RunCreateRequest) -> Run:
     if req.mode == "ota" and devices:
         log.info("run %s: %d device(s) on OTA %s resolved by the UI", run_id, len(devices), ota)
     return Run(**db.get_run(run_id))
+
+
+@router.get("/features", response_model=FeatureList)
+def features() -> FeatureList:
+    """Feature names the run form's feature filter can pick from (feature_mapping.ini)."""
+    return FeatureList(features=feature_filter.feature_names())
 
 
 @router.get("/runs", response_model=RunList)

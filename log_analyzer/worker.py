@@ -6,15 +6,18 @@ Stages, each timed and recorded in log_analyzer.run_steps:
   1. queue    wait for the advisory lock, so only one run does heavy log I/O at a time
   2. resolve  device list (given, or up to OTA_DEVICE_LIMIT devices currently on the OTA; an OTA
               run can bring that list from the UI when this backend can't reach the device db)
-  3. download log archives from s3 per device (kept compressed; lib/log_archive.py reads them)
+  3. filter   only when the run names features: keep the devices with all of them enabled by
+              their cloud override config + OTA package defaults (lib/feature_filter.py)
+  4. download log archives from s3 per device (kept compressed; lib/log_archive.py reads them)
 The run's environment (config.ENVIRONMENTS) picks the s3 bucket, the device db and the
 local log/config caches; the caches reach lib/ via ATLAS_LOG_ROOT / ATLAS_CONFIG_JSON_ROOT.
-  4. analyse  lib/ota_report.run into OUTPUT/log_analyzer_runs/<id>/reports/
+  5. analyse  lib/ota_report.run into OUTPUT/log_analyzer_runs/<id>/reports/
 Everything is logged with durations to <run dir>/run.log and logs/log_analyzer.log.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -72,6 +75,29 @@ def report_otas(run: dict) -> list[str] | None:
     if run["mode"] == "ota":
         return [run["ota_version"]]
     return run["options"].get("otas") or None
+
+
+def filter_by_features(run: dict, devices: list[str]) -> list[str]:
+    """The devices with every feature the run names enabled (all of them when it names none).
+
+    Only narrows down the devices to analyse; the reports' feature and config checks still come
+    from the logs. The per-device result goes to <run dir>/feature_filter.json and the run log.
+    """
+    names = run["options"].get("features")
+    if not names:
+        return devices
+    import feature_filter
+
+    db.update_run(run["id"], stage="filter", progress={"stage": "filter", "done": 0, "total": len(devices)})
+    result = feature_filter.filter_devices(
+        devices, names, run["environment"],
+        run_ota=run["ota_version"] if run["mode"] == "ota" else None,
+        run_otas=report_otas(run) if run["mode"] == "devices" else None,
+        product=run["product"] or None)
+    (run_dir(run["id"]) / "feature_filter.json").write_text(json.dumps(result, indent=1))
+    for device, reason in result["skipped"].items():
+        log.info("feature filter: %s skipped: %s", device, reason)
+    return result["kept"]
 
 
 def download(run: dict, devices: list[str], timings: list[dict]) -> None:
@@ -162,11 +188,20 @@ def main(run_id: int) -> int:
 
         with timed(log, "resolve", timings):
             devices = resolve_devices(run)
+        if not devices:
+            raise RuntimeError("No devices to analyse (none currently on this OTA)")
+        if run["options"].get("features"):
+            with timed(log, "feature_filter", timings, devices=len(devices)):
+                devices = filter_by_features(run, devices)
+            if not devices:
+                # Nothing to analyse is the run's answer, not a failure (shown as a warning)
+                note = f"No device has all of these features enabled: {', '.join(run['options']['features'])}"
+                log.warning("run %s: %s", run_id, note)
+                db.update_run(run_id, devices=[], status="succeeded", error=note, stage="done")
+                return 0
         log.info("analysing %d device(s): %s", len(devices), ", ".join(devices[:50]) +
                  (" ..." if len(devices) > 50 else ""))
         db.update_run(run_id, devices=devices, stage="download")
-        if not devices:
-            raise RuntimeError("No devices to analyse (none currently on this OTA)")
 
         with timed(log, "download_all", timings):
             download(run, devices, timings)

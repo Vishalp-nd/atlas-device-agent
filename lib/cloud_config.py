@@ -92,7 +92,12 @@ def _credentials(env):
 def enabled():
     if os.environ.get('CLOUD_CONFIG', '1').strip().lower() in ('0', 'false', 'no', 'off'):
         return False
-    return all(_credentials(environment()))
+    return has_credentials()
+
+
+def has_credentials(env=None):
+    """IDMS login configured for the environment (CLOUD_CONFIG only turns the report's check off)."""
+    return all(_credentials(env or environment()))
 
 
 def parse_override(text):
@@ -119,14 +124,27 @@ class Cloud:
         import requests
         self._http = requests.Session()
 
+    def _call(self, method, url, **kwargs):
+        """One HTTP call, tried again (RETRIES in all) after a timeout or a dropped connection."""
+        import requests
+
+        for attempt in range(RETRIES):
+            try:
+                return self._http.request(method, url, timeout=TIMEOUT_S, **kwargs)
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+                if attempt + 1 == RETRIES:
+                    raise
+                log.info('%s %s: %s, trying again', method, url, type(exc).__name__)
+                time.sleep(2 ** attempt)
+
     def login(self):
-        r = self._http.post(f'{self.auth_url}/oauth/token', timeout=TIMEOUT_S,
+        r = self._call('POST', f'{self.auth_url}/oauth/token',
                             headers={'Content-Type': 'application/x-www-form-urlencoded'},
                             data=urlencode({'client_id': 'idms', 'grant_type': 'password',
                                             'username': self.username, 'password': self.password}))
         r.raise_for_status()
         token = r.json()['access_token']
-        r = self._http.post(f'{self.auth_url}/session', timeout=TIMEOUT_S, headers={'Authorization': f'bearer {token}'})
+        r = self._call('POST', f'{self.auth_url}/session', headers={'Authorization': f'bearer {token}'})
         r.raise_for_status()
         self._headers = {'Authorization': f'bearer {token}', 'Session-Key': r.json()['session']['session_id'],
                          'Content-Type': 'application/json'}
@@ -141,7 +159,7 @@ class Cloud:
         """The device's IDMS record: {'overrideconfig', 'device', ...} (data of the response)."""
         headers = self._auth_headers()
         for attempt in range(RETRIES):
-            r = self._http.get(f'{self.api_url}/tenants/devices/{device}', headers=headers, timeout=TIMEOUT_S)
+            r = self._call('GET', f'{self.api_url}/tenants/devices/{device}', headers=headers)
             if r.status_code in (401, 403) and attempt == 0:
                 headers = self._auth_headers(renew=True)
                 continue
@@ -156,17 +174,24 @@ class Cloud:
         r.raise_for_status()
 
 
+def override_config(data):
+    """{section: {key: value}} of an IDMS device record's override config, or None if it has none."""
+    encoded = data.get('overrideconfig')
+    if not encoded:
+        return None
+    return parse_override(base64.b64decode(encoded).decode('utf-8', 'replace'))
+
+
 def fetch_one(cloud, device):
     """{'config': {section: {key: value}} | None, 'device': {...}, 'fetched_at', 'error'}."""
     fetched_at = f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} ({ENVIRONMENTS[cloud.env]['label']} IDMS)"
     try:
         data = cloud.device(device)
         info = {k: (data.get('device') or {}).get(k) for k in DEVICE_FIELDS}
-        encoded = data.get('overrideconfig')
-        if not encoded:
+        config = override_config(data)
+        if config is None:
             return {'config': None, 'device': info, 'fetched_at': fetched_at, 'error': 'No override config in the cloud'}
-        text = base64.b64decode(encoded).decode('utf-8', 'replace')
-        return {'config': parse_override(text), 'device': info, 'fetched_at': fetched_at, 'error': None}
+        return {'config': config, 'device': info, 'fetched_at': fetched_at, 'error': None}
     except Exception as exc:  # one device's failure does not stop the report
         log.warning('%s: cloud override config not fetched: %s', device, exc)
         return {'config': None, 'device': None, 'fetched_at': fetched_at,

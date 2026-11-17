@@ -126,6 +126,25 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .count { font-weight: 500; color: var(--accent); margin-left: 4px; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 400; color: var(--fg); font-size: 13px; }
 .check input { width: auto; }
+/* multi-select dropdown (feature filter): opens in place, below its button */
+.multi-toggle {
+  font: inherit; font-size: 13px; color: var(--fg); background: var(--surface); width: 100%; text-align: left; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; transition: border-color .15s, box-shadow .15s;
+}
+.multi-toggle:focus-visible, .multi-toggle[aria-expanded="true"] { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.multi-toggle #features-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.multi-toggle #features-value.placeholder { color: var(--faint); }
+.multi-toggle .caret { color: var(--muted); flex: none; transition: transform .15s; }
+.multi-toggle[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.multi-panel { margin-top: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 8px; }
+.multi-panel input[type="search"] { padding: 6px 8px; font-size: 13px; }
+.multi-list { max-height: 240px; overflow-y: auto; margin: 6px 0; display: flex; flex-direction: column; }
+.multi-list .check { padding: 5px 6px; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
+.multi-list .check:hover { background: var(--surface-2); }
+.multi-list .empty-note { color: var(--faint); font-size: 12px; padding: 6px; }
+.multi-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.multi-foot button.ghost { padding: 4px 10px; font-size: 12px; }
 .advanced { margin: 2px 0 14px; }
 .advanced summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 550; margin-bottom: 12px; list-style: none; }
 .advanced summary::-webkit-details-marker { display: none; }

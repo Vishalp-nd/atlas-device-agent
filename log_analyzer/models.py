@@ -31,7 +31,16 @@ class RunCreateRequest(BaseModel):
     workers: int | None = Field(default=None, ge=1, le=64)
     extract_logs: bool = False
     """Also extract downloaded archives into <day>/logs (other tools need that; the report doesn't)."""
+    features: list[str] = []
+    """Only analyse devices with every one of these features (feature_mapping.ini names) enabled,
+    by their cloud override config on top of the OTA package defaults (lib/feature_filter.py);
+    the others are skipped before their logs are downloaded. Empty = every device."""
     requested_by: str | None = None
+
+
+class FeatureList(BaseModel):
+    features: list[str]
+    """Feature names of INPUT/Feature_Mapping/feature_mapping.ini, in file order."""
 
 
 class Run(BaseModel):
