@@ -8,18 +8,26 @@ Report Comparison are hidden until you leave (× or *Exit agent mode*).
 ## Who can use it
 
 Sign-in is DeviceQAI's own (`deviceqa_auth` in a device-automation checkout): an emailed
-6-digit code for `@netradyne.com` addresses on the DeviceQAI allowlist, then the person's
-Claude token from `claude setup-token`, checked live and stored encrypted. Every answer is a
+6-digit code, then the person's Claude token from `claude setup-token`, checked live and
+stored encrypted. **Any `@netradyne.com` address** can sign in here (`DQA_ALLOWED_DOMAIN`):
+agent mode skips DeviceQAI's allowlist (`auth.store()`), so DeviceQAI's admin page neither
+grants nor removes access to it. The DeviceQAI platforms keep their allowlist. Every answer is a
 Claude Code run **on this server with that person's token**, so it counts against their own
-Claude plan. Runs share DeviceQAI's caps: `DQA_RUNS_PER_USER` (2) per person and
-`DQA_RUNS_MAX` (10) on the server; the rest queue.
+Claude plan.
 
-Add people on DeviceQAI's `/admin` page, or:
+Any number of people can be signed in and chatting; what is limited is answers being
+generated at the same moment, because each one is a Claude Code process (plus the log tools)
+in memory. An answer starts only when both hold, otherwise it waits ("Waiting for…"):
 
-```bash
-docker exec -w /deviceqa atlas-agent-api python -m deviceqa_auth allow someone@netradyne.com
-#            ^ /device-automation when DEVICEQA_HOST is the same checkout as DEVICE_AUTOMATION_HOST
-```
+- a slot under DeviceQAI's caps, shared with its server runs: `DQA_RUNS_PER_USER` (2) per
+  person, `DQA_RUNS_MAX` (10) on the server — a ceiling, not the real limit;
+- **free memory**: the server (or the container's cgroup limit, if one is set) has at least
+  `LA_AGENT_MIN_FREE_GB` (2) left after the `LA_AGENT_TURN_GB` (0.6) one answer may take.
+  So answers back off by themselves while a big analysis holds the RAM. Answers start one by
+  one, `LA_AGENT_START_SETTLE` (5) seconds apart at most, so each sees what the last one took.
+
+The logs themselves are never held in RAM by the agent: days are rebuilt on disk and read
+by streaming (grep, line by line). Only the analysis uses /dev/shm.
 
 Until `LOGIN_MAIL_SEND=1` (and `SMTP_*`) is set in that checkout's
 `pytest_device_validator/.env`, codes are printed to the backend's console

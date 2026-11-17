@@ -76,7 +76,7 @@ window.LAAuth = (() => {
           <div class="ag-field"><input id="la-mail" type="email" autocomplete="username email" placeholder="you@${h(info?.domain || 'netradyne.com')}" value="${h(pending.email || saved()?.email || '')}"></div>
           <p class="form-error">${h(error)}</p>
           <button class="primary" type="submit"><span class="spin" aria-hidden="true"></span><span>Email me a code</span></button>
-          <p class="hint">Only addresses the DeviceQAI admin has allowed can sign in.</p>
+          <p class="hint">Any @${h(info?.domain || 'netradyne.com')} address. We'll email you a 6-digit code.</p>
         </form>`;
       const form = el.querySelector('form');
       const input = el.querySelector('#la-mail');
@@ -98,7 +98,7 @@ window.LAAuth = (() => {
     };
     const denied = (who) => {
       el.innerHTML = `<div class="ag-gate"><div class="ag-gate-mark warn">!</div><h3>No access yet</h3>
-        <p class="ag-lead"><b>${h(who)}</b> isn't on the DeviceQAI allowlist. Ask the admin to add you, then sign in again.</p>
+        <p class="ag-lead"><b>${h(who)}</b> can't sign in here. Use your @${h(info?.domain || 'netradyne.com')} address.</p>
         <button class="primary" type="button"><span>Try another email</span></button></div>`;
       el.querySelector('button').addEventListener('click', () => email());
     };

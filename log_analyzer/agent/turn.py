@@ -18,6 +18,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -25,6 +26,11 @@ from . import auth
 from .store import Chat
 
 MAX_SECONDS = int(os.environ.get("LA_AGENT_TURN_SECONDS", str(30 * 60)))
+# Memory admission: a turn starts only if the server has at least LA_AGENT_MIN_FREE_GB left
+# over after the LA_AGENT_TURN_GB one turn (Claude Code + the log tools) may take.
+MIN_FREE_GB = float(os.environ.get("LA_AGENT_MIN_FREE_GB", "2"))
+TURN_GB = float(os.environ.get("LA_AGENT_TURN_GB", "0.6"))
+START_SETTLE = float(os.environ.get("LA_AGENT_START_SETTLE", "5"))
 MAX_TURNS = os.environ.get("LA_AGENT_MAX_TURNS", "80")
 HERE = Path(__file__).resolve().parent
 SECRETS = (".env", ".env.*", "*.key", "*.pem", "*.p12", "auth.db*", "auth.secret", ".netrc",
@@ -110,13 +116,30 @@ def main(chat_dir: str) -> int:
     proc_holder: list = []
     signal.signal(signal.SIGTERM, on_term)
 
-    # A slot under DeviceQAI's caps (per person, server-wide): queue until one is free.
-    held = auth.take_slot(email)
-    while held is None:
-        save(status="queued", detail="Waiting for a free slot (your other Claude runs, or the "
-                                     "server's limit).")
-        time.sleep(3)
+    # Start only when there is a slot under DeviceQAI's caps (per person, server-wide) AND
+    # enough free memory for one more turn above the safety margin. Turns start one by one
+    # (start_lock), each holding the lock a few seconds after it starts so the next one sees
+    # the memory it took. A turn waiting for memory holds no slot.
+    need = (MIN_FREE_GB + TURN_GB) * 1024 ** 3
+    while True:
+        gate = auth.start_lock()
         held = auth.take_slot(email)
+        if held is None:
+            gate.close()
+            save(status="queued", detail="Waiting for a free slot (your other Claude answers, "
+                                         "or the server's limit).")
+            time.sleep(3)
+            continue
+        free = auth.free_memory()
+        if free >= need:
+            break
+        for fh in held:
+            fh.close()
+        gate.close()
+        save(status="queued", detail=f"Waiting for server memory: {free / 1024 ** 3:.1f} GB free, "
+                                     f"{need / 1024 ** 3:.1f} GB needed to start (an analysis "
+                                     "may be running).")
+        time.sleep(5)
 
     _, vault, _ = auth.dqa()
     store = auth.store()
@@ -183,6 +206,8 @@ def main(chat_dir: str) -> int:
         proc = subprocess.Popen(argv, cwd=chat.work_dir(), env=env, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=err, text=True, bufsize=1)
         proc_holder.append(proc)
+        # Let the next queued turn in once this one has taken its memory
+        threading.Timer(START_SETTLE, gate.close).start()
         result: dict = {}
         pending: dict[str, int] = {}
         steps: list[dict] = reply["steps"]

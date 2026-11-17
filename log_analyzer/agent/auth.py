@@ -50,8 +50,19 @@ def dqa():
 
 @lru_cache(maxsize=1)
 def store():
+    """DeviceQAI's sign-in store, minus its allowlist: in agent mode any address on the
+    company domain (DQA_ALLOWED_DOMAIN, default netradyne.com) may sign in — the emailed code
+    proves the mailbox is theirs. Only this process sees it this way; the DeviceQAI
+    platforms keep their allowlist (and never see these sessions: they are bearer tokens
+    sent to this API only)."""
     core, _, _ = dqa()
-    return core.Auth(core.auth_dir())
+
+    class DomainAuth(core.Auth):
+        def allowed(self, email: str) -> bool:
+            email = core.norm_email(email)
+            return bool(core.EMAIL_RE.match(email)) and email.endswith("@" + core.domain())
+
+    return DomainAuth(core.auth_dir())
 
 
 def bearer(request: Request) -> str:
@@ -91,6 +102,39 @@ def _limit(name: str, default: int) -> int:
         return max(1, int(core.setting(name, str(default))))
     except ValueError:
         return default
+
+
+def free_memory() -> float:
+    """Bytes of memory a new process can still use: the host's MemAvailable, or what is left
+    under this container's cgroup limit if that is lower. inf when neither can be read."""
+    free = float("inf")
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                free = int(line.split()[1]) * 1024
+                break
+    except (OSError, ValueError):
+        pass
+    try:
+        limit = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if limit != "max":
+            used = int(Path("/sys/fs/cgroup/memory.current").read_text().strip())
+            free = min(free, int(limit) - used)
+    except (OSError, ValueError):
+        pass
+    return free
+
+
+def start_lock():
+    """Held (blocking) while a turn decides whether it may start, and for a few seconds after
+    it starts, so queued turns are let in one by one and each sees the memory the previous
+    one took. Shared by every turn process. Returns the open lock file (close to release)."""
+    core, _, _ = dqa()
+    slots = core.auth_dir() / "run-slots"
+    slots.mkdir(parents=True, exist_ok=True)
+    fh = (slots / "agent-start.lock").open("a+")
+    fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    return fh
 
 
 def take_slot(email: str):
