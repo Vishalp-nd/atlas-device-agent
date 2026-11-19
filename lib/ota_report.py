@@ -852,6 +852,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         boots = [b for b in boots if b['ota'] in otas]
     eval_start = time.perf_counter()
     calls_by_api = api_calls.by_api(calls)
+    results_by_api = api_calls.results_by_api(calls)
     inis = {ota: ensure_ini(ota, product) for ota in sorted({b['ota'] for b in boots if b['ota']})}
     ini_keys_by_ota = {ota: keys for ota, (keys, _) in inis.items() if keys is not None}
     # A partial boot (started before the logs) is noise unless something matched in it
@@ -868,6 +869,7 @@ def finish_device(device, day_results, product=None, report_dir=None, otas=None,
         detail['window'] = boot_window(boot, span, detail['drive'])
         detail['label'] = boot_name(detail)
         detail['api_calls'] = api_calls.boot_calls(calls_by_api, boot['start'], boot['end'])
+        detail['api_results'] = api_calls.boot_results(results_by_api, boot['start'], boot['end'])
         ini_keys = ini_keys_by_ota.get(boot['ota'])
         lines = (boot_config_lines(procs, boot['start'], boot['end'] or float('inf'))
                  if not boot['partial'] else {})
@@ -1361,6 +1363,10 @@ def report_summary(ota, device_summaries, given, device_info, features):
     active_all = [d for d in given if d not in no_logs]
     api_by_device = {d: {int(api): st['calls'] for api, st in (device_summaries[d].get('api') or {}).get('apis', {}).items()}
                      for d in on_ota}
+    # Successful calls, for the APIs whose result lines were found on the device
+    api_ok_by_device = {d: {int(api): {k: st.get(k, 0) for k in ('ok', 'failed', 'unconfirmed')} for api, st in
+                            (device_summaries[d].get('api') or {}).get('apis', {}).items() if 'ok' in st}
+                        for d in on_ota}
 
     sets = Counter()
     with_set = [d for d in on_ota if device_summaries[d].get('feature_set') is not None]
@@ -1393,6 +1399,7 @@ def report_summary(ota, device_summaries, given, device_info, features):
         'logs_detailed': [d for d in active_all if device_info.get(d, {}).get('detailed_days')],
         'logs_critical_only': [d for d in active_all if not device_info.get(d, {}).get('detailed_days')],
         'api_calls_by_device': api_by_device,
+        'api_ok_by_device': api_ok_by_device,
         'devices_over_24h': sorted(d for d, m in minutes.items() if m > 24 * 60),
         'devices_low_power': low_power,
         'feature_devices': len(with_set),
@@ -1561,7 +1568,7 @@ def _api_section(summary, devices=None):
     if not summary:
         return ''
     boots, apis = summary['boots'], summary['apis']
-    head = ['ID', 'API', 'Type', '#Calls'] + (['#Devices'] if devices else []) + [
+    head = ['ID', 'API', 'Type', '#Calls', '#Successful', '#Failed', '#Unconfirmed'] + (['#Devices'] if devices else []) + [
         '#Boots with calls', '#Calls / boot', '#Min gap', '#Avg gap', '#Max gap']
     rows = []
     for api in api_calls.SHOWN:
@@ -1569,15 +1576,27 @@ def _api_section(summary, devices=None):
         st = apis.get(str(api))
         if not st:
             rows.append(f'<tr class="muted"><td>{api}</td><td>{_esc(name)}</td><td>{_esc(kind)}</td>'
-                       f'<td class="num">0</td>{"<td></td>" if devices else ""}<td></td><td></td><td></td><td></td><td></td></tr>')
+                       f'<td class="num">0</td><td></td><td></td><td></td>{"<td></td>" if devices else ""}'
+                       '<td></td><td></td><td></td><td></td><td></td></tr>')
             continue
         avg = st['gap_sum'] / st['gaps'] if st['gaps'] else None
         dev = f'<td class="num">{st["devices"]} / {devices}</td>' if devices else ''
-        rows.append(f'<tr><td>{api}</td><td>{_esc(name)}</td><td>{_esc(kind)}</td><td class="num">{st["calls"]}</td>{dev}'
+        if 'ok' in st:
+            reasons = ', '.join(f'{n} {r}' for r, n in sorted((st.get('reasons') or {}).items(), key=lambda kv: -kv[1]))
+            unconf = st.get('unconfirmed', 0)
+            res = (f'<td class="num{" n-fail" if _api_failing(st["ok"], st["failed"]) else ""}">{st["ok"]}</td>'
+                   f'<td class="num{" n-fail" if st["failed"] else " zero"}" title="{_esc(reasons)}">{st["failed"]}</td>'
+                   f'<td class="num{"" if unconf else " zero"}">{unconf}</td>')
+        else:
+            res = '<td class="num muted" title="No result lines">—</td><td class="num muted">—</td><td class="num muted">—</td>'
+        rows.append(f'<tr><td>{api}</td><td>{_esc(name)}</td><td>{_esc(kind)}</td><td class="num">{st["calls"]}</td>{res}{dev}'
                    f'<td class="num">{st["boots"]} / {boots}</td><td class="num">{st["calls"] / boots:.1f}</td>'
                    f'<td class="num">{_fmt_gap(st["gap_min"])}</td><td class="num">{_fmt_gap(avg)}</td>'
                    f'<td class="num">{_fmt_gap(st["gap_max"])}</td></tr>')
-    out = [_table(head, rows)]
+    out = ['<p class="muted">#Calls: every request the device logged; #Successful: those whose result it logged '
+           'as reached (curl 0, HTTP 2xx), which is what the cloud records; #Failed: timeouts, no network, HTTP errors '
+           '(hover for the reasons); #Unconfirmed: low power keep-alives sent right before shutdown, result never logged</p>',
+           _table(head, rows)]
     missing = [f'{api} {api_calls.APIS[api][0]}' for api in api_calls.DISPLAY_ORDER if api not in api_calls.WITH_PATTERN]
     out.append(f'<p class="muted">No call line found in the device logs for: {_esc(", ".join(missing))}</p>')
     return '\n'.join(out)
@@ -2048,21 +2067,57 @@ def _cloud_config_section(report):
     return ''.join(out)
 
 
+# Failed calls at least this share of the calls with a result: the successful count is shown red
+API_FAIL_SHARE = 0.1
+
+
+def _api_failing(ok, failed):
+    return bool(failed) and failed >= API_FAIL_SHARE * (ok + failed)
+
+
+def _api_cell(calls, result, total=False):
+    """'successful / attempted (+N unconfirmed)' (attempted alone when no result line was found),
+    the failures in the tooltip. result: {'ok', 'failed', 'unconfirmed'}."""
+    if not calls and not result:
+        return '<td class="num zero">0</td>'
+    if result is None:
+        return f'<td class="num" title="No result lines: attempts only">{calls:,}</td>'
+    ok, failed, unconf = result['ok'], result['failed'], result.get('unconfirmed', 0)
+    unknown = max(calls - ok - failed - unconf, 0)
+    tip = (f'{ok:,} successful, {failed:,} failed' + (f', {unconf:,} unconfirmed (sent at shutdown, no result logged)'
+                                                      if unconf else '')
+           + (f', {unknown:,} without a result line' if unknown else ''))
+    tag = 'b' if total else 'span'
+    extra = f'<span class="muted"> (+{unconf:,} unconfirmed)</span>' if unconf else ''
+    return (f'<td class="num" title="{_esc(tip)}"><{tag} class="{"n-fail" if _api_failing(ok, failed) else ""}">{ok:,}</{tag}>'
+            f'<span class="muted"> / {calls:,}</span>{extra}</td>')
+
+
 def _api_calls_section(sm):
     minutes = sm['drive_minutes_by_device']
     # API ids are strings once the report went through JSON (refresh_callouts)
     by_device = {d: {int(a): n for a, n in c.items()} for d, c in (sm.get('api_calls_by_device') or {}).items()}
+    ok_by_device = {d: {int(a): r for a, r in c.items()} for d, c in (sm.get('api_ok_by_device') or {}).items()}
     apis = [a for a in api_calls.SHOWN if any(c.get(a) for c in by_device.values())]
-    rows, totals = [], Counter()
+    rows, totals, ok_totals = [], Counter(), {}
     for d in sorted(by_device, key=lambda d: -minutes.get(d, 0)):
-        calls = by_device[d]
+        calls, results = by_device[d], ok_by_device.get(d) or {}
         totals.update(calls)
-        cells = ''.join(f'<td class="num{"" if calls.get(a) else " zero"}">{calls.get(a, 0):,}</td>' for a in apis)
+        for a, r in results.items():
+            t = ok_totals.setdefault(a, {'ok': 0, 'failed': 0, 'unconfirmed': 0})
+            for k in t:
+                t[k] += r.get(k, 0)
+        cells = ''.join(_api_cell(calls.get(a, 0), results.get(a)) for a in apis)
         rows.append(f'<tr><td>{_dev_link(d)}</td><td class="num">{minutes.get(d, 0):,}</td>{cells}</tr>')
     foot = ('<tfoot><tr><td>Total</td><td class="num">' + f'{sum(minutes.get(d, 0) for d in by_device):,}</td>'
-            + ''.join(f'<td class="num">{totals.get(a, 0):,}</td>' for a in apis) + '</tr></tfoot>')
+            + ''.join(_api_cell(totals.get(a, 0), ok_totals.get(a), total=True) for a in apis) + '</tr></tfoot>')
     head = ['Device ID', '#Total drive min'] + [f'#{api_calls.APIS[a][0]}' for a in apis]
-    return f'<section id="api"><h2>API Call Summary</h2>{_table(head, rows, foot=foot)}</section>'
+    note = ('<p class="muted">Successful / attempted calls. Attempted: every request the device logged; successful: '
+            'those whose result it logged as reached (curl 0, HTTP 2xx), which is what the cloud records. '
+            'Unconfirmed: low power keep-alives sent right before shutdown, whose result the device never logged '
+            '(counted neither way). Hover a cell for the failed calls; a red count has 10% or more failed. '
+            'A single number: no result lines were found (attempts only).</p>')
+    return f'<section id="api"><h2>API Call Summary</h2>{note}{_table(head, rows, foot=foot)}</section>'
 
 
 def _failing_tcs(feat):
@@ -2391,14 +2446,20 @@ function renderApiCalls(b) {
   const apis = Object.keys(b.api_calls || {}).sort((x, y) => x - y);
   if (!apis.length) return '<h3>API calls</h3><p class="muted">No API call lines in this boot</p>';
   const out = ['<h3>API calls</h3><p class="muted">Gap: time since the previous call of the same API in this boot</p>'
-    + '<table><tr><th>ID</th><th>API</th><th class="num">Calls</th><th class="num">Min gap</th>'
+    + '<table><tr><th>ID</th><th>API</th><th class="num">Calls</th><th class="num">Successful</th><th class="num">Failed</th><th class="num">Unconfirmed</th><th class="num">Min gap</th>'
     + '<th class="num">Avg gap</th><th class="num">Max gap</th><th>Calls (time · gap)</th></tr>'];
   for (const api of apis) {
     const ts = b.api_calls[api];
     const gaps = ts.slice(1).map((t, i) => t - ts[i]);
     const avg = gaps.length ? gaps.reduce((a, g) => a + g, 0) / gaps.length : null;
     const list = ts.map((t, i) => `${esc(fmt(t))}${i ? ` · ${fmtGap(gaps[i - 1])}` : ''}`).join('<br>');
-    out.push(`<tr><td>${esc(api)}</td><td>${esc((D.api_names[api] || [api])[0])}</td><td class="num">${ts.length}</td>`
+    const res = (b.api_results || {})[api];
+    const why = res ? Object.entries(res.reasons || {}).sort((x, y) => y[1] - x[1]).map(([r, n]) => `${n} ${r}`).join(', ') : '';
+    const okCell = res ? `<td class="num${res.failed && res.failed >= 0.1 * (res.ok + res.failed) ? ' n-fail' : ''}">${res.ok}</td>`
+      + `<td class="num${res.failed ? ' n-fail' : ' zero'}" title="${esc(why)}">${res.failed}</td>`
+      + `<td class="num${res.unconfirmed ? '' : ' zero'}">${res.unconfirmed}</td>`
+      : '<td class="num muted">—</td><td class="num muted">—</td><td class="num muted">—</td>';
+    out.push(`<tr><td>${esc(api)}</td><td>${esc((D.api_names[api] || [api])[0])}</td><td class="num">${ts.length}</td>${okCell}`
       + `<td class="num">${gaps.length ? fmtGap(Math.min(...gaps)) : '—'}</td><td class="num">${avg == null ? '—' : fmtGap(avg)}</td>`
       + `<td class="num">${gaps.length ? fmtGap(Math.max(...gaps)) : '—'}</td>`
       + `<td><details><summary class="muted">${ts.length} call(s)</summary><div class="body"><code>${list}</code></div></details></td></tr>`);
@@ -2984,7 +3045,7 @@ def run(devices, start, end, tests_dir, product=None, workers=None, report_dir=N
             'cloud_config': ({v: len(ds) for v, ds in report['cloud_config']['verdicts'].items()}
                              if report['cloud_config']['enabled'] else None),
             'summary': {k: (len(v) if isinstance(v, list) else v) for k, v in report['summary'].items()
-                        if k not in ('drive_minutes_by_device', 'boots_by_device', 'api_calls_by_device',
+                        if k not in ('drive_minutes_by_device', 'boots_by_device', 'api_calls_by_device', 'api_ok_by_device',
                                       'feature_coverage', 'feature_sets')},
         }
         log.info('%s: report written to %s/ota_report.html', ota, out_dir)

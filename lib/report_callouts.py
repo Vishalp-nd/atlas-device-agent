@@ -41,13 +41,14 @@ log = logging.getLogger('report_callouts')
 
 CACHE_DIR = Path(os.environ.get('REPORT_CALLOUTS_CACHE',
                                 override_llm.REPO_ROOT / 'OUTPUT' / 'llm_cache' / 'report_callouts'))
-PROMPT_VERSION = 'v4'
+PROMPT_VERSION = 'v5'
 LLM_PARALLEL = int(os.environ.get('REPORT_CALLOUTS_PARALLEL', '6'))
 LEVELS = ('critical', 'warning', 'info')
 # Level of each finding kind
 KIND_LEVEL = {'zero': 'critical', 'far_below': 'critical', 'no_status_after_ota_change': 'critical',
               'no_event': 'critical', 'no_video_with_events': 'critical', 'zero_with_drive': 'critical',
-              'below': 'warning', 'far_above': 'warning', 'gap_over_limit': 'warning'}
+              'below': 'warning', 'far_above': 'warning', 'gap_over_limit': 'warning',
+              'most_calls_failed': 'critical', 'calls_failing': 'warning'}
 
 # Calls of these APIs are expected at least once per this many drive minutes
 # (Download OTA has no rate: it only runs when there is an OTA to download)
@@ -69,6 +70,13 @@ EVENT_MIN_DRIVE = 30
 # longer than HC_GAP_FACTOR intervals
 HEALTH_CENTRAL_API = 28
 HC_GAP_FACTOR = 1.5
+# Failed calls (api_calls results: the device logged the call's result as not reached), share of
+# the calls with a result: calls_failing from FAIL_WARN_SHARE, most_calls_failed from FAIL_CRIT_SHARE,
+# with at least FAIL_MIN failed calls on the device
+FAIL_WARN_SHARE = 0.1
+FAIL_CRIT_SHARE = 0.5
+FAIL_MIN = 3
+FAIL_KINDS = ('most_calls_failed', 'calls_failing')
 
 RULES = f"""\
 How the findings were worked out (drive_min = the device's drive minutes on this OTA):
@@ -90,7 +98,15 @@ How the findings were worked out (drive_min = the device's drive minutes on this
   floor(drive_min while enabled / that boot's interval in minutes). Kinds: zero, far_below, below as above (more
   calls are normal: an upload at every shutdown and of what earlier boots left), and gap_over_limit (the gap
   between two calls in a boot, measured against the interval in effect when it started, > {HC_GAP_FACTOR:g} x it).
-- Can Diagnostics: not checked (no call line in the logs)."""
+- Can Diagnostics: not checked (no call line in the logs).
+- Attempted vs successful (every API whose result lines are in the logs): calls = the requests the device
+  attempted; successful = those whose result it logged as reached (curl 0, HTTP 2xx), which is what the cloud
+  records; failed = result logged as not reached, with the reasons (curl 28 timeout, curl 6 no network, curl 7
+  could not connect, HTTP 5xx, power_mon reached_cloud 0 ...); unconfirmed = low power keep-alives sent right
+  before shutdown whose result was never logged (neither successful nor failed). The rate checks above count
+  attempts; "successful" next to them says how many of those reached the cloud. Kinds: calls_failing (failed >=
+  {FAIL_WARN_SHARE:.0%} of the calls with a result, at least {FAIL_MIN}), most_calls_failed (>= {FAIL_CRIT_SHARE:.0%}).
+  api_results_on_ota (context) has the OTA totals per API."""
 
 QA_ROLE = """You are a senior QA engineer reviewing an OTA (firmware) test of telematics devices: you look at
 where the devices deviate from what is expected, judge how serious it is, whether it is seen across all devices
@@ -104,6 +120,10 @@ device and its numbers, plus context. Only use the given numbers; never recomput
 For each kind write one callout: how many of the devices on the OTA are affected and how bad it is (range or
 typical actual vs expected, the worst 2-3 devices with their numbers). The full device list is shown next to the
 callout, so do not list every device. Plain, specific, one or two sentences.
+For calls_failing / most_calls_failed: give the failed share (failed of attempted) and the main failure reasons
+with their counts, and what the reasons point to only when they clearly do (timeouts: a slow or saturated uplink
+or a too short timeout; no network / could not connect: connectivity; HTTP 5xx: the server). When a rate finding
+also has fewer successful than attempted calls, say how many of the calls reached the cloud.
 Answer with JSON only: {{"callouts": [{{"kind": "<kind as given>", "text": "<callout>"}}]}}"""
 
 HUMAN_PROMPT = """OTA {ota}, API {api}
@@ -156,6 +176,9 @@ Write at most {max_callouts} callouts, most important first, each one or two pla
    (e.g. every periodic API missing on the same devices: those devices were offline or lost connectivity rather
    than an API bug; uploads missing with events present: upload path), whether the issues sit on a few devices or
    across the fleet, and links to drive time, low power, shutdown reasons or enabled features when the numbers show it.
+   Use the attempted vs successful numbers (api_results_on_ota, the calls_failing / most_calls_failed findings):
+   e.g. several APIs failing on the same devices with the same reason (timeouts on uploads: the uplink is
+   saturated; no network on every API: connectivity), or an API whose calls are made but mostly do not reach the cloud.
    With fewer than 3 devices on the OTA, write no callout about concentration or spread at all (not even to say
    there is none): it says nothing then.
 Do not repeat a single API's finding on its own (those callouts exist already). Only use the given numbers and
@@ -294,6 +317,60 @@ def health_central_boots(boots):
     return out
 
 
+def _failure_kind(st):
+    """calls_failing / most_calls_failed / None for one device's API summary (api_calls.summarize)."""
+    if 'ok' not in st:
+        return None
+    done = st['ok'] + st['failed']
+    if st['failed'] < FAIL_MIN or st['failed'] < FAIL_WARN_SHARE * done:
+        return None
+    return 'most_calls_failed' if st['failed'] >= FAIL_CRIT_SHARE * done else 'calls_failing'
+
+
+def _top_reasons(st, n=3):
+    return dict(sorted((st.get('reasons') or {}).items(), key=lambda kv: -kv[1])[:n])
+
+
+def api_results_on_ota(device_summaries, devices):
+    """{api name: {attempted, successful, failed, failed_pct, unconfirmed, reasons, devices_with_results,
+    devices_failing}} over the devices (with result lines) on the OTA."""
+    out = {}
+    for d in devices:
+        for api, st in (((device_summaries.get(d) or {}).get('api') or {}).get('apis') or {}).items():
+            if 'ok' not in st:
+                continue
+            t = out.setdefault(int(api), {'attempted': 0, 'successful': 0, 'failed': 0, 'unconfirmed': 0,
+                                          'reasons': {}, 'devices_with_results': 0, 'devices_failing': 0})
+            t['attempted'] += st['calls']
+            t['successful'] += st['ok']
+            t['failed'] += st['failed']
+            t['unconfirmed'] += st.get('unconfirmed', 0)
+            t['devices_with_results'] += 1
+            t['devices_failing'] += bool(_failure_kind(st))
+            for r, k in (st.get('reasons') or {}).items():
+                t['reasons'][r] = t['reasons'].get(r, 0) + k
+    result = {}
+    for api in sorted(out, key=lambda a: api_calls.DISPLAY_ORDER.index(a) if a in api_calls.DISPLAY_ORDER else 99):
+        t = out[api]
+        done = t['successful'] + t['failed']
+        t['failed_pct'] = round(100 * t['failed'] / done, 1) if done else 0
+        t['reasons'] = _top_reasons(t)
+        if not t['unconfirmed']:
+            del t['unconfirmed']
+        result[_name(api)] = t
+    return result
+
+
+def _plain_text(kind, items, context):
+    """A callout's text without the LLM."""
+    text = f'{len(items)} of {context["devices"]} devices: {kind.replace("_", " ")}'
+    if kind in FAIL_KINDS and items:
+        w = items[0]
+        why = ', '.join(f'{n} {r}' for r, n in w['reasons'].items())
+        text += f' (worst {w["device"]}: {w["failed"]} of {w["attempted"]} calls failed, {why})'
+    return text
+
+
 def callout_data(summary, device_summaries, device_info, defaults):
     """The rule checks per device -> {'context': ..., 'findings': {api: {kind: [{device, ...numbers}]}}}."""
     minutes = summary.get('drive_minutes_by_device') or {}
@@ -307,6 +384,10 @@ def callout_data(summary, device_summaries, device_info, defaults):
     hc_intervals = set()
 
     def add(api, kind, device, **numbers):
+        # The rate checks count attempts: add how many reached the cloud, when the results are known
+        st = stats.get(api) or {}
+        if 'calls' in numbers and 'ok' in st and kind not in FAIL_KINDS and st['ok'] != numbers['calls']:
+            numbers['successful'] = st['ok']
         findings.append(dict(api=_name(api), kind=kind, device=device, **numbers))
 
     for d in sorted(minutes, key=lambda d: -minutes[d]):
@@ -351,6 +432,13 @@ def callout_data(summary, device_summaries, device_info, defaults):
                 add(api, 'gap_over_limit', d, calls=n, max_gap_min=round(worst['gap_s'] / 60, 1),
                     limit_min=round(HC_GAP_FACTOR * worst['interval_s'] / 60, 1),
                     upload_interval_s=worst['interval_s'], interval_source=worst['interval_source'])
+        for api, st in sorted(stats.items()):
+            kind = _failure_kind(st)
+            if kind:
+                done = st['ok'] + st['failed']
+                add(api, kind, d, attempted=st['calls'], successful=st['ok'], failed=st['failed'],
+                    failed_pct=round(100 * st['failed'] / done), reasons=_top_reasons(st),
+                    **({'unconfirmed': st['unconfirmed']} if st.get('unconfirmed') else {}))
         for api, feature in ((19, LLA_FEATURE), (13, DRIVER_LOGIN_FEATURE)):
             if feature not in features:
                 continue
@@ -367,8 +455,11 @@ def callout_data(summary, device_summaries, device_info, defaults):
     for f in findings:
         groups.setdefault(f.pop('api'), {}).setdefault(f.pop('kind'), []).append(f)
     for kinds in groups.values():
-        for items in kinds.values():
-            # worst first: furthest from the expected count, else the longest gap / drive
+        for kind, items in kinds.items():
+            # worst first: the most failed, else furthest from the expected count, else the longest gap / drive
+            if kind in FAIL_KINDS:
+                items.sort(key=lambda f: (-f['failed_pct'], -f['failed']))
+                continue
             items.sort(key=lambda f: -(abs((f.get('expected_min') or 0) - (f.get('calls') or 0))
                                        or f.get('max_gap_min') or f.get('drive_min') or 0))
     return {
@@ -381,6 +472,7 @@ def callout_data(summary, device_summaries, device_info, defaults):
             'devices_with_health_central_enabled': hc_on,
             'health_central_upload_intervals': [{'interval_s': i, 'source': src} for i, src in sorted(hc_intervals)],
             'features_enabled_on_ota': [f['name'] for f in summary.get('feature_coverage') or [] if f['devices_on']],
+            'api_results_on_ota': api_results_on_ota(device_summaries, minutes),
         },
         'findings': groups,  # {api: {kind: [finding, ...]}}
     }
@@ -558,8 +650,7 @@ def _api_callouts(ota, api, kinds, context):
         error = f'{type(exc).__name__}'
     callouts = []
     for kind, items in kinds.items():
-        text = texts.get(kind) or (f'{len(items)} of {context["devices"]} devices: '
-                                   f'{kind.replace("_", " ")}' + (' (LLM text unavailable)' if error else ''))
+        text = texts.get(kind) or (_plain_text(kind, items, context) + (' (LLM text unavailable)' if error else ''))
         callouts.append({'level': KIND_LEVEL.get(kind, 'info'), 'api': api, 'kind': kind, 'text': text,
                          'devices': [f['device'] for f in items]})
     return callouts, source, error
@@ -594,7 +685,7 @@ def build(ota, summary, device_summaries, device_info, defaults, report_kpi=None
         for api, kinds in findings.items():
             results.append(([{'level': KIND_LEVEL.get(k, 'info'), 'api': api, 'kind': k,
                               'devices': [f['device'] for f in items],
-                              'text': f'{len(items)} of {context["devices"]} devices: {k.replace("_", " ")}'}
+                              'text': _plain_text(k, items, context)}
                              for k, items in kinds.items()], None, None))
     callouts = [c for cs, _, _ in results for c in cs]
     # Overall first (in the model's order), then the per-API ones by level and reach
