@@ -2112,12 +2112,7 @@ def _api_calls_section(sm):
     foot = ('<tfoot><tr><td>Total</td><td class="num">' + f'{sum(minutes.get(d, 0) for d in by_device):,}</td>'
             + ''.join(_api_cell(totals.get(a, 0), ok_totals.get(a), total=True) for a in apis) + '</tr></tfoot>')
     head = ['Device ID', '#Total drive min'] + [f'#{api_calls.APIS[a][0]}' for a in apis]
-    note = ('<p class="muted">Successful / attempted calls. Attempted: every request the device logged; successful: '
-            'those whose result it logged as reached (curl 0, HTTP 2xx), which is what the cloud records. '
-            'Unconfirmed: low power keep-alives sent right before shutdown, whose result the device never logged '
-            '(counted neither way). Hover a cell for the failed calls; a red count has 10% or more failed. '
-            'A single number: no result lines were found (attempts only).</p>')
-    return f'<section id="api"><h2>API Call Summary</h2>{note}{_table(head, rows, foot=foot)}</section>'
+    return f'<section id="api"><h2>API Call Summary</h2>{_table(head, rows, foot=foot)}</section>'
 
 
 def _failing_tcs(feat):
